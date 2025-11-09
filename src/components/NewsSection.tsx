@@ -1,8 +1,12 @@
+import { useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Calendar } from "lucide-react";
+import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 
 export const NewsSection = () => {
+  const sectionRef = useRef<HTMLElement>(null);
+  const isVisible = useScrollAnimation(sectionRef);
   const news = [
     {
       category: "DYLA – 2025-08-11",
@@ -28,19 +32,25 @@ export const NewsSection = () => {
   ];
 
   return (
-    <section className="py-24 bg-gradient-subtle">
+    <section ref={sectionRef} className="py-24 bg-gradient-subtle">
       <div className="container px-4">
-        <div className="mb-12">
-          <p className="text-sm font-semibold text-primary mb-2 uppercase tracking-wider">FRISS HÍREINK, ÍRÁSAINK</p>
-          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-            TÁJÉKOZÓDJ SZÜLŐFÖLDÜNKRŐL!
-          </h2>
-          <p className="text-lg text-muted-foreground mb-6">
-            Vagy olvasd el minden írást a HYCA blogon.
+        <div 
+          className={`mb-12 transition-all duration-700 ${
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          }`}
+        >
+          <p className="text-sm font-semibold text-primary mb-2 uppercase tracking-wider">
+            FRISS HÍREINK, ÍRÁSAINK
           </p>
-          <Button variant="outline" className="border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300">
+          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
+            Közösségi Hírek és Események
+          </h2>
+          <p className="text-lg text-muted-foreground mb-6 max-w-2xl">
+            Kövess minket a legfrissebb fejleményekért, programokért és közösségi történetekért
+          </p>
+          <Button variant="outline" className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300">
             HYCA BLOG
-            <ArrowRight className="ml-2 h-4 w-4" />
+            <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
           </Button>
         </div>
 
@@ -48,7 +58,10 @@ export const NewsSection = () => {
           {news.map((item, index) => (
             <Card
               key={index}
-              className="group overflow-hidden border-border hover:shadow-xl transition-all duration-300 hover:-translate-y-2"
+              className={`group overflow-hidden border-border hover:shadow-xl transition-all duration-700 hover:-translate-y-2 cursor-pointer ${
+                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+              }`}
+              style={{ transitionDelay: `${index * 100}ms` }}
             >
               <div className="relative h-56 overflow-hidden">
                 <img 
@@ -63,19 +76,19 @@ export const NewsSection = () => {
                 )}
               </div>
               <div className="p-6 space-y-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  <Calendar className="h-3 w-3" />
                   {item.category}
-                </p>
-                <h3 className="text-lg font-bold text-foreground leading-snug group-hover:text-primary transition-colors">
+                </div>
+                <h3 className="text-lg font-bold text-foreground leading-snug group-hover:text-primary transition-colors line-clamp-3">
                   {item.title}
                 </h3>
-                <Button 
-                  variant="ghost" 
-                  className="text-primary hover:text-primary-glow p-0 h-auto font-semibold group-hover:translate-x-1 transition-transform"
-                >
-                  ELOLVASOM
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                <div className="pt-2">
+                  <span className="inline-flex items-center text-primary hover:text-primary-glow font-semibold text-sm group-hover:gap-3 transition-all">
+                    Részletek
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </span>
+                </div>
               </div>
             </Card>
           ))}
