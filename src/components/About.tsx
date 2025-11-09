@@ -1,94 +1,63 @@
-import { Card } from "@/components/ui/card";
-import { Heart, Globe, Lightbulb, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
+import umbrellaImage from "@/assets/umbrella-person.jpg";
 
 export const About = () => {
-  const values = [
-    {
-      icon: Heart,
-      title: "Közösség",
-      description: "Összekapcsoljuk a magyar ifjúságot, létrehozva egy erős, támogató közösséget.",
-    },
-    {
-      icon: Globe,
-      title: "Határok Nélkül",
-      description: "A Kárpát-medence minden magyarját képviseljük, függetlenül a földrajzi határoktól.",
-    },
-    {
-      icon: Lightbulb,
-      title: "Innováció",
-      description: "Modern megoldásokkal közelítjük meg a magyar ifjúság kihívásait.",
-    },
-    {
-      icon: Users,
-      title: "Együttműködés",
-      description: "Hiszünk abban, hogy együtt többet érhetünk el, mint egyedül.",
-    },
-  ];
-
   return (
-    <section className="py-24 bg-gradient-subtle">
+    <section id="rolunk" className="py-24 bg-background">
       <div className="container px-4">
-        <div className="max-w-3xl mx-auto text-center mb-16 animate-slide-in">
-          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6" style={{ fontFamily: "'Sora', sans-serif" }}>
-            Rólunk
-          </h2>
-          <p className="text-lg text-muted-foreground leading-relaxed">
-            A Magyar Ifjúsági Konferencia (MIK) célja, hogy egyeztetőfórum legyen a magyar ifjúság számára, 
-            hatékonyan képviselve a Kárpát-medence és a világ magyar ifjúságát.
-          </p>
-        </div>
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          {/* Left Content */}
+          <div className="space-y-6 animate-slide-in">
+            <p className="text-sm font-semibold text-foreground uppercase tracking-wider">RÓLUNK</p>
+            <h2 className="text-4xl md:text-5xl font-bold text-foreground leading-tight" style={{ fontFamily: "'Sora', sans-serif" }}>
+              KIK VAGYUNK MI?
+            </h2>
+            
+            <p className="text-lg text-muted-foreground leading-relaxed">
+              Kattints, hogy megtudd, kik is alkotjuk a MIK-et, hogyan is oszlik meg a munka, 
+              vagy ha többet szeretnél megtudni szervezeti struktúránkról.
+            </p>
 
-        <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-          {values.map((value, index) => (
-            <Card
-              key={index}
-              className="p-8 bg-card border-border hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group"
+            <Button 
+              variant="outline"
+              size="lg" 
+              className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold px-8 py-6 text-base transition-all duration-300"
             >
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-4 bg-gradient-primary rounded-2xl shadow-md group-hover:shadow-glow transition-all duration-300">
-                  <value.icon className="h-8 w-8 text-primary-foreground" />
-                </div>
-                <h3 className="text-xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-                  {value.title}
-                </h3>
-                <p className="text-muted-foreground leading-relaxed">
-                  {value.description}
-                </p>
-              </div>
-            </Card>
-          ))}
-        </div>
+              MAGUNKRÓL
+              <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+            </Button>
+          </div>
 
-        <div className="mt-16 max-w-4xl mx-auto">
-          <Card className="p-10 bg-card border-border shadow-md">
-            <div className="space-y-6">
-              <h3 className="text-2xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-                Alapító Nyilatkozat
-              </h3>
-              <p className="text-muted-foreground leading-relaxed">
-                Nyilatkozatukban az alapítók világosan kifejtették, miért van szükség arra, 
-                hogy a magyar ifjúságnak legyen egyeztetőfóruma, hogy hatékonyan képviseljék 
-                a Kárpát-medence és a világ magyar ifjúságát.
-              </p>
-              <div className="pt-4">
-                <h4 className="text-xl font-semibold text-foreground mb-3">Célkitűzéseink</h4>
-                <ul className="space-y-3 text-muted-foreground">
-                  <li className="flex items-start">
-                    <span className="inline-block w-2 h-2 bg-primary rounded-full mt-2 mr-3 flex-shrink-0" />
-                    <span>Az ifjúság képviselete minden releváns fórumon</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="inline-block w-2 h-2 bg-primary rounded-full mt-2 mr-3 flex-shrink-0" />
-                    <span>Közösségépítés és együttműködés elősegítése</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="inline-block w-2 h-2 bg-primary rounded-full mt-2 mr-3 flex-shrink-0" />
-                    <span>A magyar identitás megerősítése a fiatalok körében</span>
-                  </li>
-                </ul>
-              </div>
+          {/* Right Image */}
+          <div className="relative animate-slide-in" style={{ animationDelay: "0.2s" }}>
+            <div className="rounded-3xl overflow-hidden shadow-2xl">
+              <img 
+                src={umbrellaImage}
+                alt="Kik vagyunk mi" 
+                className="w-full h-auto"
+              />
             </div>
-          </Card>
+            
+            {/* Overlay Card */}
+            <div className="absolute bottom-8 right-8 bg-background/95 backdrop-blur-sm p-6 rounded-2xl shadow-xl max-w-sm border border-border">
+              <p className="text-xs font-semibold text-primary mb-2 uppercase tracking-wider">ALAPÍTÓ NYILATKOZAT</p>
+              <h3 className="text-xl font-bold text-foreground mb-3" style={{ fontFamily: "'Sora', sans-serif" }}>
+                CÉLKITŰZÉSEINK
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                Nyilatkozatukban az alapítók világosan kifejtették, miért van szükség, hogy a magyar ifjúságnak legyen 
+                egyeztetőfóruma, hogy hatékonyan képviseljék a Kárpát-medence és a világ magyar ifjúságát.
+              </p>
+              <Button 
+                variant="ghost" 
+                className="text-primary hover:text-primary-glow p-0 h-auto font-semibold group"
+              >
+                MEGNYITÁS
+                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
