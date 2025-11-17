@@ -82,18 +82,17 @@ serve(async (req) => {
       });
     }
 
-    // Upload to ImageKit
+    // Upload to ImageKit using the correct upload API endpoint
     const formData = new FormData();
     formData.append('file', file);
     formData.append('fileName', `${Date.now()}-${Math.random().toString(36).substring(7)}`);
     formData.append('folder', folder);
-    formData.append('publicKey', publicKey);
 
     // Create auth header
     const authString = btoa(`${privateKey}:`);
 
     const uploadResponse = await fetch(
-      `${urlEndpoint}/api/v1/files/upload`,
+      'https://upload.imagekit.io/api/v1/files/upload',
       {
         method: 'POST',
         headers: {
