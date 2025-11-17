@@ -51,7 +51,7 @@ export function AdminSidebar() {
     <Sidebar collapsible="icon" className="border-r border-border">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menü</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-muted-foreground">Menü</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
@@ -64,7 +64,7 @@ export function AdminSidebar() {
                         `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                           isActive
                             ? "bg-primary text-primary-foreground font-medium"
-                            : "hover:bg-muted"
+                            : "text-foreground hover:bg-muted hover:text-foreground"
                         }`
                       }
                     >
