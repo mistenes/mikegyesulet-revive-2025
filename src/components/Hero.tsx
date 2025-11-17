@@ -28,16 +28,22 @@ export const Hero = () => {
               <Button 
                 size="lg" 
                 className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl"
+                asChild
               >
-                CSATLAKOZZ HOZZÁNK
-                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                <a href="https://dashboard.mikegyesulet.hu" target="_blank" rel="noopener noreferrer">
+                  TAGSZERVEZETI PORTÁL
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </a>
               </Button>
               <Button 
                 size="lg" 
                 variant="outline"
                 className="font-semibold px-8 py-6 text-base border-2 hover:bg-muted/50 transition-all duration-300"
+                asChild
               >
-                TUDJ MEG TÖBBET
+                <a href="#rolunk">
+                  TUDJ MEG TÖBBET
+                </a>
               </Button>
             </div>
 
