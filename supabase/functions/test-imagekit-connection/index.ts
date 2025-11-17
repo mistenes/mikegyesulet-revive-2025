@@ -85,8 +85,9 @@ serve(async (req) => {
     }
 
     // Test connection by listing files (limit to 1 to minimize API usage)
+    // Note: ImageKit API base is https://api.imagekit.io, not the URL endpoint
     const authString = btoa(`${privateKey}:`);
-    const testUrl = new URL(`${urlEndpoint}/v1/files`);
+    const testUrl = new URL('https://api.imagekit.io/v1/files');
     testUrl.searchParams.set('limit', '1');
 
     console.log('Testing ImageKit connection...');

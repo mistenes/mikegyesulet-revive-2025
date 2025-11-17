@@ -77,10 +77,10 @@ serve(async (req) => {
     // Create auth header
     const authString = btoa(`${privateKey}:`);
 
-    // List files from ImageKit
-    const listUrl = new URL(`${urlEndpoint}/v1/files`);
+    // List files from ImageKit API (not the URL endpoint)
+    const listUrl = new URL('https://api.imagekit.io/v1/files');
     if (folder) listUrl.searchParams.set('path', folder);
-    listUrl.searchParams.set('limit', limit);
+    listUrl.searchParams.set('limit', limit.toString());
 
     const listResponse = await fetch(listUrl.toString(), {
       method: 'GET',
