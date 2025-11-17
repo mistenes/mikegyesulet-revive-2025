@@ -22,15 +22,11 @@ export const Hero = () => {
             </div>
 
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-foreground leading-tight" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Együtt építjük a{" "}
-              <span className="bg-gradient-primary bg-clip-text text-transparent">
-                magyar jövőt
-              </span>
+              Üdvözlünk a Magyar Ifjúsági Konferencia honlapján!
             </h1>
             
             <p className="text-xl text-muted-foreground leading-relaxed max-w-xl">
-              Csatlakozz 10+ régió ezer fiatal magyarjához, akik aktívan alakítják közösségük jövőjét 
-              a Kárpát-medencében és szerte a világon.
+              Akár a Kárpát-medencében, és azon kívül élő magyarság, akár szervezetünk érdekelnek, itt mindent megtalálsz.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
