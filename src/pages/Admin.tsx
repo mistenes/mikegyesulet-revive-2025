@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Lock, LogOut, Shield, Users, FileText, Map } from "lucide-react";
+import { Lock, Shield, Users, FileText, Map } from "lucide-react";
 import { toast } from "sonner";
+import { AdminLayout } from "@/components/admin/AdminLayout";
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "admin123";
 
@@ -35,12 +36,6 @@ export default function Admin() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminAuth");
-    setIsAuthenticated(false);
-    setPassword("");
-    toast.success("Kijelentkezve");
-  };
 
   if (!isAuthenticated) {
     return (
@@ -95,36 +90,18 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Admin Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="container px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-primary/10 p-2 rounded-lg">
-                <Shield className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-                  Admin Dashboard
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Magyar Ifjúsági Konferencia
-                </p>
-              </div>
-            </div>
-            <Button onClick={handleLogout} variant="outline" size="sm">
-              <LogOut className="h-4 w-4 mr-2" />
-              Kijelentkezés
-            </Button>
-          </div>
+    <AdminLayout>
+      <div className="space-y-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground mb-2" style={{ fontFamily: "'Sora', sans-serif" }}>
+            Üdvözöllek az Admin felületen!
+          </h1>
+          <p className="text-muted-foreground">
+            Használd a bal oldali menüt a navigációhoz
+          </p>
         </div>
-      </header>
 
-      {/* Admin Content */}
-      <main className="container px-4 py-12">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-12">
-          {/* Stats Cards */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <Card className="p-6 space-y-2 hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between">
               <Users className="h-8 w-8 text-primary" />
@@ -150,73 +127,7 @@ export default function Admin() {
           </Card>
         </div>
 
-        {/* Quick Actions */}
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-            Gyors műveletek
-          </h2>
-          
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card className="p-6 space-y-4 hover:border-primary/50 transition-colors cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="bg-primary/10 p-3 rounded-lg">
-                  <Users className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">Tagok kezelése</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Tagok megtekintése és szerkesztése
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 space-y-4 hover:border-primary/50 transition-colors cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="bg-accent/10 p-3 rounded-lg">
-                  <FileText className="h-6 w-6 text-accent" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">Hírek kezelése</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Új hírek hozzáadása és szerkesztése
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 space-y-4 hover:border-primary/50 transition-colors cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="bg-primary-glow/10 p-3 rounded-lg">
-                  <Map className="h-6 w-6 text-primary-glow" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">Régiók kezelése</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Regionális információk frissítése
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 space-y-4 hover:border-primary/50 transition-colors cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="bg-accent/10 p-3 rounded-lg">
-                  <Shield className="h-6 w-6 text-accent" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">Beállítások</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Rendszer beállítások kezelése
-                  </p>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-
-        {/* Security Warning */}
-        <Card className="mt-12 p-6 bg-destructive/5 border-destructive/20">
+        <Card className="p-6 bg-destructive/5 border-destructive/20">
           <div className="flex gap-3">
             <Shield className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
             <div className="space-y-2">
@@ -228,7 +139,7 @@ export default function Admin() {
             </div>
           </div>
         </Card>
-      </main>
-    </div>
+      </div>
+    </AdminLayout>
   );
 }

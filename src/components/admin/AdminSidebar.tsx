@@ -1,0 +1,83 @@
+import { NavLink } from "react-router-dom";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import {
+  LayoutDashboard,
+  FileText,
+  Settings,
+  Key,
+  Users,
+  Map,
+  Image,
+} from "lucide-react";
+
+const menuItems = [
+  {
+    title: "Dashboard",
+    url: "/admin",
+    icon: LayoutDashboard,
+  },
+  {
+    title: "Hírek",
+    url: "/admin/news",
+    icon: FileText,
+  },
+  {
+    title: "API Kulcsok",
+    url: "/admin/api-settings",
+    icon: Key,
+  },
+  {
+    title: "Beállítások",
+    url: "/admin/settings",
+    icon: Settings,
+  },
+];
+
+export function AdminSidebar() {
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+
+  return (
+    <Sidebar collapsible="icon" className="border-r border-border">
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Menü</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <NavLink
+                      to={item.url}
+                      end={item.url === "/admin"}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                          isActive
+                            ? "bg-primary text-primary-foreground font-medium"
+                            : "hover:bg-muted"
+                        }`
+                      }
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {!isCollapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
+  );
+}
