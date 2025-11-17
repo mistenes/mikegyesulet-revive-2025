@@ -18,12 +18,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
 
-// Extend window type for Cloudinary
-declare global {
-  interface Window {
-    cloudinary?: any;
-  }
-}
+// ImageKit configuration type
+type ImageKitConfig = {
+  publicKey: string;
+  urlEndpoint: string;
+};
 
 const newsSchema = z.object({
   title: z.string().min(1, "A cím kötelező").max(200, "A cím maximum 200 karakter"),
@@ -208,7 +207,7 @@ export default function AdminNews() {
           return;
         }
 
-        const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+        const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
           body: { file: base64File, folder: 'news' },
         });
 
@@ -231,52 +230,6 @@ export default function AdminNews() {
       console.error('Upload error:', error);
       toast.error('Hiba a képfeltöltés során');
       setIsUploading(false);
-    }
-  };
-
-  const openCloudinaryMediaLibrary = async () => {
-    try {
-      // Fetch Cloudinary settings
-      const { data: settings } = await supabase
-        .from('site_settings')
-        .select('setting_key, setting_value')
-        .in('setting_key', ['cloudinary_cloud_name', 'cloudinary_api_key']);
-
-      const cloudName = settings?.find(s => s.setting_key === 'cloudinary_cloud_name')?.setting_value;
-      const apiKey = settings?.find(s => s.setting_key === 'cloudinary_api_key')?.setting_value;
-
-      if (!cloudName || !apiKey) {
-        toast.error('Cloudinary nincs konfigurálva. Kérlek, add meg az API kulcsokat a beállításokban.');
-        return;
-      }
-
-      if (!window.cloudinary) {
-        toast.error('Cloudinary Media Library nem elérhető');
-        return;
-      }
-
-      const myWidget = window.cloudinary.createMediaLibrary(
-        {
-          cloud_name: cloudName,
-          api_key: apiKey,
-          multiple: false,
-          max_files: 1,
-        },
-        {
-          insertHandler: (data: any) => {
-            if (data.assets && data.assets.length > 0) {
-              const asset = data.assets[0];
-              setFormData({ ...formData, image_url: asset.secure_url });
-              toast.success('Kép kiválasztva!');
-            }
-          },
-        }
-      );
-
-      myWidget.show();
-    } catch (error) {
-      console.error('Cloudinary error:', error);
-      toast.error('Hiba a képválasztás során');
     }
   };
 
@@ -374,15 +327,6 @@ export default function AdminNews() {
                       disabled={isUploading}
                       className="flex-1"
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={openCloudinaryMediaLibrary}
-                      disabled={isUploading}
-                    >
-                      <Image className="h-4 w-4 mr-2" />
-                      Cloudinary
-                    </Button>
                   </div>
                   {isUploading && (
                     <p className="text-sm text-muted-foreground">Képfeltöltés...</p>

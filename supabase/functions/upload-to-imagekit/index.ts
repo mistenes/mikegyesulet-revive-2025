@@ -32,33 +32,33 @@ serve(async (req) => {
       });
     }
 
-    // Get Cloudinary credentials from settings
+    // Get ImageKit credentials from settings
     const { data: settings, error: settingsError } = await supabaseClient
       .from('site_settings')
       .select('setting_key, setting_value')
-      .in('setting_key', ['cloudinary_cloud_name', 'cloudinary_api_key', 'cloudinary_api_secret']);
+      .in('setting_key', ['imagekit_public_key', 'imagekit_private_key', 'imagekit_url_endpoint']);
 
     if (settingsError || !settings) {
       console.error('Error fetching settings:', settingsError);
-      return new Response(JSON.stringify({ error: 'Failed to fetch Cloudinary settings' }), {
+      return new Response(JSON.stringify({ error: 'Failed to fetch ImageKit settings' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const cloudName = settings.find(s => s.setting_key === 'cloudinary_cloud_name')?.setting_value;
-    const apiKey = settings.find(s => s.setting_key === 'cloudinary_api_key')?.setting_value;
-    const apiSecret = settings.find(s => s.setting_key === 'cloudinary_api_secret')?.setting_value;
+    const publicKey = settings.find(s => s.setting_key === 'imagekit_public_key')?.setting_value;
+    const privateKey = settings.find(s => s.setting_key === 'imagekit_private_key')?.setting_value;
+    const urlEndpoint = settings.find(s => s.setting_key === 'imagekit_url_endpoint')?.setting_value;
 
-    if (!cloudName || !apiKey || !apiSecret) {
-      return new Response(JSON.stringify({ error: 'Cloudinary credentials not configured' }), {
+    if (!publicKey || !privateKey || !urlEndpoint) {
+      return new Response(JSON.stringify({ error: 'ImageKit credentials not configured' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     // Get the file data from the request
-    const { file, folder = 'news' } = await req.json();
+    const { file, folder = 'uploads' } = await req.json();
 
     if (!file) {
       return new Response(JSON.stringify({ error: 'No file provided' }), {
@@ -67,28 +67,23 @@ serve(async (req) => {
       });
     }
 
-    // Create the upload signature
-    const timestamp = Math.round(new Date().getTime() / 1000);
-    const params = `folder=${folder}&timestamp=${timestamp}`;
-    
-    const encoder = new TextEncoder();
-    const data = encoder.encode(params + apiSecret);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // Upload to Cloudinary
+    // Upload to ImageKit
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp.toString());
-    formData.append('signature', signature);
+    formData.append('fileName', `${Date.now()}-${Math.random().toString(36).substring(7)}`);
     formData.append('folder', folder);
+    formData.append('publicKey', publicKey);
+
+    // Create auth header
+    const authString = btoa(`${privateKey}:`);
 
     const uploadResponse = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      `${urlEndpoint}/api/v1/files/upload`,
       {
         method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+        },
         body: formData,
       }
     );
@@ -96,21 +91,22 @@ serve(async (req) => {
     const uploadData = await uploadResponse.json();
 
     if (!uploadResponse.ok) {
-      console.error('Cloudinary upload error:', uploadData);
-      return new Response(JSON.stringify({ error: 'Failed to upload to Cloudinary', details: uploadData }), {
+      console.error('ImageKit upload error:', uploadData);
+      return new Response(JSON.stringify({ error: 'Failed to upload to ImageKit', details: uploadData }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     return new Response(JSON.stringify({ 
-      url: uploadData.secure_url,
-      public_id: uploadData.public_id
+      url: uploadData.url,
+      fileId: uploadData.fileId,
+      name: uploadData.name,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Error in upload-to-cloudinary function:', error);
+    console.error('Error in upload-to-imagekit function:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
