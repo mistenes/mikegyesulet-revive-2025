@@ -12,6 +12,7 @@ import AdminNews from "./pages/admin/AdminNews";
 import AdminApiSettings from "./pages/admin/AdminApiSettings";
 import AdminSettings from "./pages/admin/AdminSettings";
 import Rolunk from "./pages/Rolunk";
+import Regiok from "./pages/Regiok";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/rolunk" element={<Rolunk />} />
+            <Route path="/regiok" element={<Regiok />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/pages" element={<AdminPages />} />
