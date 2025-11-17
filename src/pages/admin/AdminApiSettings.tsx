@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Key, Eye, EyeOff, Save, Image as ImageIcon, Map } from "lucide-react";
+import { Key, Eye, EyeOff, Save, Image as ImageIcon, Map, CheckCircle2, Loader2, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
@@ -21,6 +21,7 @@ export default function AdminApiSettings() {
   const [settings, setSettings] = useState<Setting[]>([]);
   const [showTokens, setShowTokens] = useState<{ [key: string]: boolean }>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -65,6 +66,34 @@ export default function AdminApiSettings() {
       ...prev,
       [settingKey]: !prev[settingKey],
     }));
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-imagekit-connection');
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success(data.message, {
+          description: `Files in storage: ${data.filesCount}`,
+          duration: 5000,
+        });
+      } else {
+        toast.error('Connection failed', {
+          description: data.error,
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      console.error('Connection test error:', error);
+      toast.error('Connection test failed', {
+        description: 'Could not reach ImageKit API. Please check your credentials.',
+      });
+    } finally {
+      setTestingConnection(false);
+    }
   };
 
   const imagekitSettings = settings.filter((s) =>
@@ -183,7 +212,26 @@ export default function AdminApiSettings() {
                 })}
               </div>
 
-              <div className="pt-2 border-t border-border">
+              <div className="pt-2 border-t border-border space-y-4">
+                <Button
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                  variant="outline"
+                  className="w-full gap-2"
+                >
+                  {testingConnection ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Kapcsolat tesztelése...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4" />
+                      Kapcsolat tesztelése
+                    </>
+                  )}
+                </Button>
+                
                 <p className="text-sm text-muted-foreground">
                   <strong>ImageKit credentials beszerzése:</strong>
                   <br />
