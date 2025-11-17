@@ -73,6 +73,7 @@ serve(async (req) => {
 
     // Get parameters from request body
     const { folder = '', limit = 100 } = await req.json();
+    console.log('List ImageKit files request:', { folder, limit });
 
     // Create auth header
     const authString = btoa(`${privateKey}:`);
@@ -98,6 +99,9 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('ImageKit list success. Files count:', Array.isArray(listData) ? listData.length : 'not an array');
+    console.log('First file sample:', listData[0]);
 
     return new Response(JSON.stringify({ files: listData }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
