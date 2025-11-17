@@ -16,11 +16,6 @@ export const Hero = () => {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left Content */}
           <div className="space-y-8 animate-slide-in">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full border border-primary/20">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold text-primary">A Magyar Ifjúság Hangja</span>
-            </div>
-
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-foreground leading-tight" style={{ fontFamily: "'Sora', sans-serif" }}>
               Üdvözlünk a Magyar Ifjúsági Konferencia honlapján!
             </h1>
