@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Globe } from "lucide-react";
-import puzzleLogo from "@/assets/puzzle-logo.png";
+import mikLogo from "@/assets/mik-logo.svg";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,10 +37,7 @@ export const Header = () => {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
-            <img src={puzzleLogo} alt="MIK Logo" className="h-12 w-12 transition-transform duration-300 group-hover:scale-110" />
-            <span className="text-xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-              MIK
-            </span>
+            <img src={mikLogo} alt="MIK Logo" className="h-16 w-auto transition-transform duration-300 group-hover:scale-105" />
           </Link>
 
           {/* Desktop Navigation */}
