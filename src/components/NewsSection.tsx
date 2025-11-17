@@ -40,13 +40,13 @@ export const NewsSection = () => {
           }`}
         >
           <p className="text-sm font-semibold text-primary mb-2 uppercase tracking-wider">
-            FRISS HÍREINK, ÍRÁSAINK
+            fRISs hÍREINK, írásaink
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-            Közösségi Hírek és Események
+            tájékozódj szülőföldünkről!
           </h2>
           <p className="text-lg text-muted-foreground mb-6 max-w-2xl">
-            Kövess minket a legfrissebb fejleményekért, programokért és közösségi történetekért
+            Vagy olvass el minden írást a HYCA blogon
           </p>
           <Button variant="outline" className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300">
             HYCA BLOG

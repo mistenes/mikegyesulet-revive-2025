@@ -15,8 +15,7 @@ export const About = () => {
             </h2>
             
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Kattints, hogy megtudd, kik is alkotjuk a MIK-et, hogyan is oszlik meg a munka, 
-              vagy ha többet szeretnél megtudni szervezeti struktúránkról.
+              Kattints, hogy megtudd, kik is alkotjuk a MIK-et, hogyan is oszlik meg a munka, vagy ha többet szeretnél megtudni szervezeti struktúránkról.
             </p>
 
             <Button 
@@ -46,8 +45,7 @@ export const About = () => {
                 CÉLKITŰZÉSEINK
               </h3>
               <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                Nyilatkozatukban az alapítók világosan kifejtették, miért van szükség, hogy a magyar ifjúságnak legyen 
-                egyeztetőfóruma, hogy hatékonyan képviseljék a Kárpát-medence és a világ magyar ifjúságát.
+                Nyilatkozatukban az alapítók világosan kifejtették, miért van szükség, hogy a magyar ifjúságnak legyen egyeztetőfóruma, hogy hatékonyan képviseljék a Kárpát-medence és a világ magyar ifjúságát.
               </p>
               <Button 
                 variant="ghost" 

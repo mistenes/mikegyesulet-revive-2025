@@ -43,12 +43,11 @@ export const RegionsSection = () => {
               </span>
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-foreground leading-tight" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Egységben az Erő
+              ismerd meg partnereinket!
             </h2>
             
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Tíz különböző régióból egyesítjük a magyar ifjúságot. Erdélytől Felvidékig, 
-              Kárpátaljától a diaszpóráig – minden sarokban ott vagyunk, ahol magyarok élnek.
+              A MIK tagszervezetei a Kárpát-medence minden régiójában képviselik a magyar ifjúság érdekeit. Erdélytől Felvidékig, Kárpátaljától a diaszpóráig – minden sarokban ott vagyunk, ahol magyarok élnek.
             </p>
 
             <div className="flex flex-wrap gap-3 pt-4">

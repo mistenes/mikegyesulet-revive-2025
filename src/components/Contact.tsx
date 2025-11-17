@@ -116,8 +116,11 @@ export const Contact = () => {
             Kapcsolat
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-            Lépj Kapcsolatba Velünk
+            veDD fel velünk a kapcsolatot
           </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Itt üzenhetsz nekünk. Egyszerűbb, mint e-mailt írni, és ugyanolyan hatékony.
+          </p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
@@ -248,10 +251,10 @@ export const Contact = () => {
           <div className="grid md:grid-cols-2 gap-6 items-center">
             <div>
               <h3 className="text-2xl font-bold text-foreground mb-2" style={{ fontFamily: "'Sora', sans-serif" }}>
-                Hírlevél Feliratkozás
+                Olvastad már?
               </h3>
               <p className="text-muted-foreground text-sm">
-                Havonta egyszer összefoglaljuk a legfontosabb híreket és eseményeket
+                Iratkozz fel a MIK hírlevelére, ahol havonta egyszer összefoglaljuk neked, hogy mi történt velünk, valamint megosztjuk veled a legnépszerűbb cikkeink a HYCA blog kínálatából.
               </p>
             </div>
             <form onSubmit={handleNewsletterSubmit} className="space-y-3">
