@@ -44,6 +44,7 @@ export default function AdminNews() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<NewsArticle | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
     slug: "",
@@ -166,6 +167,66 @@ export default function AdminNews() {
       .replace(/(^-|-$)/g, "");
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Csak képfájlokat lehet feltölteni');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A kép maximum 5MB lehet');
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      
+      reader.onload = async () => {
+        const base64File = reader.result;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          toast.error('Nem vagy bejelentkezve');
+          setIsUploading(false);
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+          body: { file: base64File, folder: 'news' },
+        });
+
+        if (error) {
+          console.error('Upload error:', error);
+          toast.error('Hiba a képfeltöltés során');
+        } else {
+          setFormData({ ...formData, image_url: data.url });
+          toast.success('Kép sikeresen feltöltve!');
+        }
+
+        setIsUploading(false);
+      };
+
+      reader.onerror = () => {
+        toast.error('Hiba a fájl olvasása során');
+        setIsUploading(false);
+      };
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Hiba a képfeltöltés során');
+      setIsUploading(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -250,14 +311,34 @@ export default function AdminNews() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="image_url">Kép URL</Label>
+                  <Label htmlFor="image">Kép feltöltése</Label>
                   <Input
-                    id="image_url"
-                    type="url"
-                    value={formData.image_url}
-                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                    placeholder="https://example.com/image.jpg"
+                    id="image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={isUploading}
                   />
+                  {isUploading && (
+                    <p className="text-sm text-muted-foreground">Képfeltöltés...</p>
+                  )}
+                  {formData.image_url && (
+                    <div className="space-y-2">
+                      <img 
+                        src={formData.image_url} 
+                        alt="Preview" 
+                        className="w-full max-w-xs rounded-lg border"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFormData({ ...formData, image_url: "" })}
+                      >
+                        Kép eltávolítása
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center space-x-2">
