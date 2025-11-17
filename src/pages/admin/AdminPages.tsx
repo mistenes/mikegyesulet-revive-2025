@@ -6,9 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Plus, Trash2 } from "lucide-react";
+import { FileText, Plus, Trash2, Save, Type, Link2, BarChart3, Info, Loader2, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 type PageSection = {
   id: string;
@@ -21,6 +23,7 @@ export default function AdminPages() {
   const [sections, setSections] = useState<PageSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("");
+  const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSections();
@@ -47,6 +50,7 @@ export default function AdminPages() {
   };
 
   const handleSave = async (sectionKey: string, content: any) => {
+    setSaving(sectionKey);
     try {
       const { error } = await supabase
         .from("page_content")
@@ -54,28 +58,34 @@ export default function AdminPages() {
         .eq("section_key", sectionKey);
 
       if (error) throw error;
-      toast.success("Változások mentve!");
+      
+      // Show success animation
+      await new Promise(resolve => setTimeout(resolve, 500));
+      toast.success("Változások sikeresen mentve!");
       fetchSections();
     } catch (error) {
       console.error("Error saving section:", error);
       toast.error("Hiba a mentés során");
+    } finally {
+      setSaving(null);
     }
   };
 
   const renderEditor = (section: PageSection) => {
     const content = section.content;
+    const isSaving = saving === section.section_key;
 
     switch (section.section_key) {
       case "hero_stats":
-        return <HeroStatsEditor content={content} onSave={(c) => handleSave(section.section_key, c)} />;
+        return <HeroStatsEditor content={content} onSave={(c) => handleSave(section.section_key, c)} isSaving={isSaving} />;
       case "hero_content":
-        return <HeroContentEditor content={content} onSave={(c) => handleSave(section.section_key, c)} />;
+        return <HeroContentEditor content={content} onSave={(c) => handleSave(section.section_key, c)} isSaving={isSaving} />;
       case "about_section":
       case "regions_section":
       case "news_section":
-        return <GenericSectionEditor content={content} onSave={(c) => handleSave(section.section_key, c)} />;
+        return <GenericSectionEditor content={content} onSave={(c) => handleSave(section.section_key, c)} isSaving={isSaving} sectionKey={section.section_key} />;
       default:
-        return <div>Nincs szerkesztő ehhez a szekcióhoz</div>;
+        return <div className="text-center py-8 text-muted-foreground">Nincs szerkesztő ehhez a szekcióhoz</div>;
     }
   };
 
@@ -93,31 +103,42 @@ export default function AdminPages() {
     <AdminLayout>
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <div className="bg-primary/10 p-2 rounded-lg">
-            <FileText className="h-6 w-6 text-primary" />
+          <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
+            <FileText className="h-7 w-7 text-primary" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
               Oldal tartalmak
             </h1>
             <p className="text-muted-foreground">
-              Szerkeszd az oldal különböző szekcióit
+              Szerkeszd az oldal különböző szekcióit valós időben
             </p>
           </div>
+          <Badge variant="secondary" className="px-3 py-1">
+            {sections.length} szekció
+          </Badge>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 h-auto p-1 bg-muted/50">
             {sections.map((section) => (
-              <TabsTrigger key={section.section_key} value={section.section_key}>
+              <TabsTrigger 
+                key={section.section_key} 
+                value={section.section_key}
+                className="data-[state=active]:bg-background data-[state=active]:shadow-md py-3"
+              >
                 {section.section_name}
               </TabsTrigger>
             ))}
           </TabsList>
 
           {sections.map((section) => (
-            <TabsContent key={section.section_key} value={section.section_key}>
-              <Card className="p-6">
+            <TabsContent key={section.section_key} value={section.section_key} className="space-y-4">
+              <Card className="p-6 bg-gradient-to-br from-background to-muted/20 border-2">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="h-1 w-12 bg-gradient-to-r from-primary to-accent rounded-full" />
+                  <h2 className="text-xl font-semibold text-foreground">{section.section_name}</h2>
+                </div>
                 {renderEditor(section)}
               </Card>
             </TabsContent>
@@ -129,7 +150,7 @@ export default function AdminPages() {
 }
 
 // Hero Stats Editor
-function HeroStatsEditor({ content, onSave }: { content: any; onSave: (content: any) => void }) {
+function HeroStatsEditor({ content, onSave, isSaving }: { content: any; onSave: (content: any) => void; isSaving: boolean }) {
   const [stats, setStats] = useState(content.stats || []);
 
   const addStat = () => {
@@ -151,50 +172,78 @@ function HeroStatsEditor({ content, onSave }: { content: any; onSave: (content: 
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Statisztikák</h3>
-        <Button onClick={addStat} size="sm">
-          <Plus className="h-4 w-4 mr-2" />
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold">Statisztikák</h3>
+        </div>
+        <Button onClick={addStat} size="sm" variant="outline" className="gap-2">
+          <Plus className="h-4 w-4" />
           Új stat
         </Button>
       </div>
 
-      {stats.map((stat: any, index: number) => (
-        <Card key={index} className="p-4">
-          <div className="flex gap-4 items-end">
-            <div className="flex-1 space-y-2">
-              <Label>Érték</Label>
-              <Input
-                value={stat.value}
-                onChange={(e) => updateStat(index, "value", e.target.value)}
-                placeholder="pl. 2000+"
-              />
-            </div>
-            <div className="flex-1 space-y-2">
-              <Label>Címke</Label>
-              <Input
-                value={stat.label}
-                onChange={(e) => updateStat(index, "label", e.target.value)}
-                placeholder="pl. Tagok"
-              />
-            </div>
-            <Button variant="destructive" size="icon" onClick={() => removeStat(index)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </Card>
-      ))}
+      <Separator />
 
-      <Button onClick={handleSave} className="w-full">
-        Mentés
+      <div className="grid gap-4">
+        {stats.map((stat: any, index: number) => (
+          <Card key={index} className="p-4 bg-gradient-to-br from-background to-muted/30 border-2 hover:border-primary/50 transition-colors">
+            <div className="flex gap-4 items-end">
+              <div className="flex-1 space-y-2">
+                <Label className="text-xs font-medium flex items-center gap-2">
+                  <Type className="h-3 w-3" />
+                  Érték
+                </Label>
+                <Input
+                  value={stat.value}
+                  onChange={(e) => updateStat(index, "value", e.target.value)}
+                  placeholder="pl. 2000+"
+                  className="font-semibold"
+                />
+              </div>
+              <div className="flex-1 space-y-2">
+                <Label className="text-xs font-medium flex items-center gap-2">
+                  <Info className="h-3 w-3" />
+                  Címke
+                </Label>
+                <Input
+                  value={stat.label}
+                  onChange={(e) => updateStat(index, "label", e.target.value)}
+                  placeholder="pl. Tagok"
+                />
+              </div>
+              <Button variant="destructive" size="icon" onClick={() => removeStat(index)} className="shrink-0">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Button 
+        onClick={handleSave} 
+        className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
+        disabled={isSaving}
+      >
+        {isSaving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Mentés...
+          </>
+        ) : (
+          <>
+            <Save className="h-4 w-4" />
+            Mentés
+          </>
+        )}
       </Button>
     </div>
   );
 }
 
 // Hero Content Editor
-function HeroContentEditor({ content, onSave }: { content: any; onSave: (content: any) => void }) {
+function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave: (content: any) => void; isSaving: boolean }) {
   const [formData, setFormData] = useState({
     title: content.title || "",
     description: content.description || "",
@@ -208,58 +257,103 @@ function HeroContentEditor({ content, onSave }: { content: any; onSave: (content
   };
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Főcím</Label>
-        <Input
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label>Leírás</Label>
-        <Textarea
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          rows={3}
-        />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-4">
+    <div className="space-y-6">
+      <div className="space-y-4">
         <div className="space-y-2">
-          <Label>Elsődleges gomb szöveg</Label>
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <Type className="h-4 w-4 text-primary" />
+            Főcím
+          </Label>
           <Input
-            value={formData.primaryButtonText}
-            onChange={(e) => setFormData({ ...formData, primaryButtonText: e.target.value })}
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            className="text-lg font-semibold"
+            placeholder="Add meg a főcímet..."
           />
         </div>
+
         <div className="space-y-2">
-          <Label>Elsődleges gomb URL</Label>
-          <Input
-            value={formData.primaryButtonUrl}
-            onChange={(e) => setFormData({ ...formData, primaryButtonUrl: e.target.value })}
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <Info className="h-4 w-4 text-primary" />
+            Leírás
+          </Label>
+          <Textarea
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            rows={3}
+            placeholder="Add meg a leírást..."
           />
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>Másodlagos gomb szöveg</Label>
-        <Input
-          value={formData.secondaryButtonText}
-          onChange={(e) => setFormData({ ...formData, secondaryButtonText: e.target.value })}
-        />
+      <Separator />
+
+      <div className="space-y-4">
+        <h4 className="font-medium text-sm text-muted-foreground">Elsődleges gomb</h4>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-xs flex items-center gap-2">
+              <Type className="h-3 w-3" />
+              Gomb szöveg
+            </Label>
+            <Input
+              value={formData.primaryButtonText}
+              onChange={(e) => setFormData({ ...formData, primaryButtonText: e.target.value })}
+              placeholder="pl. CSATLAKOZZ"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs flex items-center gap-2">
+              <Link2 className="h-3 w-3" />
+              Gomb URL
+            </Label>
+            <Input
+              value={formData.primaryButtonUrl}
+              onChange={(e) => setFormData({ ...formData, primaryButtonUrl: e.target.value })}
+              placeholder="https://..."
+            />
+          </div>
+        </div>
       </div>
 
-      <Button onClick={handleSave} className="w-full">
-        Mentés
+      <div className="space-y-4">
+        <h4 className="font-medium text-sm text-muted-foreground">Másodlagos gomb</h4>
+        <div className="space-y-2">
+          <Label className="text-xs flex items-center gap-2">
+            <Type className="h-3 w-3" />
+            Gomb szöveg
+          </Label>
+          <Input
+            value={formData.secondaryButtonText}
+            onChange={(e) => setFormData({ ...formData, secondaryButtonText: e.target.value })}
+            placeholder="pl. TUDJ MEG TÖBBET"
+          />
+        </div>
+      </div>
+
+      <Button 
+        onClick={handleSave} 
+        className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
+        disabled={isSaving}
+      >
+        {isSaving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Mentés...
+          </>
+        ) : (
+          <>
+            <CheckCircle2 className="h-4 w-4" />
+            Változások mentése
+          </>
+        )}
       </Button>
     </div>
   );
 }
 
 // Generic Section Editor
-function GenericSectionEditor({ content, onSave }: { content: any; onSave: (content: any) => void }) {
+function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { content: any; onSave: (content: any) => void; isSaving: boolean; sectionKey: string }) {
   const [formData, setFormData] = useState({ ...content });
 
   const handleSave = () => {
@@ -270,28 +364,64 @@ function GenericSectionEditor({ content, onSave }: { content: any; onSave: (cont
     setFormData({ ...formData, [field]: value });
   };
 
-  return (
-    <div className="space-y-4">
-      {Object.keys(formData).map((key) => (
-        <div key={key} className="space-y-2">
-          <Label className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</Label>
-          {typeof formData[key] === 'string' && formData[key].length > 100 ? (
-            <Textarea
-              value={formData[key]}
-              onChange={(e) => handleChange(key, e.target.value)}
-              rows={3}
-            />
-          ) : (
-            <Input
-              value={formData[key]}
-              onChange={(e) => handleChange(key, e.target.value)}
-            />
-          )}
-        </div>
-      ))}
+  const getFieldIcon = (key: string) => {
+    if (key.includes('title')) return Type;
+    if (key.includes('button')) return Link2;
+    if (key.includes('url')) return Link2;
+    return Info;
+  };
 
-      <Button onClick={handleSave} className="w-full">
-        Mentés
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4">
+        {Object.keys(formData).map((key, index) => {
+          const Icon = getFieldIcon(key);
+          const isLongText = typeof formData[key] === 'string' && formData[key].length > 100;
+          
+          return (
+            <div key={key} className="space-y-2">
+              <Label className="text-sm font-medium flex items-center gap-2 capitalize">
+                <Icon className="h-4 w-4 text-primary" />
+                {key.replace(/([A-Z])/g, ' $1').trim()}
+              </Label>
+              {isLongText ? (
+                <Textarea
+                  value={formData[key]}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  rows={4}
+                  className="resize-none"
+                  placeholder={`Add meg a(z) ${key}...`}
+                />
+              ) : (
+                <Input
+                  value={formData[key]}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  placeholder={`Add meg a(z) ${key}...`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <Separator />
+
+      <Button 
+        onClick={handleSave} 
+        className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
+        disabled={isSaving}
+      >
+        {isSaving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Mentés folyamatban...
+          </>
+        ) : (
+          <>
+            <CheckCircle2 className="h-4 w-4" />
+            Változások mentése
+          </>
+        )}
       </Button>
     </div>
   );
