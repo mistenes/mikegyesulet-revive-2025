@@ -12,12 +12,11 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
-// Extend window type for Cloudinary
-declare global {
-  interface Window {
-    cloudinary?: any;
-  }
-}
+// ImageKit configuration type
+type ImageKitConfig = {
+  publicKey: string;
+  urlEndpoint: string;
+};
 
 type PageSection = {
   id: string;
@@ -264,48 +263,31 @@ function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave
     onSave(formData);
   };
 
-  const openCloudinaryMediaLibrary = async () => {
+  const handleImageUpload = async (file: File) => {
     try {
-      const { data: settings } = await supabase
-        .from('site_settings')
-        .select('setting_key, setting_value')
-        .in('setting_key', ['cloudinary_cloud_name', 'cloudinary_api_key']);
-
-      const cloudName = settings?.find(s => s.setting_key === 'cloudinary_cloud_name')?.setting_value;
-      const apiKey = settings?.find(s => s.setting_key === 'cloudinary_api_key')?.setting_value;
-
-      if (!cloudName || !apiKey) {
-        toast.error('Cloudinary nincs konfigurálva. Kérlek, add meg az API kulcsokat a beállításokban.');
-        return;
-      }
-
-      if (!window.cloudinary) {
-        toast.error('Cloudinary Media Library nem elérhető');
-        return;
-      }
-
-      const myWidget = window.cloudinary.createMediaLibrary(
-        {
-          cloud_name: cloudName,
-          api_key: apiKey,
-          multiple: false,
-          max_files: 1,
-        },
-        {
-          insertHandler: (data: any) => {
-            if (data.assets && data.assets.length > 0) {
-              const asset = data.assets[0];
-              setFormData({ ...formData, backgroundImage: asset.secure_url });
-              toast.success('Kép kiválasztva!');
-            }
-          },
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          toast.error('Jelentkezz be a kép feltöltéséhez');
+          return;
         }
-      );
 
-      myWidget.show();
+        const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
+          body: { file: base64data, folder: 'pages' },
+        });
+
+        if (error) throw error;
+
+        setFormData({ ...formData, backgroundImage: data.url });
+        toast.success('Kép feltöltve!');
+      };
     } catch (error) {
-      console.error('Cloudinary error:', error);
-      toast.error('Hiba a képválasztás során');
+      console.error('ImageKit error:', error);
+      toast.error('Hiba a kép feltöltése során');
     }
   };
 
@@ -398,12 +380,22 @@ function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave
           <Button
             type="button"
             variant="outline"
-            onClick={openCloudinaryMediaLibrary}
+            onClick={() => document.getElementById('hero-image-upload')?.click()}
             className="gap-2"
           >
             <Image className="h-4 w-4" />
-            Cloudinary
+            Feltöltés
           </Button>
+          <input
+            id="hero-image-upload"
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImageUpload(file);
+            }}
+          />
         </div>
         {formData.backgroundImage && (
           <div className="space-y-2">
@@ -449,48 +441,31 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
     setFormData({ ...formData, [field]: value });
   };
 
-  const openCloudinaryMediaLibrary = async (field: string) => {
+  const handleImageUpload = async (field: string, file: File) => {
     try {
-      const { data: settings } = await supabase
-        .from('site_settings')
-        .select('setting_key, setting_value')
-        .in('setting_key', ['cloudinary_cloud_name', 'cloudinary_api_key']);
-
-      const cloudName = settings?.find(s => s.setting_key === 'cloudinary_cloud_name')?.setting_value;
-      const apiKey = settings?.find(s => s.setting_key === 'cloudinary_api_key')?.setting_value;
-
-      if (!cloudName || !apiKey) {
-        toast.error('Cloudinary nincs konfigurálva. Kérlek, add meg az API kulcsokat a beállításokban.');
-        return;
-      }
-
-      if (!window.cloudinary) {
-        toast.error('Cloudinary Media Library nem elérhető');
-        return;
-      }
-
-      const myWidget = window.cloudinary.createMediaLibrary(
-        {
-          cloud_name: cloudName,
-          api_key: apiKey,
-          multiple: false,
-          max_files: 1,
-        },
-        {
-          insertHandler: (data: any) => {
-            if (data.assets && data.assets.length > 0) {
-              const asset = data.assets[0];
-              setFormData({ ...formData, [field]: asset.secure_url });
-              toast.success('Kép kiválasztva!');
-            }
-          },
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          toast.error('Jelentkezz be a kép feltöltéséhez');
+          return;
         }
-      );
 
-      myWidget.show();
+        const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
+          body: { file: base64data, folder: 'pages' },
+        });
+
+        if (error) throw error;
+
+        setFormData({ ...formData, [field]: data.url });
+        toast.success('Kép feltöltve!');
+      };
     } catch (error) {
-      console.error('Cloudinary error:', error);
-      toast.error('Hiba a képválasztás során');
+      console.error('ImageKit error:', error);
+      toast.error('Hiba a kép feltöltése során');
     }
   };
 
@@ -539,12 +514,22 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => openCloudinaryMediaLibrary(key)}
+                      onClick={() => document.getElementById(`${key}-upload`)?.click()}
                       className="gap-2"
                     >
                       <Image className="h-4 w-4" />
-                      Cloudinary
+                      Feltöltés
                     </Button>
+                    <input
+                      id={`${key}-upload`}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageUpload(key, file);
+                      }}
+                    />
                   </div>
                   {formData[key] && (
                     <img 
