@@ -56,10 +56,8 @@ serve(async (req) => {
       });
     }
 
-    // Get query parameters
-    const url = new URL(req.url);
-    const folder = url.searchParams.get('folder') || '';
-    const limit = url.searchParams.get('limit') || '100';
+    // Get parameters from request body
+    const { folder = '', limit = 100 } = await req.json();
 
     // Create auth header
     const authString = btoa(`${privateKey}:`);
