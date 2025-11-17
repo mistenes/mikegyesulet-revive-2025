@@ -6,11 +6,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Plus, Trash2, Save, Type, Link2, BarChart3, Info, Loader2, CheckCircle2 } from "lucide-react";
+import { FileText, Plus, Trash2, Save, Type, Link2, BarChart3, Info, Loader2, CheckCircle2, Image } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+
+// Extend window type for Cloudinary
+declare global {
+  interface Window {
+    cloudinary?: any;
+  }
+}
 
 type PageSection = {
   id: string;
@@ -250,10 +257,56 @@ function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave
     primaryButtonText: content.primaryButtonText || "",
     primaryButtonUrl: content.primaryButtonUrl || "",
     secondaryButtonText: content.secondaryButtonText || "",
+    backgroundImage: content.backgroundImage || "",
   });
 
   const handleSave = () => {
     onSave(formData);
+  };
+
+  const openCloudinaryMediaLibrary = async () => {
+    try {
+      const { data: settings } = await supabase
+        .from('site_settings')
+        .select('setting_key, setting_value')
+        .in('setting_key', ['cloudinary_cloud_name', 'cloudinary_api_key']);
+
+      const cloudName = settings?.find(s => s.setting_key === 'cloudinary_cloud_name')?.setting_value;
+      const apiKey = settings?.find(s => s.setting_key === 'cloudinary_api_key')?.setting_value;
+
+      if (!cloudName || !apiKey) {
+        toast.error('Cloudinary nincs konfigurálva. Kérlek, add meg az API kulcsokat a beállításokban.');
+        return;
+      }
+
+      if (!window.cloudinary) {
+        toast.error('Cloudinary Media Library nem elérhető');
+        return;
+      }
+
+      const myWidget = window.cloudinary.createMediaLibrary(
+        {
+          cloud_name: cloudName,
+          api_key: apiKey,
+          multiple: false,
+          max_files: 1,
+        },
+        {
+          insertHandler: (data: any) => {
+            if (data.assets && data.assets.length > 0) {
+              const asset = data.assets[0];
+              setFormData({ ...formData, backgroundImage: asset.secure_url });
+              toast.success('Kép kiválasztva!');
+            }
+          },
+        }
+      );
+
+      myWidget.show();
+    } catch (error) {
+      console.error('Cloudinary error:', error);
+      toast.error('Hiba a képválasztás során');
+    }
   };
 
   return (
@@ -331,7 +384,39 @@ function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave
         </div>
       </div>
 
-      <Button 
+      <Separator />
+
+      <div className="space-y-4">
+        <h4 className="font-medium text-sm text-muted-foreground">Háttérkép</h4>
+        <div className="flex gap-2">
+          <Input
+            value={formData.backgroundImage}
+            onChange={(e) => setFormData({ ...formData, backgroundImage: e.target.value })}
+            placeholder="Kép URL"
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={openCloudinaryMediaLibrary}
+            className="gap-2"
+          >
+            <Image className="h-4 w-4" />
+            Cloudinary
+          </Button>
+        </div>
+        {formData.backgroundImage && (
+          <div className="space-y-2">
+            <img 
+              src={formData.backgroundImage} 
+              alt="Background preview" 
+              className="w-full h-32 object-cover rounded-md border"
+            />
+          </div>
+        )}
+      </div>
+
+      <Button
         onClick={handleSave} 
         className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
         disabled={isSaving}
@@ -364,11 +449,60 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
     setFormData({ ...formData, [field]: value });
   };
 
+  const openCloudinaryMediaLibrary = async (field: string) => {
+    try {
+      const { data: settings } = await supabase
+        .from('site_settings')
+        .select('setting_key, setting_value')
+        .in('setting_key', ['cloudinary_cloud_name', 'cloudinary_api_key']);
+
+      const cloudName = settings?.find(s => s.setting_key === 'cloudinary_cloud_name')?.setting_value;
+      const apiKey = settings?.find(s => s.setting_key === 'cloudinary_api_key')?.setting_value;
+
+      if (!cloudName || !apiKey) {
+        toast.error('Cloudinary nincs konfigurálva. Kérlek, add meg az API kulcsokat a beállításokban.');
+        return;
+      }
+
+      if (!window.cloudinary) {
+        toast.error('Cloudinary Media Library nem elérhető');
+        return;
+      }
+
+      const myWidget = window.cloudinary.createMediaLibrary(
+        {
+          cloud_name: cloudName,
+          api_key: apiKey,
+          multiple: false,
+          max_files: 1,
+        },
+        {
+          insertHandler: (data: any) => {
+            if (data.assets && data.assets.length > 0) {
+              const asset = data.assets[0];
+              setFormData({ ...formData, [field]: asset.secure_url });
+              toast.success('Kép kiválasztva!');
+            }
+          },
+        }
+      );
+
+      myWidget.show();
+    } catch (error) {
+      console.error('Cloudinary error:', error);
+      toast.error('Hiba a képválasztás során');
+    }
+  };
+
   const getFieldIcon = (key: string) => {
     if (key.includes('title')) return Type;
     if (key.includes('button')) return Link2;
-    if (key.includes('url')) return Link2;
+    if (key.includes('url') || key.includes('image')) return Link2;
     return Info;
+  };
+
+  const isImageField = (key: string) => {
+    return key.toLowerCase().includes('image') || key.toLowerCase().includes('url');
   };
 
   return (
@@ -377,6 +511,7 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
         {Object.keys(formData).map((key, index) => {
           const Icon = getFieldIcon(key);
           const isLongText = typeof formData[key] === 'string' && formData[key].length > 100;
+          const isImage = isImageField(key);
           
           return (
             <div key={key} className="space-y-2">
@@ -392,6 +527,33 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
                   className="resize-none"
                   placeholder={`Add meg a(z) ${key}...`}
                 />
+              ) : isImage ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      value={formData[key]}
+                      onChange={(e) => handleChange(key, e.target.value)}
+                      placeholder="Kép URL"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => openCloudinaryMediaLibrary(key)}
+                      className="gap-2"
+                    >
+                      <Image className="h-4 w-4" />
+                      Cloudinary
+                    </Button>
+                  </div>
+                  {formData[key] && (
+                    <img 
+                      src={formData[key]} 
+                      alt={`${key} preview`} 
+                      className="w-full h-32 object-cover rounded-md border"
+                    />
+                  )}
+                </div>
               ) : (
                 <Input
                   value={formData[key]}
