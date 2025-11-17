@@ -1,5 +1,6 @@
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { FloatingShapes } from "@/components/FloatingShapes";
 import { Card } from "@/components/ui/card";
 import { Mail } from "lucide-react";
 
@@ -57,7 +58,8 @@ const operationalTeam = [
 
 export default function Rolunk() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
+      <FloatingShapes />
       <Header />
       
       {/* Hero Section */}
