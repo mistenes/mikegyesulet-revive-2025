@@ -3,6 +3,7 @@ import { Hero } from "@/components/Hero";
 import { ImpactStats } from "@/components/ImpactStats";
 import { NewsSection } from "@/components/NewsSection";
 import { RegionsSection } from "@/components/RegionsSection";
+import { RegionsMap } from "@/components/RegionsMap";
 import { About } from "@/components/About";
 import { Testimonials } from "@/components/Testimonials";
 import { ClosingStatements } from "@/components/ClosingStatements";
@@ -17,6 +18,7 @@ const Index = () => {
       <ImpactStats />
       <NewsSection />
       <RegionsSection />
+      <RegionsMap />
       <About />
       <Testimonials />
       <ClosingStatements />
