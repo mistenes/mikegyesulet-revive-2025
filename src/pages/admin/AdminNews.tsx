@@ -13,10 +13,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Edit, Trash2, Eye, Calendar } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, Calendar, Image } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
+
+// Extend window type for Cloudinary
+declare global {
+  interface Window {
+    cloudinary?: any;
+  }
+}
 
 const newsSchema = z.object({
   title: z.string().min(1, "A cím kötelező").max(200, "A cím maximum 200 karakter"),
@@ -227,6 +234,52 @@ export default function AdminNews() {
     }
   };
 
+  const openCloudinaryMediaLibrary = async () => {
+    try {
+      // Fetch Cloudinary settings
+      const { data: settings } = await supabase
+        .from('site_settings')
+        .select('setting_key, setting_value')
+        .in('setting_key', ['cloudinary_cloud_name', 'cloudinary_api_key']);
+
+      const cloudName = settings?.find(s => s.setting_key === 'cloudinary_cloud_name')?.setting_value;
+      const apiKey = settings?.find(s => s.setting_key === 'cloudinary_api_key')?.setting_value;
+
+      if (!cloudName || !apiKey) {
+        toast.error('Cloudinary nincs konfigurálva. Kérlek, add meg az API kulcsokat a beállításokban.');
+        return;
+      }
+
+      if (!window.cloudinary) {
+        toast.error('Cloudinary Media Library nem elérhető');
+        return;
+      }
+
+      const myWidget = window.cloudinary.createMediaLibrary(
+        {
+          cloud_name: cloudName,
+          api_key: apiKey,
+          multiple: false,
+          max_files: 1,
+        },
+        {
+          insertHandler: (data: any) => {
+            if (data.assets && data.assets.length > 0) {
+              const asset = data.assets[0];
+              setFormData({ ...formData, image_url: asset.secure_url });
+              toast.success('Kép kiválasztva!');
+            }
+          },
+        }
+      );
+
+      myWidget.show();
+    } catch (error) {
+      console.error('Cloudinary error:', error);
+      toast.error('Hiba a képválasztás során');
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -312,13 +365,25 @@ export default function AdminNews() {
 
                 <div className="space-y-2">
                   <Label htmlFor="image">Kép feltöltése</Label>
-                  <Input
-                    id="image"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    disabled={isUploading}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="image"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={isUploading}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={openCloudinaryMediaLibrary}
+                      disabled={isUploading}
+                    >
+                      <Image className="h-4 w-4 mr-2" />
+                      Cloudinary
+                    </Button>
+                  </div>
                   {isUploading && (
                     <p className="text-sm text-muted-foreground">Képfeltöltés...</p>
                   )}
