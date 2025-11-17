@@ -98,7 +98,18 @@ serve(async (req) => {
       },
     });
 
-    const responseData = await testResponse.json();
+    // Handle non-JSON responses (like plain text errors)
+    let responseData;
+    const contentType = testResponse.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      responseData = await testResponse.json();
+    } else {
+      // Handle plain text or other non-JSON responses
+      const textResponse = await testResponse.text();
+      console.error('Non-JSON response received:', textResponse);
+      responseData = { message: textResponse };
+    }
 
     if (!testResponse.ok) {
       console.error('ImageKit connection test failed:', responseData);
@@ -108,7 +119,7 @@ serve(async (req) => {
       if (testResponse.status === 401) {
         errorMessage = 'Authentication failed. Please check your Private Key.';
       } else if (testResponse.status === 404) {
-        errorMessage = 'Invalid URL Endpoint. Please verify your ImageKit URL.';
+        errorMessage = 'Invalid URL Endpoint. Please verify your ImageKit URL. Make sure it matches the format: https://ik.imagekit.io/your-imagekit-id';
       } else if (responseData.message) {
         errorMessage = responseData.message;
       }
@@ -128,7 +139,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       message: 'ImageKit connection successful! All credentials are valid.',
-      filesCount: responseData.length || 0
+      filesCount: Array.isArray(responseData) ? responseData.length : 0
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
