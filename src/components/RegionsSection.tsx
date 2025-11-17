@@ -1,8 +1,24 @@
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, MapPin } from "lucide-react";
-import regionsImage from "@/assets/regions-collage.jpg";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+
+// Import region images
+import erdelyImg from "@/assets/region-erdely.jpg";
+import felvidekImg from "@/assets/region-felvidek.jpg";
+import karpataljaImg from "@/assets/region-karpattalja.jpg";
+import vajdasagImg from "@/assets/region-vajdasag.jpg";
+import youthImg from "@/assets/region-youth-1.jpg";
+import cultureImg from "@/assets/region-culture.jpg";
+
+const scrollImages = [
+  { src: erdelyImg, alt: "Erdély" },
+  { src: felvidekImg, alt: "Felvidék" },
+  { src: karpataljaImg, alt: "Kárpátalja" },
+  { src: vajdasagImg, alt: "Vajdaság" },
+  { src: youthImg, alt: "Magyar Ifjúság" },
+  { src: cultureImg, alt: "Magyar Kultúra" },
+];
 
 export const RegionsSection = () => {
   const sectionRef = useRef<HTMLElement>(null);
@@ -14,19 +30,44 @@ export const RegionsSection = () => {
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent" />
       <div className="container px-4 relative z-10">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Images */}
+          {/* Scrolling Images */}
           <div 
-            className={`relative transition-all duration-700 ${
+            className={`relative h-[600px] transition-all duration-700 ${
               isVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-12"
             }`}
           >
-            <div className="rounded-3xl overflow-hidden shadow-2xl group cursor-pointer">
-              <img 
-                src={regionsImage}
-                alt="Régiók" 
-                className="w-full h-auto transition-transform duration-700 group-hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-background/60 to-transparent" />
+            <div className="grid grid-cols-2 gap-4 h-full">
+              {/* Column 1 - Scrolling Up */}
+              <div className="relative overflow-hidden rounded-3xl">
+                <div className="animate-scroll-up">
+                  {/* Duplicate images for seamless loop */}
+                  {[...scrollImages, ...scrollImages].map((image, i) => (
+                    <div key={i} className="mb-4">
+                      <img 
+                        src={image.src}
+                        alt={image.alt}
+                        className="w-full h-[280px] object-cover rounded-2xl shadow-lg"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Column 2 - Scrolling Down */}
+              <div className="relative overflow-hidden rounded-3xl mt-12">
+                <div className="animate-scroll-down">
+                  {/* Duplicate images for seamless loop */}
+                  {[...scrollImages, ...scrollImages].map((image, i) => (
+                    <div key={i} className="mb-4">
+                      <img 
+                        src={image.src}
+                        alt={image.alt}
+                        className="w-full h-[280px] object-cover rounded-2xl shadow-lg"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -43,7 +84,7 @@ export const RegionsSection = () => {
               </span>
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-foreground leading-tight" style={{ fontFamily: "'Sora', sans-serif" }}>
-              ismerd meg partnereinket!
+              Ismerd meg partnereinket!
             </h2>
             
             <p className="text-lg text-muted-foreground leading-relaxed">
