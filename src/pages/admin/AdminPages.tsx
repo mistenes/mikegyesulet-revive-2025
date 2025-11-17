@@ -6,38 +6,37 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Plus, Trash2, Save, Type, Link2, BarChart3, Info, Loader2, CheckCircle2, Image, Images } from "lucide-react";
+import { FileText, Save, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { z } from "zod";
 
-// ImageKit configuration type
-type ImageKitConfig = {
-  publicKey: string;
-  urlEndpoint: string;
-};
-
-type PageSection = {
+type PageContent = {
   id: string;
   section_key: string;
   section_name: string;
   content: any;
+  created_at: string;
+  updated_at: string;
 };
 
+const pageContentSchema = z.object({
+  title: z.string().min(1, "A cím kötelező").max(200),
+  subtitle: z.string().max(300).optional(),
+  description: z.string().max(2000).optional(),
+});
+
 export default function AdminPages() {
-  const [sections, setSections] = useState<PageSection[]>([]);
+  const [pages, setPages] = useState<PageContent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("");
+  const [activeTab, setActiveTab] = useState("fooldal");
   const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchSections();
+    fetchPages();
   }, []);
 
-  const fetchSections = async () => {
+  const fetchPages = async () => {
     try {
       const { data, error } = await supabase
         .from("page_content")
@@ -45,13 +44,10 @@ export default function AdminPages() {
         .order("section_name");
 
       if (error) throw error;
-      setSections(data || []);
-      if (data && data.length > 0 && !activeTab) {
-        setActiveTab(data[0].section_key);
-      }
+      setPages(data || []);
     } catch (error) {
-      console.error("Error fetching sections:", error);
-      toast.error("Hiba a szekciók betöltésekor");
+      console.error("Error fetching pages:", error);
+      toast.error("Hiba az oldaltartalmak betöltésekor");
     } finally {
       setLoading(false);
     }
@@ -59,49 +55,171 @@ export default function AdminPages() {
 
   const handleSave = async (sectionKey: string, content: any) => {
     setSaving(sectionKey);
+    
     try {
-      const { error } = await supabase
-        .from("page_content")
-        .update({ content })
-        .eq("section_key", sectionKey);
+      // Validate content
+      if (content.title || content.subtitle || content.description) {
+        const validation = pageContentSchema.safeParse(content);
+        if (!validation.success) {
+          toast.error(validation.error.errors[0].message);
+          setSaving(null);
+          return;
+        }
+      }
 
-      if (error) throw error;
-      
-      // Show success animation
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const existingPage = pages.find(p => p.section_key === sectionKey);
+
+      if (existingPage) {
+        // Update existing
+        const { error } = await supabase
+          .from("page_content")
+          .update({ content, updated_at: new Date().toISOString() })
+          .eq("section_key", sectionKey);
+
+        if (error) throw error;
+      } else {
+        // Create new
+        const { error } = await supabase
+          .from("page_content")
+          .insert({
+            section_key: sectionKey,
+            section_name: getSectionDisplayName(sectionKey),
+            content
+          });
+
+        if (error) throw error;
+      }
+
       toast.success("Változások sikeresen mentve!");
-      fetchSections();
+      await fetchPages();
     } catch (error) {
-      console.error("Error saving section:", error);
+      console.error("Error saving page:", error);
       toast.error("Hiba a mentés során");
     } finally {
       setSaving(null);
     }
   };
 
-  const renderEditor = (section: PageSection) => {
-    const content = section.content;
-    const isSaving = saving === section.section_key;
+  const getSectionDisplayName = (key: string): string => {
+    const names: Record<string, string> = {
+      hero: "Főoldal - Hero",
+      about: "Főoldal - Rólunk röviden",
+      stats: "Főoldal - Statisztikák",
+      news: "Főoldal - Hírek szekció",
+      regions_intro: "Régiók - Bevezető",
+      regions_map: "Régiók - Térkép",
+      regions_list: "Régiók - Lista",
+      about_intro: "Rólunk - Bevezető",
+      mission: "Rólunk - Küldetés",
+      vision: "Rólunk - Jövőkép",
+      team: "Rólunk - Csapat",
+      gallery_intro: "Galéria - Bevezető",
+      gallery_images: "Galéria - Képek"
+    };
+    return names[key] || key;
+  };
 
-    switch (section.section_key) {
-      case "hero_stats":
-        return <HeroStatsEditor content={content} onSave={(c) => handleSave(section.section_key, c)} isSaving={isSaving} />;
-      case "hero_content":
-        return <HeroContentEditor content={content} onSave={(c) => handleSave(section.section_key, c)} isSaving={isSaving} />;
-      case "about_section":
-      case "regions_section":
-      case "news_section":
-        return <GenericSectionEditor content={content} onSave={(c) => handleSave(section.section_key, c)} isSaving={isSaving} sectionKey={section.section_key} />;
-      default:
-        return <div className="text-center py-8 text-muted-foreground">Nincs szerkesztő ehhez a szekcióhoz</div>;
-    }
+  const getPageContent = (sectionKey: string) => {
+    const page = pages.find(p => p.section_key === sectionKey);
+    return page?.content || {};
+  };
+
+  const updateLocalContent = (sectionKey: string, field: string, value: string) => {
+    setPages(prev => {
+      const existing = prev.find(p => p.section_key === sectionKey);
+      const updatedContent = { ...getPageContent(sectionKey), [field]: value };
+      
+      if (existing) {
+        return prev.map(p => 
+          p.section_key === sectionKey 
+            ? { ...p, content: updatedContent }
+            : p
+        );
+      }
+      
+      // If doesn't exist yet, add a temporary entry
+      return [...prev, {
+        id: '',
+        section_key: sectionKey,
+        section_name: getSectionDisplayName(sectionKey),
+        content: updatedContent,
+        created_at: '',
+        updated_at: ''
+      }];
+    });
+  };
+
+  const renderSectionEditor = (sectionKey: string) => {
+    const content = getPageContent(sectionKey);
+    const isSaving = saving === sectionKey;
+
+    return (
+      <Card className="p-6 space-y-6">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`${sectionKey}-title`}>Cím *</Label>
+            <Input
+              id={`${sectionKey}-title`}
+              value={content.title || ""}
+              onChange={(e) => updateLocalContent(sectionKey, 'title', e.target.value)}
+              placeholder="Add meg a szekció címét"
+              maxLength={200}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${sectionKey}-subtitle`}>Alcím (opcionális)</Label>
+            <Input
+              id={`${sectionKey}-subtitle`}
+              value={content.subtitle || ""}
+              onChange={(e) => updateLocalContent(sectionKey, 'subtitle', e.target.value)}
+              placeholder="Add meg az alcímet"
+              maxLength={300}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${sectionKey}-description`}>Leírás (opcionális)</Label>
+            <Textarea
+              id={`${sectionKey}-description`}
+              value={content.description || ""}
+              onChange={(e) => updateLocalContent(sectionKey, 'description', e.target.value)}
+              placeholder="Add meg a leírást"
+              rows={4}
+              maxLength={2000}
+            />
+            <p className="text-xs text-muted-foreground">
+              {(content.description || '').length} / 2000 karakter
+            </p>
+          </div>
+
+          <Button 
+            onClick={() => handleSave(sectionKey, content)}
+            disabled={isSaving || !content.title}
+            className="w-full"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Mentés...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Változások mentése
+              </>
+            )}
+          </Button>
+        </div>
+      </Card>
+    );
   };
 
   if (loading) {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Betöltés...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </AdminLayout>
     );
@@ -112,574 +230,111 @@ export default function AdminPages() {
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
-            <FileText className="h-7 w-7 text-primary" />
+            <FileText className="h-6 w-6 text-primary" />
           </div>
-          <div className="flex-1">
+          <div>
             <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Oldal tartalmak
+              Oldal Tartalmak
             </h1>
             <p className="text-muted-foreground">
-              Szerkeszd az oldal különböző szekcióit valós időben
+              Szerkeszd az oldal szöveges tartalmait
             </p>
           </div>
-          <Badge variant="secondary" className="px-3 py-1">
-            {sections.length} szekció
-          </Badge>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 h-auto p-1 bg-muted/50">
-            {sections.map((section) => (
-              <TabsTrigger 
-                key={section.section_key} 
-                value={section.section_key}
-                className="data-[state=active]:bg-background data-[state=active]:shadow-md py-3"
-              >
-                {section.section_name}
-              </TabsTrigger>
-            ))}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="fooldal">Főoldal</TabsTrigger>
+            <TabsTrigger value="regiok">Régiók</TabsTrigger>
+            <TabsTrigger value="rolunk">Rólunk</TabsTrigger>
+            <TabsTrigger value="galeria">Galéria</TabsTrigger>
           </TabsList>
 
-          {sections.map((section) => (
-            <TabsContent key={section.section_key} value={section.section_key} className="space-y-4">
-              <Card className="p-6 bg-gradient-to-br from-background to-muted/20 border-2">
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="h-1 w-12 bg-gradient-to-r from-primary to-accent rounded-full" />
-                  <h2 className="text-xl font-semibold text-foreground">{section.section_name}</h2>
-                </div>
-                {renderEditor(section)}
-              </Card>
-            </TabsContent>
-          ))}
+          <TabsContent value="fooldal" className="space-y-6 mt-6">
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Hero Szekció</h3>
+                {renderSectionEditor("hero")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Rólunk Röviden</h3>
+                {renderSectionEditor("about")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Statisztikák</h3>
+                {renderSectionEditor("stats")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Hírek Szekció</h3>
+                {renderSectionEditor("news")}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="regiok" className="space-y-6 mt-6">
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Bevezető Szekció</h3>
+                {renderSectionEditor("regions_intro")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Térkép Szekció</h3>
+                {renderSectionEditor("regions_map")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Régiók Lista</h3>
+                {renderSectionEditor("regions_list")}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="rolunk" className="space-y-6 mt-6">
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Bevezető</h3>
+                {renderSectionEditor("about_intro")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Küldetés</h3>
+                {renderSectionEditor("mission")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Jövőkép</h3>
+                {renderSectionEditor("vision")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Csapat</h3>
+                {renderSectionEditor("team")}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="galeria" className="space-y-6 mt-6">
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Bevezető Szekció</h3>
+                {renderSectionEditor("gallery_intro")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Galéria Képek</h3>
+                {renderSectionEditor("gallery_images")}
+                <p className="text-sm text-muted-foreground mt-2">
+                  Megjegyzés: A képek kezeléséhez később külön galéria kezelő készül
+                </p>
+              </div>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
     </AdminLayout>
-  );
-}
-
-// Hero Stats Editor
-function HeroStatsEditor({ content, onSave, isSaving }: { content: any; onSave: (content: any) => void; isSaving: boolean }) {
-  const [stats, setStats] = useState(content.stats || []);
-
-  const addStat = () => {
-    setStats([...stats, { value: "", label: "" }]);
-  };
-
-  const removeStat = (index: number) => {
-    setStats(stats.filter((_: any, i: number) => i !== index));
-  };
-
-  const updateStat = (index: number, field: string, value: string) => {
-    const newStats = [...stats];
-    newStats[index] = { ...newStats[index], [field]: value };
-    setStats(newStats);
-  };
-
-  const handleSave = () => {
-    onSave({ stats });
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-primary" />
-          <h3 className="text-lg font-semibold">Statisztikák</h3>
-        </div>
-        <Button onClick={addStat} size="sm" variant="outline" className="gap-2">
-          <Plus className="h-4 w-4" />
-          Új stat
-        </Button>
-      </div>
-
-      <Separator />
-
-      <div className="grid gap-4">
-        {stats.map((stat: any, index: number) => (
-          <Card key={index} className="p-4 bg-gradient-to-br from-background to-muted/30 border-2 hover:border-primary/50 transition-colors">
-            <div className="flex gap-4 items-end">
-              <div className="flex-1 space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-2">
-                  <Type className="h-3 w-3" />
-                  Érték
-                </Label>
-                <Input
-                  value={stat.value}
-                  onChange={(e) => updateStat(index, "value", e.target.value)}
-                  placeholder="pl. 2000+"
-                  className="font-semibold"
-                />
-              </div>
-              <div className="flex-1 space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-2">
-                  <Info className="h-3 w-3" />
-                  Címke
-                </Label>
-                <Input
-                  value={stat.label}
-                  onChange={(e) => updateStat(index, "label", e.target.value)}
-                  placeholder="pl. Tagok"
-                />
-              </div>
-              <Button variant="destructive" size="icon" onClick={() => removeStat(index)} className="shrink-0">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <Button 
-        onClick={handleSave} 
-        className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
-        disabled={isSaving}
-      >
-        {isSaving ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Mentés...
-          </>
-        ) : (
-          <>
-            <Save className="h-4 w-4" />
-            Mentés
-          </>
-        )}
-      </Button>
-    </div>
-  );
-}
-
-// Hero Content Editor
-function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave: (content: any) => void; isSaving: boolean }) {
-  const [formData, setFormData] = useState({
-    title: content.title || "",
-    description: content.description || "",
-    primaryButtonText: content.primaryButtonText || "",
-    primaryButtonUrl: content.primaryButtonUrl || "",
-    secondaryButtonText: content.secondaryButtonText || "",
-    backgroundImage: content.backgroundImage || "",
-  });
-
-  const handleSave = () => {
-    onSave(formData);
-  };
-
-  const handleImageUpload = async (file: File) => {
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          toast.error('Jelentkezz be a kép feltöltéséhez');
-          return;
-        }
-
-        const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
-          body: { file: base64data, folder: 'pages' },
-        });
-
-        if (error) throw error;
-
-        setFormData({ ...formData, backgroundImage: data.url });
-        toast.success('Kép feltöltve!');
-      };
-    } catch (error) {
-      console.error('ImageKit error:', error);
-      toast.error('Hiba a kép feltöltése során');
-    }
-  };
-
-  const handleSelectFromLibrary = (url: string) => {
-    setFormData({ ...formData, backgroundImage: url });
-    toast.success('Kép kiválasztva!');
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label className="text-sm font-medium flex items-center gap-2">
-            <Type className="h-4 w-4 text-primary" />
-            Főcím
-          </Label>
-          <Input
-            value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            className="text-lg font-semibold"
-            placeholder="Add meg a főcímet..."
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-sm font-medium flex items-center gap-2">
-            <Info className="h-4 w-4 text-primary" />
-            Leírás
-          </Label>
-          <Textarea
-            value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            rows={3}
-            placeholder="Add meg a leírást..."
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-4">
-        <h4 className="font-medium text-sm text-muted-foreground">Elsődleges gomb</h4>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label className="text-xs flex items-center gap-2">
-              <Type className="h-3 w-3" />
-              Gomb szöveg
-            </Label>
-            <Input
-              value={formData.primaryButtonText}
-              onChange={(e) => setFormData({ ...formData, primaryButtonText: e.target.value })}
-              placeholder="pl. CSATLAKOZZ"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs flex items-center gap-2">
-              <Link2 className="h-3 w-3" />
-              Gomb URL
-            </Label>
-            <Input
-              value={formData.primaryButtonUrl}
-              onChange={(e) => setFormData({ ...formData, primaryButtonUrl: e.target.value })}
-              placeholder="https://..."
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <h4 className="font-medium text-sm text-muted-foreground">Másodlagos gomb</h4>
-        <div className="space-y-2">
-          <Label className="text-xs flex items-center gap-2">
-            <Type className="h-3 w-3" />
-            Gomb szöveg
-          </Label>
-          <Input
-            value={formData.secondaryButtonText}
-            onChange={(e) => setFormData({ ...formData, secondaryButtonText: e.target.value })}
-            placeholder="pl. TUDJ MEG TÖBBET"
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-4">
-        <h4 className="font-medium text-sm text-muted-foreground">Háttérkép</h4>
-        <div className="flex gap-2">
-          <Input
-            value={formData.backgroundImage}
-            onChange={(e) => setFormData({ ...formData, backgroundImage: e.target.value })}
-            placeholder="Kép URL"
-            className="flex-1"
-          />
-          <ImageKitMediaBrowser onSelect={handleSelectFromLibrary} folder="pages" />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => document.getElementById('hero-image-upload')?.click()}
-            className="gap-2"
-          >
-            <Image className="h-4 w-4" />
-            Feltöltés
-          </Button>
-          <input
-            id="hero-image-upload"
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleImageUpload(file);
-            }}
-          />
-        </div>
-        {formData.backgroundImage && (
-          <div className="space-y-2">
-            <img 
-              src={formData.backgroundImage} 
-              alt="Background preview" 
-              className="w-full h-32 object-cover rounded-md border"
-            />
-          </div>
-        )}
-      </div>
-
-      <Button
-        onClick={handleSave} 
-        className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
-        disabled={isSaving}
-      >
-        {isSaving ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Mentés...
-          </>
-        ) : (
-          <>
-            <CheckCircle2 className="h-4 w-4" />
-            Változások mentése
-          </>
-        )}
-      </Button>
-    </div>
-  );
-}
-
-// Generic Section Editor
-function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { content: any; onSave: (content: any) => void; isSaving: boolean; sectionKey: string }) {
-  const [formData, setFormData] = useState({ ...content });
-
-  const handleSave = () => {
-    onSave(formData);
-  };
-
-  const handleChange = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: value });
-  };
-
-  const handleImageUpload = async (field: string, file: File) => {
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          toast.error('Jelentkezz be a kép feltöltéséhez');
-          return;
-        }
-
-        const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
-          body: { file: base64data, folder: 'pages' },
-        });
-
-        if (error) throw error;
-
-        setFormData({ ...formData, [field]: data.url });
-        toast.success('Kép feltöltve!');
-      };
-    } catch (error) {
-      console.error('ImageKit error:', error);
-      toast.error('Hiba a kép feltöltése során');
-    }
-  };
-
-  const handleSelectFromLibrary = (field: string, url: string) => {
-    setFormData({ ...formData, [field]: url });
-    toast.success('Kép kiválasztva!');
-  };
-
-  const getFieldIcon = (key: string) => {
-    if (key.includes('title')) return Type;
-    if (key.includes('button')) return Link2;
-    if (key.includes('url') || key.includes('image')) return Link2;
-    return Info;
-  };
-
-  const isImageField = (key: string) => {
-    return key.toLowerCase().includes('image') || key.toLowerCase().includes('url');
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4">
-        {Object.keys(formData).map((key, index) => {
-          const Icon = getFieldIcon(key);
-          const isLongText = typeof formData[key] === 'string' && formData[key].length > 100;
-          const isImage = isImageField(key);
-          
-          return (
-            <div key={key} className="space-y-2">
-              <Label className="text-sm font-medium flex items-center gap-2 capitalize">
-                <Icon className="h-4 w-4 text-primary" />
-                {key.replace(/([A-Z])/g, ' $1').trim()}
-              </Label>
-              {isLongText ? (
-                <Textarea
-                  value={formData[key]}
-                  onChange={(e) => handleChange(key, e.target.value)}
-                  rows={4}
-                  className="resize-none"
-                  placeholder={`Add meg a(z) ${key}...`}
-                />
-              ) : isImage ? (
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <Input
-                      value={formData[key]}
-                      onChange={(e) => handleChange(key, e.target.value)}
-                      placeholder="Kép URL"
-                      className="flex-1"
-                    />
-                    <ImageKitMediaBrowser onSelect={(url) => handleSelectFromLibrary(key, url)} folder="pages" />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => document.getElementById(`${key}-upload`)?.click()}
-                      className="gap-2"
-                    >
-                      <Image className="h-4 w-4" />
-                      Feltöltés
-                    </Button>
-                    <input
-                      id={`${key}-upload`}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImageUpload(key, file);
-                      }}
-                    />
-                  </div>
-                  {formData[key] && (
-                    <img 
-                      src={formData[key]} 
-                      alt={`${key} preview`} 
-                      className="w-full h-32 object-cover rounded-md border"
-                    />
-                  )}
-                </div>
-              ) : (
-                <Input
-                  value={formData[key]}
-                  onChange={(e) => handleChange(key, e.target.value)}
-                  placeholder={`Add meg a(z) ${key}...`}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <Separator />
-
-      <Button 
-        onClick={handleSave} 
-        className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
-        disabled={isSaving}
-      >
-        {isSaving ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Mentés folyamatban...
-          </>
-        ) : (
-          <>
-            <CheckCircle2 className="h-4 w-4" />
-            Változások mentése
-          </>
-        )}
-      </Button>
-    </div>
-  );
-}
-
-// ImageKit Media Browser Component
-function ImageKitMediaBrowser({ onSelect, folder }: { onSelect: (url: string) => void; folder?: string }) {
-  const [images, setImages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  const fetchImages = async () => {
-    setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Jelentkezz be a képek böngészéséhez');
-        return;
-      }
-
-      const params = new URLSearchParams();
-      if (folder) params.append('folder', folder);
-      params.append('limit', '50');
-
-      const { data, error } = await supabase.functions.invoke('list-imagekit-files', {
-        body: { folder, limit: 50 },
-      });
-
-      if (error) throw error;
-
-      setImages(data.files || []);
-    } catch (error) {
-      console.error('Error fetching images:', error);
-      toast.error('Hiba a képek betöltésekor');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    if (newOpen && images.length === 0) {
-      fetchImages();
-    }
-  };
-
-  const handleSelectImage = (url: string) => {
-    onSelect(url);
-    setOpen(false);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" className="gap-2">
-          <Images className="h-4 w-4" />
-          Böngészés
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>ImageKit Médiatár</DialogTitle>
-        </DialogHeader>
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <ScrollArea className="h-[60vh]">
-            {images.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                <Images className="h-12 w-12 mb-2 opacity-50" />
-                <p>Nincsenek feltöltött képek</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 md:grid-cols-4 gap-4 p-4">
-                {images.map((image) => (
-                  <button
-                    key={image.fileId}
-                    onClick={() => handleSelectImage(image.url)}
-                    className="relative group aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all cursor-pointer"
-                  >
-                    <img
-                      src={image.thumbnail || image.url}
-                      alt={image.name}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <CheckCircle2 className="h-8 w-8 text-white" />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
