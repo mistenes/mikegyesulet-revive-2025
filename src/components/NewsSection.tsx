@@ -14,15 +14,43 @@ type NewsArticle = {
   published_at: string | null;
 };
 
+type NewsSectionContent = {
+  subtitle: string;
+  title: string;
+  description: string;
+  buttonText: string;
+};
+
 export const NewsSection = () => {
   const sectionRef = useRef<HTMLElement>(null);
   const isVisible = useScrollAnimation(sectionRef);
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sectionContent, setSectionContent] = useState<NewsSectionContent>({
+    subtitle: "FRISS HÍREINK, ÍRÁSAINK",
+    title: "TÁJÉKOZÓDJ SZÜLŐFÖLDÜNKRŐL!",
+    description: "Vagy olvass el minden írást a HYCA blogon",
+    buttonText: "HYCA BLOG",
+  });
 
   useEffect(() => {
     fetchNews();
+    fetchSectionContent();
   }, []);
+
+  const fetchSectionContent = async () => {
+    try {
+      const { data } = await supabase
+        .from("page_content")
+        .select("content")
+        .eq("section_key", "news_section")
+        .single();
+
+      if (data) setSectionContent(data.content as NewsSectionContent);
+    } catch (error) {
+      console.error("Error fetching section content:", error);
+    }
+  };
 
   const fetchNews = async () => {
     try {
@@ -61,16 +89,16 @@ export const NewsSection = () => {
           }`}
         >
           <p className="text-sm font-semibold text-primary mb-2 uppercase tracking-wider">
-            fRISs hÍREINK, írásaink
+            {sectionContent.subtitle}
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-            tájékozódj szülőföldünkről!
+            {sectionContent.title}
           </h2>
           <p className="text-lg text-muted-foreground mb-6 max-w-2xl">
-            Vagy olvass el minden írást a HYCA blogon
+            {sectionContent.description}
           </p>
           <Button variant="outline" className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300">
-            HYCA BLOG
+            {sectionContent.buttonText}
             <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
           </Button>
         </div>

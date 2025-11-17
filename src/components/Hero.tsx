@@ -1,9 +1,61 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import mikTeam from "@/assets/mik-team.jpg";
 import puzzleLogo from "@/assets/puzzle-logo.png";
+import { supabase } from "@/integrations/supabase/client";
+
+type HeroContent = {
+  title: string;
+  description: string;
+  primaryButtonText: string;
+  primaryButtonUrl: string;
+  secondaryButtonText: string;
+};
+
+type HeroStats = {
+  stats: Array<{ value: string; label: string }>;
+};
 
 export const Hero = () => {
+  const [content, setContent] = useState<HeroContent>({
+    title: "Üdvözlünk a Magyar Ifjúsági Konferencia honlapján!",
+    description: "Akár a Kárpát-medencében, és azon kívül élő magyarság, akár szervezetünk érdekelnek, itt mindent megtalálsz.",
+    primaryButtonText: "TAGSZERVEZETI PORTÁL",
+    primaryButtonUrl: "https://dashboard.mikegyesulet.hu",
+    secondaryButtonText: "TUDJ MEG TÖBBET",
+  });
+  
+  const [stats, setStats] = useState<Array<{ value: string; label: string }>>([
+    { value: "10+", label: "Régió" },
+    { value: "2000+", label: "Tagok" },
+    { value: "100+", label: "Események" },
+  ]);
+
+  useEffect(() => {
+    fetchContent();
+  }, []);
+
+  const fetchContent = async () => {
+    try {
+      const { data: heroData } = await supabase
+        .from("page_content")
+        .select("content")
+        .eq("section_key", "hero_content")
+        .single();
+      
+      const { data: statsData } = await supabase
+        .from("page_content")
+        .select("content")
+        .eq("section_key", "hero_stats")
+        .single();
+
+      if (heroData) setContent(heroData.content as HeroContent);
+      if (statsData) setStats((statsData.content as HeroStats).stats);
+    } catch (error) {
+      console.error("Error fetching hero content:", error);
+    }
+  };
   return (
     <section className="relative min-h-screen flex items-center pt-20 overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
       {/* Animated background elements */}
@@ -17,11 +69,11 @@ export const Hero = () => {
           {/* Left Content */}
           <div className="space-y-8 animate-slide-in">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight max-w-3xl" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Üdvözlünk a Magyar Ifjúsági Konferencia honlapján!
+              {content.title}
             </h1>
             
             <p className="text-xl text-muted-foreground leading-relaxed max-w-xl">
-              Akár a Kárpát-medencében, és azon kívül élő magyarság, akár szervezetünk érdekelnek, itt mindent megtalálsz.
+              {content.description}
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
@@ -30,8 +82,8 @@ export const Hero = () => {
                 className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl"
                 asChild
               >
-                <a href="https://dashboard.mikegyesulet.hu" target="_blank" rel="noopener noreferrer">
-                  TAGSZERVEZETI PORTÁL
+                <a href={content.primaryButtonUrl} target="_blank" rel="noopener noreferrer">
+                  {content.primaryButtonText}
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </a>
               </Button>
@@ -42,18 +94,14 @@ export const Hero = () => {
                 asChild
               >
                 <a href="#rolunk">
-                  TUDJ MEG TÖBBET
+                  {content.secondaryButtonText}
                 </a>
               </Button>
             </div>
 
             {/* Quick Stats */}
             <div className="grid grid-cols-3 gap-6 pt-8 border-t border-border/50">
-              {[
-                { value: "10+", label: "Régió" },
-                { value: "2000+", label: "Tagok" },
-                { value: "100+", label: "Események" },
-              ].map((stat, index) => (
+              {stats.map((stat, index) => (
                 <div 
                   key={index} 
                   className="animate-fade-in"
