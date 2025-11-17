@@ -9,12 +9,11 @@ import { Testimonials } from "@/components/Testimonials";
 import { ClosingStatements } from "@/components/ClosingStatements";
 import { Contact } from "@/components/Contact";
 import { Footer } from "@/components/Footer";
-import { FloatingShapes } from "@/components/FloatingShapes";
+
 
 const Index = () => {
   return (
     <div className="min-h-screen relative" style={{ fontFamily: "'Inter', sans-serif" }}>
-      <FloatingShapes />
       <Header />
       <Hero />
       <ImpactStats />
