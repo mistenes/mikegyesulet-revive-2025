@@ -16,7 +16,7 @@ export const Hero = () => {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left Content */}
           <div className="space-y-8 animate-slide-in">
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-foreground leading-tight" style={{ fontFamily: "'Sora', sans-serif" }}>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight max-w-3xl" style={{ fontFamily: "'Sora', sans-serif" }}>
               Üdvözlünk a Magyar Ifjúsági Konferencia honlapján!
             </h1>
             
