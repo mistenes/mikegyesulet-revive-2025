@@ -85,9 +85,17 @@ export const Footer = () => {
         </div>
 
         <div className="border-t border-border pt-8">
-          <p className="text-sm text-muted-foreground text-center">
-            © 2025 Magyar Ifjúsági Konferencia. Minden jog fenntartva.
-          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground text-center sm:text-left">
+              © 2025 Magyar Ifjúsági Konferencia. Minden jog fenntartva.
+            </p>
+            <a 
+              href="/admin" 
+              className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            >
+              Admin
+            </a>
+          </div>
         </div>
       </div>
     </footer>
