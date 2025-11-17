@@ -18,6 +18,7 @@ import {
   Users,
   Map,
   Image,
+  FileEdit,
 } from "lucide-react";
 
 const menuItems = [
@@ -25,6 +26,11 @@ const menuItems = [
     title: "Dashboard",
     url: "/admin",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Oldal tartalmak",
+    url: "/admin/pages",
+    icon: FileEdit,
   },
   {
     title: "Hírek",
