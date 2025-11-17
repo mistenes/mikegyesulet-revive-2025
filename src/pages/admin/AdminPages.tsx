@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Plus, Trash2, Save, Type, Link2, BarChart3, Info, Loader2, CheckCircle2, Image } from "lucide-react";
+import { FileText, Plus, Trash2, Save, Type, Link2, BarChart3, Info, Loader2, CheckCircle2, Image, Images } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ImageKit configuration type
 type ImageKitConfig = {
@@ -291,6 +293,11 @@ function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave
     }
   };
 
+  const handleSelectFromLibrary = (url: string) => {
+    setFormData({ ...formData, backgroundImage: url });
+    toast.success('Kép kiválasztva!');
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
@@ -377,6 +384,7 @@ function HeroContentEditor({ content, onSave, isSaving }: { content: any; onSave
             placeholder="Kép URL"
             className="flex-1"
           />
+          <ImageKitMediaBrowser onSelect={handleSelectFromLibrary} folder="pages" />
           <Button
             type="button"
             variant="outline"
@@ -469,6 +477,11 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
     }
   };
 
+  const handleSelectFromLibrary = (field: string, url: string) => {
+    setFormData({ ...formData, [field]: url });
+    toast.success('Kép kiválasztva!');
+  };
+
   const getFieldIcon = (key: string) => {
     if (key.includes('title')) return Type;
     if (key.includes('button')) return Link2;
@@ -511,6 +524,7 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
                       placeholder="Kép URL"
                       className="flex-1"
                     />
+                    <ImageKitMediaBrowser onSelect={(url) => handleSelectFromLibrary(key, url)} folder="pages" />
                     <Button
                       type="button"
                       variant="outline"
@@ -571,5 +585,101 @@ function GenericSectionEditor({ content, onSave, isSaving, sectionKey }: { conte
         )}
       </Button>
     </div>
+  );
+}
+
+// ImageKit Media Browser Component
+function ImageKitMediaBrowser({ onSelect, folder }: { onSelect: (url: string) => void; folder?: string }) {
+  const [images, setImages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const fetchImages = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Jelentkezz be a képek böngészéséhez');
+        return;
+      }
+
+      const params = new URLSearchParams();
+      if (folder) params.append('folder', folder);
+      params.append('limit', '50');
+
+      const { data, error } = await supabase.functions.invoke('list-imagekit-files', {
+        body: { folder, limit: 50 },
+      });
+
+      if (error) throw error;
+
+      setImages(data.files || []);
+    } catch (error) {
+      console.error('Error fetching images:', error);
+      toast.error('Hiba a képek betöltésekor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (newOpen && images.length === 0) {
+      fetchImages();
+    }
+  };
+
+  const handleSelectImage = (url: string) => {
+    onSelect(url);
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" className="gap-2">
+          <Images className="h-4 w-4" />
+          Böngészés
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-4xl max-h-[80vh]">
+        <DialogHeader>
+          <DialogTitle>ImageKit Médiatár</DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <ScrollArea className="h-[60vh]">
+            {images.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                <Images className="h-12 w-12 mb-2 opacity-50" />
+                <p>Nincsenek feltöltött képek</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 md:grid-cols-4 gap-4 p-4">
+                {images.map((image) => (
+                  <button
+                    key={image.fileId}
+                    onClick={() => handleSelectImage(image.url)}
+                    className="relative group aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all cursor-pointer"
+                  >
+                    <img
+                      src={image.thumbnail || image.url}
+                      alt={image.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <CheckCircle2 className="h-8 w-8 text-white" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
