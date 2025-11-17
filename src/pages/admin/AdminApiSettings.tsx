@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Key, Eye, EyeOff, Save } from "lucide-react";
+import { Key, Eye, EyeOff, Save, Image as ImageIcon, Map } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Separator } from "@/components/ui/separator";
 
 type Setting = {
   id: string;
@@ -19,6 +20,7 @@ type Setting = {
 export default function AdminApiSettings() {
   const [settings, setSettings] = useState<Setting[]>([]);
   const [showTokens, setShowTokens] = useState<{ [key: string]: boolean }>({});
+  const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSettings();
@@ -38,18 +40,23 @@ export default function AdminApiSettings() {
     }
   };
 
-  const handleSave = async (settingId: string, value: string) => {
-    const { error } = await supabase
-      .from("site_settings")
-      .update({ setting_value: value })
-      .eq("id", settingId);
+  const handleSave = async (settingId: string, value: string, label: string) => {
+    setSaving(settingId);
+    try {
+      const { error } = await supabase
+        .from("site_settings")
+        .update({ setting_value: value })
+        .eq("id", settingId);
 
-    if (error) {
+      if (error) throw error;
+      
+      toast.success(`${label} mentve!`);
+      fetchSettings();
+    } catch (error) {
       toast.error("Hiba a mentés során");
       console.error(error);
-    } else {
-      toast.success("Beállítás mentve!");
-      fetchSettings();
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -60,12 +67,19 @@ export default function AdminApiSettings() {
     }));
   };
 
+  const imagekitSettings = settings.filter((s) =>
+    s.setting_key.startsWith("imagekit_")
+  );
+  const mapboxSettings = settings.filter((s) =>
+    s.setting_key.startsWith("mapbox_")
+  );
+
   return (
     <AdminLayout>
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <div className="bg-primary/10 p-2 rounded-lg">
-            <Key className="h-6 w-6 text-primary" />
+          <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
+            <Key className="h-7 w-7 text-primary" />
           </div>
           <div>
             <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
@@ -94,18 +108,124 @@ export default function AdminApiSettings() {
         </Card>
 
         <div className="grid gap-6">
-          {settings.map((setting) => (
-            <Card key={setting.id} className="p-6 space-y-4">
-              <div className="flex items-start justify-between">
+          {/* ImageKit Integration */}
+          {imagekitSettings.length > 0 && (
+            <Card className="p-6 space-y-4 bg-gradient-to-br from-background to-muted/20">
+              <div className="flex items-center gap-3">
+                <div className="bg-primary/10 p-2 rounded-lg">
+                  <ImageIcon className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-lg">
+                    ImageKit.io
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Kép tárhely és optimalizálás
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                {imagekitSettings.map((setting) => {
+                  const isPassword = setting.setting_type === "password";
+                  return (
+                    <div key={setting.id} className="space-y-2">
+                      <Label htmlFor={setting.setting_key} className="text-sm font-medium">
+                        {setting.setting_label}
+                      </Label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            id={setting.setting_key}
+                            type={
+                              isPassword && !showTokens[setting.setting_key]
+                                ? "password"
+                                : "text"
+                            }
+                            defaultValue={setting.setting_value || ""}
+                            placeholder={`Add meg a ${setting.setting_label.toLowerCase()}...`}
+                            className="pr-10"
+                          />
+                          {isPassword && (
+                            <button
+                              type="button"
+                              onClick={() => toggleVisibility(setting.setting_key)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            >
+                              {showTokens[setting.setting_key] ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => {
+                            const input = document.getElementById(
+                              setting.setting_key
+                            ) as HTMLInputElement;
+                            if (input) {
+                              handleSave(setting.id, input.value, setting.setting_label);
+                            }
+                          }}
+                          disabled={saving === setting.id}
+                          size="default"
+                        >
+                          <Save className="h-4 w-4 mr-2" />
+                          {saving === setting.id ? "Mentés..." : "Mentés"}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="pt-2 border-t border-border">
+                <p className="text-sm text-muted-foreground">
+                  <strong>ImageKit credentials beszerzése:</strong>
+                  <br />
+                  1. Látogass el a{" "}
+                  <a
+                    href="https://imagekit.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    imagekit.io
+                  </a>{" "}
+                  oldalra
+                  <br />
+                  2. Jelentkezz be vagy hozz létre új fiókot
+                  <br />
+                  3. Menj a Developer Options menüpontba
+                  <br />
+                  4. Másold ki a Public Key, Private Key és URL Endpoint értékeket
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {/* Mapbox Integration */}
+          {mapboxSettings.map((setting) => (
+            <Card key={setting.id} className="p-6 space-y-4 bg-gradient-to-br from-background to-muted/20">
+              <div className="flex items-center gap-3">
+                <div className="bg-primary/10 p-2 rounded-lg">
+                  <Map className="h-5 w-5 text-primary" />
+                </div>
                 <div>
                   <h3 className="font-semibold text-foreground text-lg">
                     {setting.setting_label}
                   </h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    API kulcs: {setting.setting_key}
+                  <p className="text-sm text-muted-foreground">
+                    Interaktív térképek megjelenítése
                   </p>
                 </div>
               </div>
+
+              <Separator />
 
               <div className="space-y-2">
                 <Label htmlFor={setting.setting_key}>API Token</Label>
@@ -113,7 +233,12 @@ export default function AdminApiSettings() {
                   <div className="relative flex-1">
                     <Input
                       id={setting.setting_key}
-                      type={showTokens[setting.setting_key] ? "text" : "password"}
+                      type={
+                        setting.setting_type === "password" &&
+                        !showTokens[setting.setting_key]
+                          ? "password"
+                          : "text"
+                      }
                       defaultValue={setting.setting_value || ""}
                       placeholder="pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ..."
                       className="pr-10"
@@ -136,43 +261,39 @@ export default function AdminApiSettings() {
                         setting.setting_key
                       ) as HTMLInputElement;
                       if (input) {
-                        handleSave(setting.id, input.value);
+                        handleSave(setting.id, input.value, setting.setting_label);
                       }
                     }}
+                    disabled={saving === setting.id}
                   >
                     <Save className="h-4 w-4 mr-2" />
-                    Mentés
+                    {saving === setting.id ? "Mentés..." : "Mentés"}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  A token megváltoztatása után a térkép automatikusan frissül az új kulccsal.
-                </p>
               </div>
 
-              {setting.setting_key === "mapbox_token" && (
-                <div className="pt-2 border-t border-border">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>Mapbox token beszerzése:</strong>
-                    <br />
-                    1. Látogass el a{" "}
-                    <a
-                      href="https://mapbox.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      mapbox.com
-                    </a>{" "}
-                    oldalra
-                    <br />
-                    2. Jelentkezz be vagy hozz létre új fiókot
-                    <br />
-                    3. Keresd meg a "Tokens" menüpontot a dashboardon
-                    <br />
-                    4. Másold ki a "Default public token"-t vagy hozz létre újat
-                  </p>
-                </div>
-              )}
+              <div className="pt-2 border-t border-border">
+                <p className="text-sm text-muted-foreground">
+                  <strong>Mapbox token beszerzése:</strong>
+                  <br />
+                  1. Látogass el a{" "}
+                  <a
+                    href="https://mapbox.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    mapbox.com
+                  </a>{" "}
+                  oldalra
+                  <br />
+                  2. Jelentkezz be vagy hozz létre új fiókot
+                  <br />
+                  3. Keresd meg a "Tokens" menüpontot a dashboardon
+                  <br />
+                  4. Másold ki a "Default public token"-t vagy hozz létre újat
+                </p>
+              </div>
             </Card>
           ))}
         </div>
