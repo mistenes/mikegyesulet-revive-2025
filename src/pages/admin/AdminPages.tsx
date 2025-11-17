@@ -57,16 +57,6 @@ export default function AdminPages() {
     setSaving(sectionKey);
     
     try {
-      // Validate content
-      if (content.title || content.subtitle || content.description) {
-        const validation = pageContentSchema.safeParse(content);
-        if (!validation.success) {
-          toast.error(validation.error.errors[0].message);
-          setSaving(null);
-          return;
-        }
-      }
-
       const existingPage = pages.find(p => p.section_key === sectionKey);
 
       if (existingPage) {
@@ -102,10 +92,11 @@ export default function AdminPages() {
 
   const getSectionDisplayName = (key: string): string => {
     const names: Record<string, string> = {
-      hero: "Főoldal - Hero",
-      about: "Főoldal - Rólunk röviden",
-      stats: "Főoldal - Statisztikák",
-      news: "Főoldal - Hírek szekció",
+      hero_content: "Főoldal - Hero",
+      about_section: "Főoldal - Rólunk röviden",
+      hero_stats: "Főoldal - Statisztikák",
+      news_section: "Főoldal - Hírek szekció",
+      regions_section: "Főoldal - Régiók szekció",
       regions_intro: "Régiók - Bevezető",
       regions_map: "Régiók - Térkép",
       regions_list: "Régiók - Lista",
@@ -124,7 +115,7 @@ export default function AdminPages() {
     return page?.content || {};
   };
 
-  const updateLocalContent = (sectionKey: string, field: string, value: string) => {
+  const updateLocalContent = (sectionKey: string, field: string, value: any) => {
     setPages(prev => {
       const existing = prev.find(p => p.section_key === sectionKey);
       const updatedContent = { ...getPageContent(sectionKey), [field]: value };
@@ -156,46 +147,100 @@ export default function AdminPages() {
     return (
       <Card className="p-6 space-y-6">
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor={`${sectionKey}-title`}>Cím *</Label>
-            <Input
-              id={`${sectionKey}-title`}
-              value={content.title || ""}
-              onChange={(e) => updateLocalContent(sectionKey, 'title', e.target.value)}
-              placeholder="Add meg a szekció címét"
-              maxLength={200}
-            />
-          </div>
+          {/* Show all existing fields from the content */}
+          {Object.keys(content).length > 0 ? (
+            Object.entries(content).map(([key, value]) => {
+              if (key === 'stats' && Array.isArray(value)) {
+                // Special handling for stats array
+                return (
+                  <div key={key} className="space-y-2">
+                    <Label>Statisztikák (JSON)</Label>
+                    <Textarea
+                      value={JSON.stringify(value, null, 2)}
+                      onChange={(e) => {
+                        try {
+                          const parsed = JSON.parse(e.target.value);
+                          updateLocalContent(sectionKey, key, parsed);
+                        } catch {
+                          // Invalid JSON, don't update yet
+                        }
+                      }}
+                      rows={8}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                );
+              }
+              
+              if (typeof value === 'string') {
+                const isLongText = value.length > 100;
+                const fieldLabel = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+                
+                return (
+                  <div key={key} className="space-y-2">
+                    <Label htmlFor={`${sectionKey}-${key}`}>{fieldLabel}</Label>
+                    {isLongText ? (
+                      <Textarea
+                        id={`${sectionKey}-${key}`}
+                        value={value}
+                        onChange={(e) => updateLocalContent(sectionKey, key, e.target.value)}
+                        rows={4}
+                      />
+                    ) : (
+                      <Input
+                        id={`${sectionKey}-${key}`}
+                        value={value}
+                        onChange={(e) => updateLocalContent(sectionKey, key, e.target.value)}
+                      />
+                    )}
+                  </div>
+                );
+              }
+              
+              return null;
+            })
+          ) : (
+            // Empty state - show basic fields
+            <>
+              <div className="space-y-2">
+                <Label htmlFor={`${sectionKey}-title`}>Cím *</Label>
+                <Input
+                  id={`${sectionKey}-title`}
+                  value={content.title || ""}
+                  onChange={(e) => updateLocalContent(sectionKey, 'title', e.target.value)}
+                  placeholder="Add meg a szekció címét"
+                  maxLength={200}
+                />
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor={`${sectionKey}-subtitle`}>Alcím (opcionális)</Label>
-            <Input
-              id={`${sectionKey}-subtitle`}
-              value={content.subtitle || ""}
-              onChange={(e) => updateLocalContent(sectionKey, 'subtitle', e.target.value)}
-              placeholder="Add meg az alcímet"
-              maxLength={300}
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${sectionKey}-subtitle`}>Alcím (opcionális)</Label>
+                <Input
+                  id={`${sectionKey}-subtitle`}
+                  value={content.subtitle || ""}
+                  onChange={(e) => updateLocalContent(sectionKey, 'subtitle', e.target.value)}
+                  placeholder="Add meg az alcímet"
+                  maxLength={300}
+                />
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor={`${sectionKey}-description`}>Leírás (opcionális)</Label>
-            <Textarea
-              id={`${sectionKey}-description`}
-              value={content.description || ""}
-              onChange={(e) => updateLocalContent(sectionKey, 'description', e.target.value)}
-              placeholder="Add meg a leírást"
-              rows={4}
-              maxLength={2000}
-            />
-            <p className="text-xs text-muted-foreground">
-              {(content.description || '').length} / 2000 karakter
-            </p>
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${sectionKey}-description`}>Leírás (opcionális)</Label>
+                <Textarea
+                  id={`${sectionKey}-description`}
+                  value={content.description || ""}
+                  onChange={(e) => updateLocalContent(sectionKey, 'description', e.target.value)}
+                  placeholder="Add meg a leírást"
+                  rows={4}
+                  maxLength={2000}
+                />
+              </div>
+            </>
+          )}
 
           <Button 
             onClick={() => handleSave(sectionKey, content)}
-            disabled={isSaving || !content.title}
+            disabled={isSaving}
             className="w-full"
           >
             {isSaving ? (
@@ -254,22 +299,27 @@ export default function AdminPages() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold mb-4">Hero Szekció</h3>
-                {renderSectionEditor("hero")}
+                {renderSectionEditor("hero_content")}
               </div>
               
               <div>
                 <h3 className="text-lg font-semibold mb-4">Rólunk Röviden</h3>
-                {renderSectionEditor("about")}
+                {renderSectionEditor("about_section")}
               </div>
               
               <div>
                 <h3 className="text-lg font-semibold mb-4">Statisztikák</h3>
-                {renderSectionEditor("stats")}
+                {renderSectionEditor("hero_stats")}
               </div>
               
               <div>
                 <h3 className="text-lg font-semibold mb-4">Hírek Szekció</h3>
-                {renderSectionEditor("news")}
+                {renderSectionEditor("news_section")}
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Régiók Szekció</h3>
+                {renderSectionEditor("regions_section")}
               </div>
             </div>
           </TabsContent>
