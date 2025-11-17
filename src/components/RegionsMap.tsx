@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MapPin, X } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 interface Region {
   name: string;
@@ -67,13 +68,42 @@ export const RegionsMap = () => {
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapboxToken, setMapboxToken] = useState("");
   const [isMapInitialized, setIsMapInitialized] = useState(false);
-  const [showTokenInput, setShowTokenInput] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const initializeMap = () => {
-    if (!mapContainer.current || !mapboxToken) return;
+  useEffect(() => {
+    fetchMapboxToken();
+  }, []);
+
+  const fetchMapboxToken = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("setting_value")
+        .eq("setting_key", "mapbox_token")
+        .single();
+
+      if (error) throw error;
+
+      if (data?.setting_value) {
+        setMapboxToken(data.setting_value);
+        setIsLoading(false);
+        // Auto-initialize if token exists
+        setTimeout(() => initializeMap(data.setting_value), 100);
+      } else {
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error("Error fetching Mapbox token:", error);
+      setIsLoading(false);
+    }
+  };
+
+  const initializeMap = (token?: string) => {
+    const tokenToUse = token || mapboxToken;
+    if (!mapContainer.current || !tokenToUse) return;
 
     try {
-      mapboxgl.accessToken = mapboxToken;
+      mapboxgl.accessToken = tokenToUse;
 
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
@@ -150,7 +180,6 @@ export const RegionsMap = () => {
       });
 
       setIsMapInitialized(true);
-      setShowTokenInput(false);
       toast.success("Térkép betöltve! Kattints a jelölőkre a részletekért.");
     } catch (error) {
       toast.error("Hiba a térkép betöltésekor. Ellenőrizd a token-t!");
@@ -195,7 +224,14 @@ export const RegionsMap = () => {
           </p>
         </div>
 
-        {showTokenInput && !isMapInitialized && (
+        {isLoading ? (
+          <div className="max-w-2xl mx-auto mb-8 p-6 bg-card border border-border rounded-2xl shadow-lg">
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <span className="ml-3 text-muted-foreground">Token betöltése...</span>
+            </div>
+          </div>
+        ) : !isMapInitialized && !mapboxToken && (
           <div
             className={`max-w-2xl mx-auto mb-8 p-6 bg-card border border-border rounded-2xl shadow-lg transition-all duration-700 ${
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
@@ -207,38 +243,19 @@ export const RegionsMap = () => {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-foreground mb-1">
-                  Mapbox token szükséges
+                  Mapbox token hiányzik
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  A térkép megjelenítéséhez adj meg egy Mapbox publikus tokent.
-                  Szerezz egyet a{" "}
+                  Az admin felületen add meg a Mapbox API tokent az{" "}
                   <a
-                    href="https://mapbox.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href="/admin/api-settings"
                     className="text-primary hover:underline"
                   >
-                    mapbox.com
+                    API Kulcsok
                   </a>{" "}
-                  oldalon.
+                  menüpontban a térkép megjelenítéséhez.
                 </p>
               </div>
-            </div>
-            <div className="flex gap-3">
-              <Input
-                type="text"
-                placeholder="pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ..."
-                value={mapboxToken}
-                onChange={(e) => setMapboxToken(e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                onClick={initializeMap}
-                disabled={!mapboxToken}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground"
-              >
-                Betöltés
-              </Button>
             </div>
           </div>
         )}
@@ -248,14 +265,13 @@ export const RegionsMap = () => {
             variant="outline"
             size="sm"
             onClick={() => {
-              setShowTokenInput(true);
               setIsMapInitialized(false);
               map.current?.remove();
             }}
             className="absolute top-4 right-4 z-10 bg-background/80 backdrop-blur"
           >
             <X className="h-4 w-4 mr-2" />
-            Token módosítása
+            Térkép újratöltése
           </Button>
         )}
 
@@ -269,12 +285,12 @@ export const RegionsMap = () => {
             className="w-full h-[600px] bg-muted"
             style={{ display: isMapInitialized ? "block" : "none" }}
           />
-          {!isMapInitialized && !showTokenInput && (
+          {!isMapInitialized && !isLoading && (
             <div className="w-full h-[600px] flex items-center justify-center bg-muted">
               <div className="text-center">
                 <MapPin className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
-                  Adj meg egy Mapbox tokent a térkép betöltéséhez
+                  Add meg a Mapbox tokent az admin felületen
                 </p>
               </div>
             </div>
