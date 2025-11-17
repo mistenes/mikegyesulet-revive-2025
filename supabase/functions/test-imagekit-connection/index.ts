@@ -23,13 +23,35 @@ serve(async (req) => {
       }
     );
 
-    // Verify user is authenticated (optional for admin pages that handle their own auth)
-    const authHeader = req.headers.get('Authorization');
-    if (authHeader) {
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-      if (authError || !user) {
-        console.log('Auth check failed, but continuing anyway for admin access');
-      }
+    // Verify user is authenticated and has admin role
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Unauthorized' 
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check if user has admin role
+    const { data: roles, error: roleError } = await supabaseClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .single();
+
+    if (roleError || !roles) {
+      console.error('Admin role check failed:', roleError);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Insufficient permissions' 
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Get ImageKit credentials from settings
