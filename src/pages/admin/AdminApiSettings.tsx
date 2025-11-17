@@ -71,9 +71,25 @@ export default function AdminApiSettings() {
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
-      const { data, error } = await supabase.functions.invoke('test-imagekit-connection');
+      // Ensure we have a valid session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Authentication required', {
+          description: 'Please log in to test the connection.',
+        });
+        return;
+      }
 
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke('test-imagekit-connection', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        console.error('Function invocation error:', error);
+        throw error;
+      }
 
       if (data.success) {
         toast.success(data.message, {
