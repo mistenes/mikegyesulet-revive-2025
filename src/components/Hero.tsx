@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import mikTeam from "@/assets/mik-team.jpg";
 import puzzleLogo from "@/assets/puzzle-logo.png";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,9 +87,9 @@ export const Hero = () => {
                 </a>
               </Button>
               <Button size="lg" variant="outline" className="font-semibold px-8 py-6 text-base border-2 hover:bg-muted/50 transition-all duration-300" asChild>
-                <a href="#rolunk">
+                <Link to="/rolunk">
                   {content.secondaryButtonText}
-                </a>
+                </Link>
               </Button>
             </div>
 
