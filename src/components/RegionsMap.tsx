@@ -210,174 +210,177 @@ export const RegionsMap = () => {
         animationFrame = requestAnimationFrame(rotateCamera);
       };
       
+      // Wait for map to load before adding markers
       map.current.on('load', () => {
-        animationFrame = requestAnimationFrame(rotateCamera);
-      });
-
-      // Add navigation controls
-      map.current.addControl(
-        new mapboxgl.NavigationControl({
-          visualizePitch: true,
-        }),
-        "top-right"
-      );
-
-      // Add markers for each region with enhanced styling
-      regions.forEach((region, index) => {
         if (!map.current) return;
-
-        // Create custom marker element with pulse animation
-        const el = document.createElement("div");
-        el.className = "custom-marker-wrapper";
-        el.style.position = "relative";
         
-        // Pulse ring
-        const pulseRing = document.createElement("div");
-        pulseRing.className = "marker-pulse";
-        pulseRing.style.cssText = `
-          position: absolute;
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: ${region.color};
-          opacity: 0.3;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          animation: pulse 2s ease-out infinite;
-          animation-delay: ${index * 0.2}s;
-          pointer-events: none;
-        `;
-        
-        // Main marker
-        const marker = document.createElement("div");
-        marker.className = "custom-marker";
-        marker.style.cssText = `
-          background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          border: 3px solid white;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          position: relative;
-          z-index: 1;
-        `;
-        
-        // Inner dot
-        const innerDot = document.createElement("div");
-        innerDot.style.cssText = `
-          position: absolute;
-          width: 8px;
-          height: 8px;
-          background: white;
-          border-radius: 50%;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          box-shadow: 0 0 8px rgba(255,255,255,0.8);
-        `;
-        
-        marker.appendChild(innerDot);
-        el.appendChild(pulseRing);
-        el.appendChild(marker);
+        animationFrame = requestAnimationFrame(rotateCamera);
 
-        marker.addEventListener("mouseenter", () => {
-          marker.style.transform = "scale(1.3)";
-          marker.style.boxShadow = `0 6px 20px rgba(0,0,0,0.35), 0 0 30px ${region.color}60`;
-          pulseRing.style.animationPlayState = "paused";
-        });
+        // Add navigation controls
+        map.current.addControl(
+          new mapboxgl.NavigationControl({
+            visualizePitch: true,
+          }),
+          "top-right"
+        );
 
-        marker.addEventListener("mouseleave", () => {
-          marker.style.transform = "scale(1)";
-          marker.style.boxShadow = `0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40`;
-          pulseRing.style.animationPlayState = "running";
-        });
+        // Add markers for each region with enhanced styling
+        regions.forEach((region, index) => {
+          if (!map.current) return;
 
-        // Create enhanced popup content with glassmorphism
-        const popupContent = `
-          <div style="
-            padding: 20px;
-            min-width: 280px;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-          ">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-              <div style="
-                width: 40px;
-                height: 40px;
-                background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
-                border-radius: 10px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 4px 12px ${region.color}40;
-              ">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                </svg>
-              </div>
-              <h3 style="
-                margin: 0;
-                font-size: 20px;
-                font-weight: 700;
-                color: #1a1a1a;
-                font-family: 'Sora', sans-serif;
-              ">
-                ${region.name}
-              </h3>
-            </div>
-            <p style="
-              margin: 0 0 16px 0;
-              font-size: 14px;
-              line-height: 1.6;
-              color: #555;
-            ">
-              ${region.description}
-            </p>
+          // Create custom marker element with pulse animation
+          const el = document.createElement("div");
+          el.className = "custom-marker-wrapper";
+          el.style.position = "relative";
+          
+          // Pulse ring
+          const pulseRing = document.createElement("div");
+          pulseRing.className = "marker-pulse";
+          pulseRing.style.cssText = `
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: ${region.color};
+            opacity: 0.3;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: pulse 2s ease-out infinite;
+            animation-delay: ${index * 0.2}s;
+            pointer-events: none;
+          `;
+          
+          // Main marker
+          const marker = document.createElement("div");
+          marker.className = "custom-marker";
+          marker.style.cssText = `
+            background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 1;
+          `;
+          
+          // Inner dot
+          const innerDot = document.createElement("div");
+          innerDot.style.cssText = `
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 8px rgba(255,255,255,0.8);
+          `;
+          
+          marker.appendChild(innerDot);
+          el.appendChild(pulseRing);
+          el.appendChild(marker);
+
+          marker.addEventListener("mouseenter", () => {
+            marker.style.transform = "scale(1.3)";
+            marker.style.boxShadow = `0 6px 20px rgba(0,0,0,0.35), 0 0 30px ${region.color}60`;
+            pulseRing.style.animationPlayState = "paused";
+          });
+
+          marker.addEventListener("mouseleave", () => {
+            marker.style.transform = "scale(1)";
+            marker.style.boxShadow = `0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40`;
+            pulseRing.style.animationPlayState = "running";
+          });
+
+          // Create enhanced popup content with glassmorphism
+          const popupContent = `
             <div style="
-              padding: 12px;
-              background: linear-gradient(135deg, ${region.color}15, ${region.color}08);
-              border-radius: 10px;
-              border-left: 3px solid ${region.color};
+              padding: 20px;
+              min-width: 280px;
+              background: rgba(255, 255, 255, 0.95);
+              backdrop-filter: blur(10px);
+              border-radius: 16px;
+              border: 1px solid rgba(255, 255, 255, 0.5);
+              box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             ">
-              <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">
-                Tagszervezet
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <div style="
+                  width: 40px;
+                  height: 40px;
+                  background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
+                  border-radius: 10px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  box-shadow: 0 4px 12px ${region.color}40;
+                ">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                  </svg>
+                </div>
+                <h3 style="
+                  margin: 0;
+                  font-size: 20px;
+                  font-weight: 700;
+                  color: #1a1a1a;
+                  font-family: 'Sora', sans-serif;
+                ">
+                  ${region.name}
+                </h3>
+              </div>
+              <p style="
+                margin: 0 0 16px 0;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #555;
+              ">
+                ${region.description}
               </p>
-              <p style="margin: 0; font-size: 13px; font-weight: 500; color: #333; line-height: 1.4;">
-                ${region.members}
-              </p>
+              <div style="
+                padding: 12px;
+                background: linear-gradient(135deg, ${region.color}15, ${region.color}08);
+                border-radius: 10px;
+                border-left: 3px solid ${region.color};
+              ">
+                <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">
+                  Tagszervezet
+                </p>
+                <p style="margin: 0; font-size: 13px; font-weight: 500; color: #333; line-height: 1.4;">
+                  ${region.members}
+                </p>
+              </div>
             </div>
-          </div>
-        `;
+          `;
 
-        // Create popup with custom styling
-        const popup = new mapboxgl.Popup({
-          offset: 35,
-          closeButton: false,
-          closeOnClick: false,
-          className: 'custom-popup',
-          maxWidth: '320px'
-        }).setHTML(popupContent);
+          // Create popup with custom styling
+          const popup = new mapboxgl.Popup({
+            offset: 35,
+            closeButton: false,
+            closeOnClick: false,
+            className: 'custom-popup',
+            maxWidth: '320px'
+          }).setHTML(popupContent);
 
-        // Add marker to map with entrance animation
-        const mapMarker = new mapboxgl.Marker(el)
-          .setLngLat(region.coordinates)
-          .setPopup(popup)
-          .addTo(map.current);
-        
-        // Animate marker entrance
-        setTimeout(() => {
-          el.style.animation = 'markerDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
-        }, index * 100);
+          // Add marker to map with entrance animation
+          const mapMarker = new mapboxgl.Marker(el)
+            .setLngLat(region.coordinates)
+            .setPopup(popup)
+            .addTo(map.current!);
+          
+          // Animate marker entrance
+          setTimeout(() => {
+            el.style.animation = 'markerDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+          }, index * 100);
+        });
+
+        setIsMapInitialized(true);
+        toast.success("Térkép betöltve! Kattints a jelölőkre a részletekért.");
       });
-
-      setIsMapInitialized(true);
-      toast.success("Térkép betöltve! Kattints a jelölőkre a részletekért.");
     } catch (error) {
       toast.error("Hiba a térkép betöltésekor. Ellenőrizd a token-t!");
       console.error(error);
