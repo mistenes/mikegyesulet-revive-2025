@@ -131,9 +131,36 @@ export const RegionsMap = () => {
     if (!mapContainer.current || !tokenToUse) return;
 
     try {
-      // Add custom styles for popups
+      // Add custom styles for popups and animations
       const style = document.createElement('style');
       style.textContent = `
+        @keyframes pulse {
+          0% {
+            transform: scale(1);
+            opacity: 0.6;
+          }
+          50% {
+            transform: scale(1.8);
+            opacity: 0.2;
+          }
+          100% {
+            transform: scale(2.2);
+            opacity: 0;
+          }
+        }
+        
+        .marker-pulse {
+          position: absolute;
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+          animation: pulse 2.5s ease-out infinite;
+        }
+        
         .mapboxgl-popup-content {
           padding: 0 !important;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
@@ -153,48 +180,48 @@ export const RegionsMap = () => {
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/light-v11",
         center: [21.0, 47.5], // Center on Carpathian Basin
-        zoom: 6,
-        pitch: 50,
+        zoom: 5.5,
+        pitch: 0,
         bearing: 0,
         antialias: true,
       });
 
-      // Smooth rotation animation
-      let animationFrame: number;
-      let userInteracting = false;
-      
-      map.current.on('mousedown', () => { userInteracting = true; });
-      map.current.on('mouseup', () => { userInteracting = false; });
-      map.current.on('dragstart', () => { userInteracting = true; });
-      map.current.on('dragend', () => { userInteracting = false; });
+      // Add navigation controls
+      map.current.addControl(
+        new mapboxgl.NavigationControl({
+          visualizePitch: true,
+        }),
+        "top-right"
+      );
 
-      const rotateCamera = (timestamp: number) => {
-        if (map.current && !userInteracting) {
-          const bearing = map.current.getBearing();
-          map.current.rotateTo((bearing + 0.05) % 360, { duration: 20, easing: (t) => t });
-        }
-        animationFrame = requestAnimationFrame(rotateCamera);
-      };
+      // Enable scroll zoom
+      map.current.scrollZoom.enable();
       
       // Wait for map to load before adding markers
       map.current.on('load', () => {
         if (!map.current) return;
-        
-        animationFrame = requestAnimationFrame(rotateCamera);
 
-        // Add navigation controls
-        map.current.addControl(
-          new mapboxgl.NavigationControl({
-            visualizePitch: true,
-          }),
-          "top-right"
-        );
-
-        // Add markers for each region with enhanced styling
+        // Add markers for each region with pulse animation
         regions.forEach((region, index) => {
           if (!map.current) return;
 
-          // Create simple marker element
+          // Create marker container
+          const markerContainer = document.createElement("div");
+          markerContainer.style.cssText = `
+            position: relative;
+            width: 32px;
+            height: 32px;
+          `;
+
+          // Create pulse ring
+          const pulseRing = document.createElement("div");
+          pulseRing.className = "marker-pulse";
+          pulseRing.style.cssText = `
+            background: ${region.color};
+            animation-delay: ${index * 0.3}s;
+          `;
+
+          // Create main marker element
           const el = document.createElement("div");
           el.style.cssText = `
             background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
@@ -208,6 +235,8 @@ export const RegionsMap = () => {
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
+            z-index: 2;
           `;
           
           // Inner dot
@@ -221,15 +250,19 @@ export const RegionsMap = () => {
           `;
           
           el.appendChild(innerDot);
+          markerContainer.appendChild(pulseRing);
+          markerContainer.appendChild(el);
 
           el.addEventListener("mouseenter", () => {
             el.style.transform = "scale(1.3)";
             el.style.boxShadow = `0 6px 20px rgba(0,0,0,0.35), 0 0 30px ${region.color}60`;
+            pulseRing.style.animationPlayState = "paused";
           });
 
           el.addEventListener("mouseleave", () => {
             el.style.transform = "scale(1)";
             el.style.boxShadow = `0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40`;
+            pulseRing.style.animationPlayState = "running";
           });
 
           // Create enhanced popup content with glassmorphism
@@ -302,7 +335,7 @@ export const RegionsMap = () => {
           }).setHTML(popupContent);
 
           // Add marker to map
-          new mapboxgl.Marker(el)
+          new mapboxgl.Marker(markerContainer)
             .setLngLat(region.coordinates)
             .setPopup(popup)
             .addTo(map.current!);
