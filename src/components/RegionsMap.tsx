@@ -131,39 +131,9 @@ export const RegionsMap = () => {
     if (!mapContainer.current || !tokenToUse) return;
 
     try {
-      // Add custom styles for markers
+      // Add custom styles for popups
       const style = document.createElement('style');
       style.textContent = `
-        @keyframes pulse {
-          0% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 0.5;
-          }
-          50% {
-            transform: translate(-50%, -50%) scale(1.5);
-            opacity: 0.2;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(2);
-            opacity: 0;
-          }
-        }
-        
-        @keyframes markerDrop {
-          0% {
-            transform: translateY(-100px) scale(0);
-            opacity: 0;
-          }
-          60% {
-            transform: translateY(0) scale(1.1);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-          }
-        }
-        
         .mapboxgl-popup-content {
           padding: 0 !important;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
@@ -173,10 +143,6 @@ export const RegionsMap = () => {
         
         .mapboxgl-popup-tip {
           border-top-color: rgba(255, 255, 255, 0.95) !important;
-        }
-        
-        .custom-marker-wrapper {
-          opacity: 1;
         }
       `;
       document.head.appendChild(style);
@@ -228,33 +194,9 @@ export const RegionsMap = () => {
         regions.forEach((region, index) => {
           if (!map.current) return;
 
-          // Create custom marker element with pulse animation
+          // Create simple marker element
           const el = document.createElement("div");
-          el.className = "custom-marker-wrapper";
-          el.style.position = "relative";
-          
-          // Pulse ring
-          const pulseRing = document.createElement("div");
-          pulseRing.className = "marker-pulse";
-          pulseRing.style.cssText = `
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: ${region.color};
-            opacity: 0.3;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            animation: pulse 2s ease-out infinite;
-            animation-delay: ${index * 0.2}s;
-            pointer-events: none;
-          `;
-          
-          // Main marker
-          const marker = document.createElement("div");
-          marker.className = "custom-marker";
-          marker.style.cssText = `
+          el.style.cssText = `
             background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
             width: 32px;
             height: 32px;
@@ -263,38 +205,31 @@ export const RegionsMap = () => {
             box-shadow: 0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
           `;
           
           // Inner dot
           const innerDot = document.createElement("div");
           innerDot.style.cssText = `
-            position: absolute;
             width: 8px;
             height: 8px;
             background: white;
             border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
             box-shadow: 0 0 8px rgba(255,255,255,0.8);
           `;
           
-          marker.appendChild(innerDot);
-          el.appendChild(pulseRing);
-          el.appendChild(marker);
+          el.appendChild(innerDot);
 
-          marker.addEventListener("mouseenter", () => {
-            marker.style.transform = "scale(1.3)";
-            marker.style.boxShadow = `0 6px 20px rgba(0,0,0,0.35), 0 0 30px ${region.color}60`;
-            pulseRing.style.animationPlayState = "paused";
+          el.addEventListener("mouseenter", () => {
+            el.style.transform = "scale(1.3)";
+            el.style.boxShadow = `0 6px 20px rgba(0,0,0,0.35), 0 0 30px ${region.color}60`;
           });
 
-          marker.addEventListener("mouseleave", () => {
-            marker.style.transform = "scale(1)";
-            marker.style.boxShadow = `0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40`;
-            pulseRing.style.animationPlayState = "running";
+          el.addEventListener("mouseleave", () => {
+            el.style.transform = "scale(1)";
+            el.style.boxShadow = `0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40`;
           });
 
           // Create enhanced popup content with glassmorphism
@@ -366,16 +301,11 @@ export const RegionsMap = () => {
             maxWidth: '320px'
           }).setHTML(popupContent);
 
-          // Add marker to map with entrance animation
-          const mapMarker = new mapboxgl.Marker(el)
+          // Add marker to map
+          new mapboxgl.Marker(el)
             .setLngLat(region.coordinates)
             .setPopup(popup)
             .addTo(map.current!);
-          
-          // Animate marker entrance
-          setTimeout(() => {
-            el.style.animation = 'markerDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
-          }, index * 100);
         });
 
         setIsMapInitialized(true);
