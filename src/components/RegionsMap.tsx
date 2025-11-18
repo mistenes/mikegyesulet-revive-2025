@@ -131,36 +131,9 @@ export const RegionsMap = () => {
     if (!mapContainer.current || !tokenToUse) return;
 
     try {
-      // Add custom styles for popups and animations
+      // Add custom styles for popups only
       const style = document.createElement('style');
       style.textContent = `
-        @keyframes pulse {
-          0% {
-            transform: scale(1);
-            opacity: 0.6;
-          }
-          50% {
-            transform: scale(1.8);
-            opacity: 0.2;
-          }
-          100% {
-            transform: scale(2.2);
-            opacity: 0;
-          }
-        }
-        
-        .marker-pulse {
-          position: absolute;
-          width: 50px;
-          height: 50px;
-          border-radius: 50%;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          pointer-events: none;
-          animation: pulse 2.5s ease-out infinite;
-        }
-        
         .mapboxgl-popup-content {
           padding: 0 !important;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
@@ -201,69 +174,21 @@ export const RegionsMap = () => {
       map.current.on('load', () => {
         if (!map.current) return;
 
-        // Add markers for each region with pulse animation
-        regions.forEach((region, index) => {
+        // Add simple markers for each region
+        regions.forEach((region) => {
           if (!map.current) return;
 
-          // Create marker container
-          const markerContainer = document.createElement("div");
-          markerContainer.style.cssText = `
-            position: relative;
-            width: 32px;
-            height: 32px;
-          `;
-
-          // Create pulse ring
-          const pulseRing = document.createElement("div");
-          pulseRing.className = "marker-pulse";
-          pulseRing.style.cssText = `
-            background: ${region.color};
-            animation-delay: ${index * 0.3}s;
-          `;
-
-          // Create main marker element
+          // Create simple marker element
           const el = document.createElement("div");
           el.style.cssText = `
-            background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
-            width: 32px;
-            height: 32px;
+            background: ${region.color};
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             border: 3px solid white;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
             cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            z-index: 2;
           `;
-          
-          // Inner dot
-          const innerDot = document.createElement("div");
-          innerDot.style.cssText = `
-            width: 8px;
-            height: 8px;
-            background: white;
-            border-radius: 50%;
-            box-shadow: 0 0 8px rgba(255,255,255,0.8);
-          `;
-          
-          el.appendChild(innerDot);
-          markerContainer.appendChild(pulseRing);
-          markerContainer.appendChild(el);
-
-          el.addEventListener("mouseenter", () => {
-            el.style.transform = "scale(1.3)";
-            el.style.boxShadow = `0 6px 20px rgba(0,0,0,0.35), 0 0 30px ${region.color}60`;
-            pulseRing.style.animationPlayState = "paused";
-          });
-
-          el.addEventListener("mouseleave", () => {
-            el.style.transform = "scale(1)";
-            el.style.boxShadow = `0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40`;
-            pulseRing.style.animationPlayState = "running";
-          });
 
           // Create enhanced popup content with glassmorphism
           const popupContent = `
@@ -335,7 +260,7 @@ export const RegionsMap = () => {
           }).setHTML(popupContent);
 
           // Add marker to map
-          new mapboxgl.Marker(markerContainer)
+          new mapboxgl.Marker(el)
             .setLngLat(region.coordinates)
             .setPopup(popup)
             .addTo(map.current!);
