@@ -18,46 +18,74 @@ interface Region {
 
 const regions: Region[] = [
   {
-    name: "Erdély",
-    coordinates: [23.6236, 46.7712],
-    description: "Erdély, a Kárpát-medence szívében, gazdag magyar kulturális örökséggel rendelkezik.",
+    name: "Magyarország",
+    coordinates: [19.0402, 47.4979], // Budapest
+    description: "Magyarország, ahol központi koordinációt végzünk az ifjúsági szervezetek számára.",
     color: "#FF6B35",
+    members: "Magyar ifjúsági szervezetek",
+  },
+  {
+    name: "Erdély",
+    coordinates: [23.6236, 46.7712], // Székelyföld
+    description: "Erdély, a Kárpát-medence szívében, gazdag magyar kulturális örökséggel.",
+    color: "#F7931E",
     members: "Romániai Magyar Ifjúsági Szervezetek Szövetsége (RAMISZ)",
   },
   {
     name: "Felvidék",
-    coordinates: [19.6987, 48.7164],
-    description: "A Felvidék történelmi emlékei és élő magyar közösségei megőrzik hagyományainkat.",
-    color: "#F7931E",
+    coordinates: [19.1500, 48.1486], // Pozsony környéke
+    description: "A Felvidék történelmi emlékei és élő magyar közösségei.",
+    color: "#FFC857",
     members: "Ifjú Szívek Szlovákiai Magyar Ifjúsági Kerekasztal",
   },
   {
     name: "Kárpátalja",
-    coordinates: [22.2879, 48.6208],
+    coordinates: [22.7200, 48.4500], // Ungvár környéke
     description: "Kárpátalja, ahol a Kárpátok lábánál élő magyarság őrzi identitását.",
-    color: "#FFC857",
+    color: "#8B5CF6",
     members: "Kárpátaljai Magyar Ifjúsági Szervezetek Fóruma (KMIF)",
   },
   {
     name: "Vajdaság",
-    coordinates: [19.8335, 45.2671],
+    coordinates: [19.8335, 45.2671], // Újvidék
     description: "Vajdaság sokszínű kulturális életben a magyarság aktív közösséget alkot.",
     color: "#E63946",
     members: "Vajdasági Ifjúsági Fórum (VIF)",
   },
   {
     name: "Horvátország",
-    coordinates: [18.0161, 45.8150],
+    coordinates: [18.5500, 45.9500], // Baranya környéke
     description: "Horvátországi magyarság megőrzi nyelvét és kultúráját a Dráva mentén.",
-    color: "#A8DADC",
+    color: "#06B6D4",
     members: "Horvátországi Magyarok Ifjúsági Szervezeteinek Fóruma (HMIF)",
   },
   {
-    name: "Szlovénia",
-    coordinates: [16.5467, 46.5547],
+    name: "Muravidék",
+    coordinates: [16.3500, 46.6600], // Lendva
     description: "Szlovéniai magyar közösség aktívan részt vesz a régió kulturális életében.",
-    color: "#457B9D",
+    color: "#10B981",
     members: "Lendvai Magyar Ifjúsági Egyesület (LMIE)",
+  },
+  {
+    name: "Burgenland",
+    coordinates: [16.5400, 47.8500], // Felsőőr környéke
+    description: "Burgenlandi magyarok őrzik hagyományaikat Ausztriában.",
+    color: "#EC4899",
+    members: "Burgenlandi Magyarok Népfőiskolája",
+  },
+  {
+    name: "Bánság és Regát",
+    coordinates: [21.2300, 45.7500], // Temesvár
+    description: "A Bánság és a Regát magyarságának kulturális központja.",
+    color: "#A855F7",
+    members: "Országos Magyar Diákszövetség (OMDSZ)",
+  },
+  {
+    name: "Nyugati Diaszpóra",
+    coordinates: [13.4050, 52.5200], // Berlin (reprezentatív)
+    description: "Nyugat-európai magyar közösségek összefogása.",
+    color: "#F59E0B",
+    members: "Nyugat-európai Magyar Szervezetek",
   },
 ];
 
