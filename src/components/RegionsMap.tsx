@@ -148,7 +148,7 @@ export const RegionsMap = () => {
         }
         
         .custom-marker-wrapper {
-          opacity: 0;
+          opacity: 1;
         }
       `;
       document.head.appendChild(style);
