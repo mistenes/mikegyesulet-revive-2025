@@ -20,9 +20,26 @@ export default function Dokumentumok() {
     { id: "closing-statement", label: language === 'hu' ? "Zárónyilatkozatok" : "Closing Statements" }
   ];
 
+  const charterDocs = useMemo(() => {
+    return documentsData
+      .filter(doc => doc.category === "statute")
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, []);
+
+  const foundingDocs = useMemo(() => {
+    return documentsData
+      .filter(doc => doc.category === "founding")
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, []);
+
   const filteredDocuments = useMemo(() => {
     return documentsData
       .filter(doc => {
+        // Exclude charter and founding from main grid
+        if (doc.category === "statute" || doc.category === "founding") {
+          return false;
+        }
+        
         if (selectedCategory !== "all" && doc.category !== selectedCategory) {
           return false;
         }
@@ -114,18 +131,60 @@ export default function Dokumentumok() {
         <section className="py-12 px-4">
           <div className="container mx-auto max-w-4xl">
             <Card className="border-border/50 shadow-lg">
-              <CardContent className="p-8">
-                <h2 
-                  className="text-2xl font-bold text-foreground mb-4"
-                  style={{ fontFamily: "'Sora', sans-serif" }}
-                >
-                  {language === 'hu' ? 'Alapszabály' : 'Charter'}
-                </h2>
-                <p className="text-muted-foreground leading-relaxed">
-                  {language === 'hu' 
-                    ? 'A Magyar Ifjúsági Konferencia Egyesület alapszabálya határozza meg a szervezet jogi kereteit, működési elveit, és tagszervezeteinek jogait és kötelezettségeit. Az alapszabály biztosítja a demokratikus működést és a Kárpát-medencei magyar ifjúsági szervezetek együttműködésének alapjait.'
-                    : 'The Charter of the Hungarian Youth Conference Association defines the legal framework, operational principles, and the rights and obligations of member organizations. The Charter ensures democratic operation and establishes the foundation for cooperation among Hungarian youth organizations in the Carpathian Basin.'}
-                </p>
+              <CardContent className="p-8 space-y-6">
+                <div>
+                  <h2 
+                    className="text-2xl font-bold text-foreground mb-4"
+                    style={{ fontFamily: "'Sora', sans-serif" }}
+                  >
+                    {language === 'hu' ? 'Alapszabály' : 'Charter'}
+                  </h2>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {language === 'hu' 
+                      ? 'A Magyar Ifjúsági Konferencia Egyesület alapszabálya határozza meg a szervezet jogi kereteit, működési elveit, és tagszervezeteinek jogait és kötelezettségeit. Az alapszabály biztosítja a demokratikus működést és a Kárpát-medencei magyar ifjúsági szervezetek együttműködésének alapjait.'
+                      : 'The Charter of the Hungarian Youth Conference Association defines the legal framework, operational principles, and the rights and obligations of member organizations. The Charter ensures democratic operation and establishes the foundation for cooperation among Hungarian youth organizations in the Carpathian Basin.'}
+                  </p>
+                </div>
+
+                <div className="grid gap-4 pt-4">
+                  {charterDocs.map((doc, index) => (
+                    <Card 
+                      key={index}
+                      className="hover:shadow-lg transition-all duration-300 border-border/50 group"
+                    >
+                      <CardContent className="p-6 space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <FileText className="h-6 w-6 text-primary" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-bold text-foreground">
+                                {language === 'hu' ? doc.title : doc.titleEn}
+                              </h3>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" />
+                          <span>{formatDate(doc.date)}</span>
+                        </div>
+
+                        <Button 
+                          className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                          variant="outline"
+                          asChild
+                        >
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                            <Download className="h-4 w-4 mr-2" />
+                            {language === 'hu' ? 'Letöltés' : 'Download'}
+                          </a>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -137,18 +196,67 @@ export default function Dokumentumok() {
         <section className="py-12 px-4">
           <div className="container mx-auto max-w-4xl">
             <Card className="border-border/50 shadow-lg">
-              <CardContent className="p-8">
-                <h2 
-                  className="text-2xl font-bold text-foreground mb-4"
-                  style={{ fontFamily: "'Sora', sans-serif" }}
-                >
-                  {language === 'hu' ? 'Alapító Nyilatkozat' : 'Founding Declaration'}
-                </h2>
-                <p className="text-muted-foreground leading-relaxed">
-                  {language === 'hu' 
-                    ? 'Az Alapító Nyilatkozat a Magyar Ifjúsági Konferencia létrejöttének alapdokumentuma, amely megfogalmazza a szervezet küldetését, céljait és értékrendjét. Ez a dokumentum fektetett le először a Kárpát-medencei magyar ifjúsági civil társadalom együttműködésének és összefogásának alapelveit.'
-                    : 'The Founding Declaration is the foundational document of the Hungarian Youth Conference, articulating the organization\'s mission, goals, and values. This document first established the principles of cooperation and solidarity within the Hungarian youth civil society of the Carpathian Basin.'}
-                </p>
+              <CardContent className="p-8 space-y-6">
+                <div>
+                  <h2 
+                    className="text-2xl font-bold text-foreground mb-4"
+                    style={{ fontFamily: "'Sora', sans-serif" }}
+                  >
+                    {language === 'hu' ? 'Alapító Nyilatkozat' : 'Founding Declaration'}
+                  </h2>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {language === 'hu' 
+                      ? 'Az Alapító Nyilatkozat a Magyar Ifjúsági Konferencia létrejöttének alapdokumentuma, amely megfogalmazza a szervezet küldetését, céljait és értékrendjét. Ez a dokumentum fektetett le először a Kárpát-medencei magyar ifjúsági civil társadalom együttműködésének és összefogásának alapelveit.'
+                      : 'The Founding Declaration is the foundational document of the Hungarian Youth Conference, articulating the organization\'s mission, goals, and values. This document first established the principles of cooperation and solidarity within the Hungarian youth civil society of the Carpathian Basin.'}
+                  </p>
+                </div>
+
+                <div className="grid gap-4 pt-4">
+                  {foundingDocs.map((doc, index) => (
+                    <Card 
+                      key={index}
+                      className="hover:shadow-lg transition-all duration-300 border-border/50 group"
+                    >
+                      <CardContent className="p-6 space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <FileText className="h-6 w-6 text-primary" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-bold text-foreground">
+                                {language === 'hu' ? doc.title : doc.titleEn}
+                              </h3>
+                            </div>
+                          </div>
+                        </div>
+
+                        {doc.location && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <MapPin className="h-4 w-4" />
+                            <span>{doc.location}</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" />
+                          <span>{formatDate(doc.date)}</span>
+                        </div>
+
+                        <Button 
+                          className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                          variant="outline"
+                          asChild
+                        >
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                            <Download className="h-4 w-4 mr-2" />
+                            {language === 'hu' ? 'Letöltés' : 'Download'}
+                          </a>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </div>
