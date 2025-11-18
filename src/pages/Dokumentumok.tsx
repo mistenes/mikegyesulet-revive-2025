@@ -109,6 +109,52 @@ export default function Dokumentumok() {
         </div>
       </section>
 
+      {/* Introduction for Charter */}
+      {(selectedCategory === "all" || selectedCategory === "statute") && (
+        <section className="py-12 px-4">
+          <div className="container mx-auto max-w-4xl">
+            <Card className="border-border/50 shadow-lg">
+              <CardContent className="p-8">
+                <h2 
+                  className="text-2xl font-bold text-foreground mb-4"
+                  style={{ fontFamily: "'Sora', sans-serif" }}
+                >
+                  {language === 'hu' ? 'Alapszabály' : 'Charter'}
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  {language === 'hu' 
+                    ? 'A Magyar Ifjúsági Konferencia Egyesület alapszabálya határozza meg a szervezet jogi kereteit, működési elveit, és tagszervezeteinek jogait és kötelezettségeit. Az alapszabály biztosítja a demokratikus működést és a Kárpát-medencei magyar ifjúsági szervezetek együttműködésének alapjait.'
+                    : 'The Charter of the Hungarian Youth Conference Association defines the legal framework, operational principles, and the rights and obligations of member organizations. The Charter ensures democratic operation and establishes the foundation for cooperation among Hungarian youth organizations in the Carpathian Basin.'}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+
+      {/* Introduction for Founding Declaration */}
+      {(selectedCategory === "all" || selectedCategory === "founding") && (
+        <section className="py-12 px-4">
+          <div className="container mx-auto max-w-4xl">
+            <Card className="border-border/50 shadow-lg">
+              <CardContent className="p-8">
+                <h2 
+                  className="text-2xl font-bold text-foreground mb-4"
+                  style={{ fontFamily: "'Sora', sans-serif" }}
+                >
+                  {language === 'hu' ? 'Alapító Nyilatkozat' : 'Founding Declaration'}
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  {language === 'hu' 
+                    ? 'Az Alapító Nyilatkozat a Magyar Ifjúsági Konferencia létrejöttének alapdokumentuma, amely megfogalmazza a szervezet küldetését, céljait és értékrendjét. Ez a dokumentum fektetett le először a Kárpát-medencei magyar ifjúsági civil társadalom együttműködésének és összefogásának alapelveit.'
+                    : 'The Founding Declaration is the foundational document of the Hungarian Youth Conference, articulating the organization\'s mission, goals, and values. This document first established the principles of cooperation and solidarity within the Hungarian youth civil society of the Carpathian Basin.'}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+
       {/* Introduction for Closing Statements */}
       {(selectedCategory === "all" || selectedCategory === "closing-statement") && (
         <section className="py-12 px-4">
