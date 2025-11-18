@@ -174,6 +174,9 @@ export const RegionsMap = () => {
       map.current.on('load', () => {
         if (!map.current) return;
 
+        // Track currently open popup
+        let currentPopup: mapboxgl.Popup | null = null;
+
         // Add simple markers for each region
         regions.forEach((region) => {
           if (!map.current) return;
@@ -252,18 +255,33 @@ export const RegionsMap = () => {
 
           // Create popup with custom styling
           const popup = new mapboxgl.Popup({
-            offset: 35,
-            closeButton: false,
+            offset: 25,
+            closeButton: true,
             closeOnClick: false,
             className: 'custom-popup',
             maxWidth: '320px'
           }).setHTML(popupContent);
 
           // Add marker to map
-          new mapboxgl.Marker(el)
+          const marker = new mapboxgl.Marker(el)
             .setLngLat(region.coordinates)
             .setPopup(popup)
             .addTo(map.current!);
+
+          // Close previous popup when new one opens
+          el.addEventListener('click', () => {
+            if (currentPopup && currentPopup !== popup) {
+              currentPopup.remove();
+            }
+            currentPopup = popup;
+          });
+
+          // Clear reference when popup is closed
+          popup.on('close', () => {
+            if (currentPopup === popup) {
+              currentPopup = null;
+            }
+          });
         });
 
         setIsMapInitialized(true);
