@@ -103,6 +103,56 @@ export const RegionsMap = () => {
     if (!mapContainer.current || !tokenToUse) return;
 
     try {
+      // Add custom styles for markers
+      const style = document.createElement('style');
+      style.textContent = `
+        @keyframes pulse {
+          0% {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0.5;
+          }
+          50% {
+            transform: translate(-50%, -50%) scale(1.5);
+            opacity: 0.2;
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(2);
+            opacity: 0;
+          }
+        }
+        
+        @keyframes markerDrop {
+          0% {
+            transform: translateY(-100px) scale(0);
+            opacity: 0;
+          }
+          60% {
+            transform: translateY(0) scale(1.1);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+          }
+        }
+        
+        .mapboxgl-popup-content {
+          padding: 0 !important;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
+          border-radius: 16px !important;
+          overflow: hidden;
+        }
+        
+        .mapboxgl-popup-tip {
+          border-top-color: rgba(255, 255, 255, 0.95) !important;
+        }
+        
+        .custom-marker-wrapper {
+          opacity: 0;
+        }
+      `;
+      document.head.appendChild(style);
+      
       mapboxgl.accessToken = tokenToUse;
 
       map.current = new mapboxgl.Map({
@@ -110,7 +160,30 @@ export const RegionsMap = () => {
         style: "mapbox://styles/mapbox/light-v11",
         center: [21.0, 47.5], // Center on Carpathian Basin
         zoom: 6,
-        pitch: 45,
+        pitch: 50,
+        bearing: 0,
+        antialias: true,
+      });
+
+      // Smooth rotation animation
+      let animationFrame: number;
+      let userInteracting = false;
+      
+      map.current.on('mousedown', () => { userInteracting = true; });
+      map.current.on('mouseup', () => { userInteracting = false; });
+      map.current.on('dragstart', () => { userInteracting = true; });
+      map.current.on('dragend', () => { userInteracting = false; });
+
+      const rotateCamera = (timestamp: number) => {
+        if (map.current && !userInteracting) {
+          const bearing = map.current.getBearing();
+          map.current.rotateTo((bearing + 0.05) % 360, { duration: 20, easing: (t) => t });
+        }
+        animationFrame = requestAnimationFrame(rotateCamera);
+      };
+      
+      map.current.on('load', () => {
+        animationFrame = requestAnimationFrame(rotateCamera);
       });
 
       // Add navigation controls
@@ -121,62 +194,158 @@ export const RegionsMap = () => {
         "top-right"
       );
 
-      // Add markers for each region
-      regions.forEach((region) => {
+      // Add markers for each region with enhanced styling
+      regions.forEach((region, index) => {
         if (!map.current) return;
 
-        // Create custom marker element
+        // Create custom marker element with pulse animation
         const el = document.createElement("div");
-        el.className = "custom-marker";
-        el.style.backgroundColor = region.color;
-        el.style.width = "30px";
-        el.style.height = "30px";
-        el.style.borderRadius = "50%";
-        el.style.border = "3px solid white";
-        el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
-        el.style.cursor = "pointer";
-        el.style.transition = "transform 0.2s";
+        el.className = "custom-marker-wrapper";
+        el.style.position = "relative";
+        
+        // Pulse ring
+        const pulseRing = document.createElement("div");
+        pulseRing.className = "marker-pulse";
+        pulseRing.style.cssText = `
+          position: absolute;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: ${region.color};
+          opacity: 0.3;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          animation: pulse 2s ease-out infinite;
+          animation-delay: ${index * 0.2}s;
+          pointer-events: none;
+        `;
+        
+        // Main marker
+        const marker = document.createElement("div");
+        marker.className = "custom-marker";
+        marker.style.cssText = `
+          background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          border: 3px solid white;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40;
+          cursor: pointer;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          z-index: 1;
+        `;
+        
+        // Inner dot
+        const innerDot = document.createElement("div");
+        innerDot.style.cssText = `
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          background: white;
+          border-radius: 50%;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          box-shadow: 0 0 8px rgba(255,255,255,0.8);
+        `;
+        
+        marker.appendChild(innerDot);
+        el.appendChild(pulseRing);
+        el.appendChild(marker);
 
-        el.addEventListener("mouseenter", () => {
-          el.style.transform = "scale(1.2)";
+        marker.addEventListener("mouseenter", () => {
+          marker.style.transform = "scale(1.3)";
+          marker.style.boxShadow = `0 6px 20px rgba(0,0,0,0.35), 0 0 30px ${region.color}60`;
+          pulseRing.style.animationPlayState = "paused";
         });
 
-        el.addEventListener("mouseleave", () => {
-          el.style.transform = "scale(1)";
+        marker.addEventListener("mouseleave", () => {
+          marker.style.transform = "scale(1)";
+          marker.style.boxShadow = `0 4px 12px rgba(0,0,0,0.25), 0 0 20px ${region.color}40`;
+          pulseRing.style.animationPlayState = "running";
         });
 
-        // Create popup content
+        // Create enhanced popup content with glassmorphism
         const popupContent = `
-          <div style="padding: 12px; min-width: 250px;">
-            <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: bold; color: ${region.color};">
-              ${region.name}
-            </h3>
-            <p style="margin: 0 0 8px 0; font-size: 14px; line-height: 1.4;">
+          <div style="
+            padding: 20px;
+            min-width: 280px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+          ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <div style="
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, ${region.color}, ${region.color}dd);
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 12px ${region.color}40;
+              ">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+              </div>
+              <h3 style="
+                margin: 0;
+                font-size: 20px;
+                font-weight: 700;
+                color: #1a1a1a;
+                font-family: 'Sora', sans-serif;
+              ">
+                ${region.name}
+              </h3>
+            </div>
+            <p style="
+              margin: 0 0 16px 0;
+              font-size: 14px;
+              line-height: 1.6;
+              color: #555;
+            ">
               ${region.description}
             </p>
-            <div style="padding-top: 8px; border-top: 1px solid #e0e0e0;">
-              <p style="margin: 0; font-size: 12px; font-weight: 600; color: #666;">
-                Tagszervezet:
+            <div style="
+              padding: 12px;
+              background: linear-gradient(135deg, ${region.color}15, ${region.color}08);
+              border-radius: 10px;
+              border-left: 3px solid ${region.color};
+            ">
+              <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">
+                Tagszervezet
               </p>
-              <p style="margin: 4px 0 0 0; font-size: 12px; color: #333;">
+              <p style="margin: 0; font-size: 13px; font-weight: 500; color: #333; line-height: 1.4;">
                 ${region.members}
               </p>
             </div>
           </div>
         `;
 
-        // Create popup
+        // Create popup with custom styling
         const popup = new mapboxgl.Popup({
-          offset: 25,
-          closeButton: true,
+          offset: 35,
+          closeButton: false,
           closeOnClick: false,
+          className: 'custom-popup',
+          maxWidth: '320px'
         }).setHTML(popupContent);
 
-        // Add marker to map
-        new mapboxgl.Marker(el)
+        // Add marker to map with entrance animation
+        const mapMarker = new mapboxgl.Marker(el)
           .setLngLat(region.coordinates)
           .setPopup(popup)
           .addTo(map.current);
+        
+        // Animate marker entrance
+        setTimeout(() => {
+          el.style.animation = 'markerDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+        }, index * 100);
       });
 
       setIsMapInitialized(true);
@@ -276,48 +445,62 @@ export const RegionsMap = () => {
         )}
 
         <div
-          className={`relative rounded-3xl overflow-hidden shadow-2xl transition-all duration-700 ${
-            isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
-          }`}
-        >
-          <div
-            ref={mapContainer}
-            className="w-full h-[600px] bg-muted"
-            style={{ display: isMapInitialized ? "block" : "none" }}
-          />
-          {!isMapInitialized && !isLoading && (
-            <div className="w-full h-[600px] flex items-center justify-center bg-muted">
-              <div className="text-center">
-                <MapPin className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Add meg a Mapbox tokent az admin felületen
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent to-background/5 rounded-3xl" />
-        </div>
-
-        {/* Region Legend */}
-        <div
-          className={`mt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 transition-all duration-700 delay-300 ${
+          className={`max-w-6xl mx-auto transition-all duration-700 delay-200 ${
             isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
           }`}
         >
-          {regions.map((region) => (
+          <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-border/50 backdrop-blur-sm">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none z-10" />
             <div
-              key={region.name}
-              className="flex items-center gap-2 p-3 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
-            >
-              <div
-                className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                style={{ backgroundColor: region.color }}
-              />
-              <span className="text-sm font-medium text-foreground">
-                {region.name}
-              </span>
-            </div>
-          ))}
+              ref={mapContainer}
+              className="w-full h-[600px] relative"
+              style={{ 
+                display: isMapInitialized ? "block" : "none",
+                background: 'linear-gradient(to bottom, #f8f9fa, #e9ecef)'
+              }}
+            />
+            {!isMapInitialized && !isLoading && (
+              <div className="w-full h-[600px] flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
+                <div className="text-center">
+                  <MapPin className="h-16 w-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
+                  <p className="text-muted-foreground font-medium">
+                    Add meg a Mapbox tokent az admin felületen
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            {/* Integrated Legend Overlay */}
+            {isMapInitialized && (
+              <div className="absolute bottom-6 left-6 right-6 z-20 pointer-events-none">
+                <div className="bg-background/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-border/50 pointer-events-auto">
+                  <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <div className="w-1 h-4 bg-gradient-to-b from-primary to-accent rounded-full" />
+                    Régiók színkódja
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {regions.map((region) => (
+                      <div
+                        key={region.name}
+                        className="flex items-center gap-2 group cursor-pointer hover:scale-105 transition-transform"
+                      >
+                        <div
+                          className="w-4 h-4 rounded-full ring-2 ring-white shadow-md group-hover:ring-4 transition-all"
+                          style={{
+                            background: `linear-gradient(135deg, ${region.color}, ${region.color}dd)`,
+                            boxShadow: `0 0 12px ${region.color}40`
+                          }}
+                        />
+                        <span className="text-xs font-medium text-foreground/80 group-hover:text-foreground transition-colors">
+                          {region.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>
