@@ -1,0 +1,204 @@
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { FileText, Download, Search, Calendar, MapPin } from "lucide-react";
+import { documentsData } from "@/data/documents";
+import { useState, useMemo } from "react";
+
+export default function Dokumentumok() {
+  const { language, t } = useLanguage();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  const categories = [
+    { id: "all", label: language === 'hu' ? "Összes" : "All" },
+    { id: "statute", label: language === 'hu' ? "Alapszabály" : "Charter" },
+    { id: "founding", label: language === 'hu' ? "Alapító Nyilatkozat" : "Founding Declaration" },
+    { id: "closing-statement", label: language === 'hu' ? "Zárónyilatkozatok" : "Closing Statements" }
+  ];
+
+  const filteredDocuments = useMemo(() => {
+    return documentsData
+      .filter(doc => {
+        if (selectedCategory !== "all" && doc.category !== selectedCategory) {
+          return false;
+        }
+        
+        if (searchQuery) {
+          const query = searchQuery.toLowerCase();
+          const title = (language === 'hu' ? doc.title : doc.titleEn).toLowerCase();
+          const location = doc.location?.toLowerCase() || "";
+          return title.includes(query) || location.includes(query) || doc.date.includes(query);
+        }
+        
+        return true;
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [searchQuery, selectedCategory, language]);
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    if (language === 'hu') {
+      return date.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  return (
+    <div className="min-h-screen bg-background" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <Header />
+      
+      {/* Hero Section */}
+      <section className="relative pt-32 pb-20 px-4 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent">
+        <div className="container mx-auto max-w-6xl">
+          <div className="text-center space-y-6 animate-fade-in">
+            <p className="text-sm font-semibold text-primary tracking-wider uppercase">
+              {language === 'hu' ? 'Dokumentumok' : 'Documents'}
+            </p>
+            <h1 
+              className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight"
+              style={{ fontFamily: "'Sora', sans-serif" }}
+            >
+              {language === 'hu' ? 'Dokumentumtár' : 'Document Library'}
+            </h1>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+              {language === 'hu' 
+                ? 'A Magyar Ifjúsági Konferencia hivatalos dokumentumai és zárónyilatkozatai' 
+                : 'Official documents and closing statements of the Hungarian Youth Conference'}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Search and Filter Section */}
+      <section className="py-12 px-4 bg-muted/30">
+        <div className="container mx-auto max-w-6xl">
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+            {/* Search */}
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={language === 'hu' ? 'Keresés...' : 'Search...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Category Filter */}
+            <div className="flex gap-2 flex-wrap justify-center">
+              {categories.map((cat) => (
+                <Button
+                  key={cat.id}
+                  variant={selectedCategory === cat.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedCategory(cat.id)}
+                >
+                  {cat.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            {filteredDocuments.length} {language === 'hu' ? 'dokumentum található' : 'documents found'}
+          </div>
+        </div>
+      </section>
+
+      {/* Introduction for Closing Statements */}
+      {(selectedCategory === "all" || selectedCategory === "closing-statement") && (
+        <section className="py-12 px-4">
+          <div className="container mx-auto max-w-4xl">
+            <Card className="border-border/50 shadow-lg">
+              <CardContent className="p-8">
+                <h2 
+                  className="text-2xl font-bold text-foreground mb-4"
+                  style={{ fontFamily: "'Sora', sans-serif" }}
+                >
+                  {language === 'hu' ? 'Zárónyilatkozatok' : 'Closing Statements'}
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  {language === 'hu' 
+                    ? 'A zárónyilatkozatok nem csak egy ülés végén elfogadott dokumentumok: ebben reflektál a Magyar Ifjúsági Konferencia a Kárpát-medence és a világ magyarságát érintő történésekre, fejezi ki aggályait, vagy épp örömét. Ezzel a zárónyilatkozatok egyfajta krónikát is adnak a magyarság utóbbi húsz évéből.'
+                    : 'Closing statements are not just documents adopted at the end of a meeting: through them, the Hungarian Youth Conference reflects on events affecting Hungarians in the Carpathian Basin and worldwide, expresses its concerns or joy. These statements provide a chronicle of the past twenty years of the Hungarian community.'}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+
+      {/* Documents List */}
+      <section className="py-20 px-4">
+        <div className="container mx-auto max-w-6xl">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredDocuments.map((doc, index) => (
+              <Card 
+                key={index}
+                className="hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border-border/50 group"
+              >
+                <CardContent className="p-6 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-6 w-6 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-foreground">
+                          {language === 'hu' ? doc.title : doc.titleEn}
+                        </h3>
+                      </div>
+                    </div>
+                  </div>
+
+                  {doc.location && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>{doc.location}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    <span>{formatDate(doc.date)}</span>
+                  </div>
+
+                  <Button 
+                    className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                    variant="outline"
+                    asChild
+                  >
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                      <Download className="h-4 w-4 mr-2" />
+                      {language === 'hu' ? 'Letöltés' : 'Download'}
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {filteredDocuments.length === 0 && (
+            <div className="text-center py-20">
+              <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-50" />
+              <h3 className="text-xl font-semibold text-foreground mb-2">
+                {language === 'hu' ? 'Nincs találat' : 'No documents found'}
+              </h3>
+              <p className="text-muted-foreground">
+                {language === 'hu' 
+                  ? 'Próbálj meg más keresési kifejezést vagy szűrőt használni' 
+                  : 'Try using different search terms or filters'}
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <Footer />
+    </div>
+  );
+}

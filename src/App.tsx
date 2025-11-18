@@ -14,6 +14,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
+import Dokumentumok from "./pages/Dokumentumok";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/rolunk" element={<Rolunk />} />
             <Route path="/regiok" element={<Regiok />} />
             <Route path="/kapcsolat" element={<Kapcsolat />} />
+            <Route path="/dokumentumok" element={<Dokumentumok />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/pages" element={<AdminPages />} />
