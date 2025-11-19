@@ -11,6 +11,7 @@ import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
 import AdminApiSettings from "./pages/admin/AdminApiSettings";
 import AdminSettings from "./pages/admin/AdminSettings";
+import { RequireAdmin } from "./components/admin/RequireAdmin";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -37,11 +38,11 @@ const App = () => (
             <Route path="/projektek" element={<Projektek />} />
             <Route path="/galeria" element={<Galeria />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/admin/pages" element={<AdminPages />} />
-            <Route path="/admin/news" element={<AdminNews />} />
-            <Route path="/admin/api-settings" element={<AdminApiSettings />} />
-            <Route path="/admin/settings" element={<AdminSettings />} />
+            <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
+            <Route path="/admin/pages" element={<RequireAdmin><AdminPages /></RequireAdmin>} />
+            <Route path="/admin/news" element={<RequireAdmin><AdminNews /></RequireAdmin>} />
+            <Route path="/admin/api-settings" element={<RequireAdmin><AdminApiSettings /></RequireAdmin>} />
+            <Route path="/admin/settings" element={<RequireAdmin><AdminSettings /></RequireAdmin>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

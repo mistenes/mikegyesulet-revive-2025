@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Shield, Mail, Lock } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
+import { authService } from "@/lib/authService";
+import { useQueryClient } from "@tanstack/react-query";
 
 const authSchema = z.object({
   email: z.string().email("Érvényes e-mail címet adj meg"),
@@ -17,33 +18,29 @@ const authSchema = z.object({
 export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    // Check if user is already authenticated and redirect if so
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        // Check if user has admin role
-        const { data: roles } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .eq('role', 'admin')
-          .single();
-        
-        if (roles) {
-          navigate('/admin');
-        } else {
-          toast.error('Nincs admin jogosultságod');
-          await supabase.auth.signOut();
+    const checkSession = async () => {
+      try {
+        const session = await authService.validateSession();
+        if (session) {
+          navigate("/admin");
         }
+      } catch (error) {
+        console.error("Session check failed", error);
       }
     };
-    checkAuth();
+
+    checkSession();
   }, [navigate]);
+
+  useEffect(() => {
+    setEmail((location.state as { email?: string } | null)?.email || "");
+  }, [location.state]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,55 +55,13 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      if (isLogin) {
-        // Login
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) throw error;
-
-        // Check if user has admin role
-        const { data: roles, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .eq('role', 'admin')
-          .single();
-
-        if (roleError || !roles) {
-          await supabase.auth.signOut();
-          toast.error('Nincs admin jogosultságod');
-          return;
-        }
-
-        toast.success("Sikeres bejelentkezés!");
-        navigate('/admin');
-      } else {
-        // Signup
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth`
-          }
-        });
-
-        if (error) throw error;
-
-        toast.success("Regisztráció sikeres! Kérj admin jogosultságot a rendszergazdától.");
-        setIsLogin(true);
-      }
+      await authService.login(email, password);
+      await queryClient.invalidateQueries({ queryKey: ["adminSession"] });
+      toast.success("Sikeres bejelentkezés!");
+      navigate("/admin");
     } catch (error: any) {
       console.error('Auth error:', error);
-      if (error.message.includes('Invalid login credentials')) {
-        toast.error('Helytelen e-mail cím vagy jelszó');
-      } else if (error.message.includes('User already registered')) {
-        toast.error('Ez az e-mail cím már regisztrálva van');
-      } else {
-        toast.error(error.message || 'Hiba történt a művelet során');
-      }
+      toast.error(error.message || 'Hiba történt a művelet során');
     } finally {
       setIsLoading(false);
     }
@@ -120,12 +75,10 @@ export default function Auth() {
             <Shield className="h-8 w-8 text-primary" />
           </div>
           <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-            {isLogin ? 'Admin bejelentkezés' : 'Regisztráció'}
+            Admin bejelentkezés
           </h1>
           <p className="text-muted-foreground">
-            {isLogin 
-              ? 'Add meg az admin fiók adatait a folytatáshoz' 
-              : 'Hozz létre egy új fiókot'}
+            Add meg az admin fiók adatait a folytatáshoz
           </p>
         </div>
 
@@ -166,20 +119,11 @@ export default function Auth() {
           </div>
 
           <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-            {isLoading ? 'Folyamatban...' : (isLogin ? 'Bejelentkezés' : 'Regisztráció')}
+            {isLoading ? 'Folyamatban...' : 'Bejelentkezés'}
           </Button>
         </form>
 
         <div className="text-center space-y-2">
-          <Button
-            variant="link"
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-sm"
-            disabled={isLoading}
-          >
-            {isLogin ? 'Még nincs fiókod? Regisztrálj' : 'Van már fiókod? Jelentkezz be'}
-          </Button>
-          
           <Button
             variant="ghost"
             onClick={() => navigate("/")}

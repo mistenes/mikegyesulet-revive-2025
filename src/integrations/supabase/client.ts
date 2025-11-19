@@ -5,12 +5,42 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+class MemoryStorage implements Storage {
+  private data = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.data.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.data.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.data.delete(key);
+  }
+
+  clear(): void {
+    this.data.clear();
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.data.keys())[index] ?? null;
+  }
+
+  get length(): number {
+    return this.data.size;
+  }
+}
+
+const memoryStorage = new MemoryStorage();
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: memoryStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
