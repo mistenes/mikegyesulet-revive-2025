@@ -49,6 +49,8 @@ Use `render.yaml` to provision:
 
 After importing the blueprint, Render wires Postgres into the `DATABASE_URL`. The API seeds the `admin_users` table with `ADMIN_EMAIL`/`ADMIN_PASSWORD` and secures routes with HTTP-only cookies while serving the built SPA from `dist`. CORS will automatically allow the deployed site using `RENDER_EXTERNAL_URL`; only set `FRONTEND_ORIGIN` when testing from a separate frontend origin (e.g., local Vite dev).
 
+The blueprint leaves secrets (`MAPBOX_TOKEN`, `ADMIN_PASSWORD`, `ADMIN_JWT_SECRET`) blank so Render always prompts for them on deploy and keeps them in sync without needing manual YAML edits. Updating those values in the Render dashboard and redeploying will refresh the running environment.
+
 ## Tests / build
 
 ```bash
