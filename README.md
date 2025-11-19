@@ -1,73 +1,58 @@
-# Welcome to your Lovable project
+# Magyar Ifjúsági Konferencia – Revive 2025
 
-## Project info
+This repository contains the refreshed HYCA/MIK website. The app no longer depends on Lovable or Supabase – content is stored locally during development and the codebase is prepared for a Render + Postgres deployment.
 
-**URL**: https://lovable.dev/projects/d24b0c23-af68-493e-8722-d46346c880f5
+## Tech stack
 
-## How can I edit this code?
+- [Vite](https://vitejs.dev/) + React + TypeScript
+- [shadcn/ui](https://ui.shadcn.com/) + Tailwind CSS
+- Local data services (`newsService`, `pageContentService`, `settingsService`) that will later map to the Render API + Postgres instance
 
-There are several ways of editing your application.
+## Getting started
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/d24b0c23-af68-493e-8722-d46346c880f5) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Environment variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Create a `.env` file based on `.env.example`.
 
-**Use GitHub Codespaces**
+| Variable | Purpose |
+| --- | --- |
+| `VITE_ADMIN_EMAIL` | Front-end admin login e-mail |
+| `VITE_ADMIN_PASSWORD` | Front-end admin login jelszó |
+| `VITE_API_BASE_URL` | (Optional) upcoming Render API endpoint |
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Admin access
 
-## What technologies are used for this project?
+1. Visit `/auth`
+2. Sign in with the credentials from `.env`
+3. Edit content via `/admin/pages`, `/admin/news`, `/admin/settings` and `/admin/api-settings`
 
-This project is built with:
+All page sections are bilingual. When you edit or add news the Hungarian and English versions are saved together, and the home page updates instantly.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Render blueprint
 
-## How can I deploy this project?
+Use `render.yaml` to provision:
 
-Simply open [Lovable](https://lovable.dev/projects/d24b0c23-af68-493e-8722-d46346c880f5) and click on Share -> Publish.
+- a static-site service for the Vite build
+- a Node/Express API service (to be implemented) connected to
+- a managed Postgres database
 
-## Can I connect a custom domain to my Lovable project?
+After importing the blueprint, set `VITE_API_BASE_URL` for the static site and map the Postgres connection string into the API service.
 
-Yes, you can!
+## Tests / build
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```bash
+npm run build
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Folder highlights
+
+- `src/services/*` – local storage backed services replacing Supabase
+- `src/data/default*.ts` – bilingual seed content and news used on first load
+- `render.yaml` – Render blueprint with static site + API + Postgres resources
+
+Feel free to adapt these services once the Render API is available.

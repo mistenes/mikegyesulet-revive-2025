@@ -1,10 +1,8 @@
 import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { MapPin, X } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { getSettings } from "@/services/settingsService";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -99,32 +97,14 @@ export const RegionsMap = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchMapboxToken();
-  }, []);
-
-  const fetchMapboxToken = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("site_settings")
-        .select("setting_value")
-        .eq("setting_key", "mapbox_token")
-        .single();
-
-      if (error) throw error;
-
-      if (data?.setting_value) {
-        setMapboxToken(data.setting_value);
-        setIsLoading(false);
-        // Auto-initialize if token exists
-        setTimeout(() => initializeMap(data.setting_value), 100);
-      } else {
-        setIsLoading(false);
-      }
-    } catch (error) {
-      console.error("Error fetching Mapbox token:", error);
-      setIsLoading(false);
+    const settings = getSettings();
+    const token = settings.integrations.mapbox_token?.value || "";
+    if (token) {
+      setMapboxToken(token);
+      setTimeout(() => initializeMap(token), 100);
     }
-  };
+    setIsLoading(false);
+  }, []);
 
   const initializeMap = (token?: string) => {
     const tokenToUse = token || mapboxToken;

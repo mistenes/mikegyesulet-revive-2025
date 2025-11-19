@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Users, FileText, Map, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { isAuthenticated, logout } from "@/services/authService";
 
 export default function Admin() {
   const [isLoading, setIsLoading] = useState(true);
@@ -13,44 +13,17 @@ export default function Admin() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    checkAdminAccess();
-  }, []);
-
-  const checkAdminAccess = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate('/auth');
-        return;
-      }
-
-      // Check if user has admin role
-      const { data: roles, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', session.user.id)
-        .eq('role', 'admin')
-        .single();
-
-      if (error || !roles) {
-        toast.error('Nincs admin jogosultságod');
-        await supabase.auth.signOut();
-        navigate('/auth');
-        return;
-      }
-
-      setIsAdmin(true);
-    } catch (error) {
-      console.error('Error checking admin access:', error);
+    if (!isAuthenticated()) {
       navigate('/auth');
-    } finally {
-      setIsLoading(false);
+      return;
     }
-  };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+    setIsAdmin(true);
+    setIsLoading(false);
+  }, [navigate]);
+
+  const handleLogout = () => {
+    logout();
     toast.success('Sikeres kijelentkezés');
     navigate('/');
   };

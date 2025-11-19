@@ -1,0 +1,30 @@
+services:
+  - type: static_site
+    name: mik-frontend
+    env: node
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://mik-api.onrender.com
+  - type: web
+    name: mik-api
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run start
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mik-postgres
+          property: connectionString
+      - key: MAPBOX_TOKEN
+        sync: false
+
+    autoDeploy: true
+
+databases:
+  - name: mik-postgres
+    plan: free
