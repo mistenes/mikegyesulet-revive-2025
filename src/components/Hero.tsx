@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import mikTeam from "@/assets/mik-team.jpg";
-import puzzleLogo from "@/assets/puzzle-logo.png";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getSectionContent, PAGE_CONTENT_EVENT } from "@/services/pageContentService";
 
@@ -120,20 +119,13 @@ export const Hero = () => {
             </div>
           </div>
 
-          {/* Right Image with Puzzle Overlay */}
+          {/* Right Image */}
           <div className="relative animate-slide-in-right lg:animate-slide-in" style={{
             animationDelay: "0.3s",
           }}>
             <div className="relative rounded-3xl overflow-hidden shadow-2xl group">
               <img src={mikTeam} alt="MIK Team" className="w-full h-auto transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent opacity-60" />
-
-              {/* Puzzle Logo Overlay */}
-              <div className="absolute top-1/2 right-0 transform translate-x-1/4 -translate-y-1/2 animate-bounce-in" style={{
-                animationDelay: "0.6s",
-              }}>
-                <img src={puzzleLogo} alt="Puzzle" className="w-32 drop-shadow-xl" />
-              </div>
             </div>
           </div>
         </div>
