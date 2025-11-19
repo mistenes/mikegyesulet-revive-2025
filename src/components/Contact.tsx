@@ -116,7 +116,7 @@ export const Contact = () => {
             Kapcsolat
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-            veDD fel velünk a kapcsolatot
+            Vedd fel velünk a kapcsolatot
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Itt üzenhetsz nekünk. Egyszerűbb, mint e-mailt írni, és ugyanolyan hatékony.
