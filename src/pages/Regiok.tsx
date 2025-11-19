@@ -165,7 +165,7 @@ export default function Regiok() {
             >
               <Card className="overflow-hidden border-border/50 shadow-lg hover:shadow-xl transition-shadow duration-300">
                 <div className="grid lg:grid-cols-2 gap-0">
-                  <div className="relative h-[300px] lg:h-[400px] overflow-hidden">
+                  <div className="relative h-[300px] lg:h-auto lg:min-h-full overflow-hidden">
                     <img 
                       src={region.image} 
                       alt={language === 'hu' ? region.nameHu : region.nameEn}
@@ -174,7 +174,7 @@ export default function Regiok() {
                     <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
                   </div>
                   
-                  <CardContent className="p-8 lg:p-12 space-y-6">
+                  <CardContent className="p-8 lg:p-12 space-y-6 flex flex-col justify-center">
                     <h2 
                       className="text-3xl lg:text-4xl font-bold text-foreground"
                       style={{ fontFamily: "'Sora', sans-serif" }}
