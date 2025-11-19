@@ -33,11 +33,11 @@ export const Hero = () => {
     value: "10+",
     label: "Régió"
   }, {
-    value: "2000+",
-    label: "Tagok"
+    value: "1000+",
+    label: "Tag"
   }, {
     value: "100+",
-    label: "Események"
+    label: "esemény"
   }]);
   useEffect(() => {
     fetchContent();
