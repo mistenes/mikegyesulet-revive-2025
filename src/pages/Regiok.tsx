@@ -164,7 +164,7 @@ export default function Regiok() {
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               {/* Region Header with Image */}
-              <div className="relative h-[300px] rounded-t-lg overflow-hidden mb-8">
+              <div className="sticky top-20 z-10 h-[200px] md:h-[250px] rounded-t-lg overflow-hidden mb-8 shadow-lg">
                 <img 
                   src={region.image} 
                   alt={language === 'hu' ? region.nameHu : region.nameEn}
@@ -173,7 +173,7 @@ export default function Regiok() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-8">
                   <h2 
-                    className="text-4xl lg:text-5xl font-bold text-white"
+                    className="text-3xl md:text-4xl lg:text-5xl font-bold text-white"
                     style={{ fontFamily: "'Sora', sans-serif" }}
                   >
                     {language === 'hu' ? region.nameHu : region.nameEn}
