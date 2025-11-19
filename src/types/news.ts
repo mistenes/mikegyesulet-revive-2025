@@ -11,15 +11,25 @@ export interface NewsArticle {
   id: string;
   category: string;
   imageUrl?: string;
+  imageAlt?: string;
   published: boolean;
   publishedAt: string | null;
   createdAt: string;
+  updatedAt?: string;
   translations: Record<LanguageCode, NewsTranslation>;
 }
 
 export interface NewsInput {
   category: string;
   imageUrl?: string;
+  imageAlt?: string;
   published: boolean;
   translations: Record<LanguageCode, NewsTranslation>;
+}
+
+export interface NewsListResponse {
+  items: NewsArticle[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

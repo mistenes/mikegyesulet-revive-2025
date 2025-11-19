@@ -1,78 +1,102 @@
-import { defaultNews } from "@/data/defaultNews";
-import { NewsArticle, NewsInput } from "@/types/news";
-import { readJson, writeJson } from "./storage";
+import type { NewsArticle, NewsInput, NewsListResponse } from "@/types/news";
 
-const STORAGE_KEY = "mik-news";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "news-updated";
 const isBrowser = typeof window !== "undefined";
 
-type NewsEventDetail = { id?: string };
-
-function loadNews(): NewsArticle[] {
-  return readJson<NewsArticle[]>(STORAGE_KEY, defaultNews);
-}
-
-function persistNews(articles: NewsArticle[]) {
-  writeJson(STORAGE_KEY, articles);
-}
-
-function broadcastUpdate(detail?: NewsEventDetail) {
-  if (isBrowser) {
-    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail }));
+async function handleResponse<T>(response: Response): Promise<T> {
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    // ignore
   }
+
+  if (!response.ok) {
+    const message = payload?.message || "Ismeretlen hiba történt";
+    throw new Error(message);
+  }
+
+  return payload as T;
 }
 
-export async function getPublishedNews(): Promise<NewsArticle[]> {
-  return loadNews().filter((article) => article.published);
+function broadcastUpdate(id?: string) {
+  if (!isBrowser) return;
+  window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { id } }));
 }
 
-export async function getAllNews(): Promise<NewsArticle[]> {
-  return loadNews();
-}
+export async function getAdminNews(params: {
+  search?: string;
+  status?: "all" | "published" | "draft";
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<NewsListResponse> {
+  const url = new URL(`${API_BASE}/api/news`);
+  if (params.search) url.searchParams.set("search", params.search);
+  if (params.status) url.searchParams.set("status", params.status);
+  if (params.page) url.searchParams.set("page", String(params.page));
+  if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
 
-export async function createNews(article: NewsInput): Promise<void> {
-  const articles = loadNews();
-  const id = crypto.randomUUID?.() || `${Date.now()}`;
-  const now = new Date().toISOString();
-
-  articles.unshift({
-    id,
-    category: article.category,
-    imageUrl: article.imageUrl,
-    published: article.published,
-    publishedAt: article.published ? now : null,
-    createdAt: now,
-    translations: article.translations,
+  const response = await fetch(url.toString(), {
+    credentials: "include",
   });
 
-  persistNews(articles);
-  broadcastUpdate({ id });
+  return handleResponse<NewsListResponse>(response);
 }
 
-export async function updateNews(id: string, article: NewsInput): Promise<void> {
-  const articles = loadNews();
-  const now = new Date().toISOString();
+export async function getPublishedNews(limit = 6): Promise<NewsArticle[]> {
+  const url = new URL(`${API_BASE}/api/news/public`);
+  url.searchParams.set("limit", String(limit));
 
-  const updated = articles.map((item) => {
-    if (item.id !== id) return item;
-    return {
-      ...item,
-      category: article.category,
-      imageUrl: article.imageUrl,
-      published: article.published,
-      publishedAt: article.published ? (item.publishedAt || now) : null,
-      translations: article.translations,
-    };
+  const response = await fetch(url.toString());
+  const data = await handleResponse<{ items: NewsArticle[] }>(response);
+  return data.items;
+}
+
+export async function getNewsBySlug(slug: string): Promise<NewsArticle | null> {
+  if (!slug) return null;
+  const response = await fetch(`${API_BASE}/api/news/slug/${encodeURIComponent(slug)}`);
+  if (response.status === 404) return null;
+  return handleResponse<NewsArticle>(response);
+}
+
+export async function createNews(article: NewsInput): Promise<NewsArticle> {
+  const response = await fetch(`${API_BASE}/api/news`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(article),
   });
 
-  persistNews(updated);
-  broadcastUpdate({ id });
+  const data = await handleResponse<NewsArticle>(response);
+  broadcastUpdate(data.id);
+  return data;
+}
+
+export async function updateNews(id: string, article: NewsInput): Promise<NewsArticle> {
+  const response = await fetch(`${API_BASE}/api/news/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(article),
+  });
+
+  const data = await handleResponse<NewsArticle>(response);
+  broadcastUpdate(id);
+  return data;
 }
 
 export async function deleteNews(id: string): Promise<void> {
-  const articles = loadNews().filter((item) => item.id !== id);
-  persistNews(articles);
-  broadcastUpdate({ id });
+  const response = await fetch(`${API_BASE}/api/news/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    await handleResponse(response);
+  }
+
+  broadcastUpdate(id);
 }
 
 export const NEWS_EVENT = EVENT_NAME;

@@ -21,6 +21,7 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
 const HASH_ITERATIONS = 310000;
+const PAGE_SIZE_DEFAULT = 9;
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL must be set to start the API server.');
@@ -105,6 +106,77 @@ async function ensureAdminUser() {
   }
 }
 
+async function ensureNewsTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS news_articles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        category TEXT NOT NULL,
+        image_url TEXT,
+        image_alt TEXT,
+        published BOOLEAN NOT NULL DEFAULT FALSE,
+        published_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        slug_hu TEXT NOT NULL,
+        slug_en TEXT NOT NULL,
+        translations JSONB NOT NULL
+      );
+    `);
+
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_hu_idx ON news_articles(slug_hu);',
+    );
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_en_idx ON news_articles(slug_en);',
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS news_published_idx ON news_articles(published, published_at DESC, created_at DESC);',
+    );
+  } finally {
+    client.release();
+  }
+}
+
+function mapNewsRow(row) {
+  return {
+    id: row.id,
+    category: row.category,
+    imageUrl: row.image_url || undefined,
+    imageAlt: row.image_alt || '',
+    published: row.published,
+    publishedAt: row.published_at ? row.published_at.toISOString() : null,
+    createdAt: row.created_at ? row.created_at.toISOString() : '',
+    updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
+    translations: row.translations || { hu: {}, en: {} },
+  };
+}
+
+async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
+  const params = [slugHu, slugEn];
+  let query = 'SELECT id, slug_hu, slug_en FROM news_articles WHERE slug_hu = $1 OR slug_en = $2';
+
+  if (excludeId) {
+    params.push(excludeId);
+    query += ' AND id <> $3';
+  }
+
+  const existing = await client.query(query, params);
+  if (existing.rows.length) {
+    const conflict = existing.rows[0];
+    const conflictSlug = conflict.slug_hu === slugHu ? slugHu : slugEn;
+    const language = conflict.slug_hu === slugHu ? 'magyar' : 'angol';
+    const message = `A(z) ${language} slug (${conflictSlug}) már létezik.`;
+    const error = new Error(message);
+    error.status = 409;
+    throw error;
+  }
+}
+
 async function authenticateRequest(req, res, next) {
   const bearer = req.headers.authorization?.replace('Bearer ', '');
   const token = req.cookies[COOKIE_NAME] || bearer;
@@ -173,6 +245,240 @@ app.post('/api/auth/logout', (_req, res) => {
   return res.status(200).json({ success: true });
 });
 
+app.get('/api/news', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const search = (req.query.search || '').toString().trim();
+  const status = (req.query.status || 'all').toString();
+  const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
+  const pageSize = Number(req.query.pageSize) > 0 ? Number(req.query.pageSize) : PAGE_SIZE_DEFAULT;
+
+  const filters = [];
+  const values = [];
+
+  if (status === 'published') {
+    filters.push('published = TRUE');
+  } else if (status === 'draft') {
+    filters.push('published = FALSE');
+  }
+
+  if (search) {
+    values.push(`%${search}%`);
+    filters.push(
+      `(LOWER(category) LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'hu' ->> 'excerpt') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'excerpt') LIKE LOWER($${values.length}))`,
+    );
+  }
+
+  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const total = Number(countResult.rows[0]?.count || 0);
+
+    const listResult = await client.query(
+      `SELECT *
+       FROM news_articles
+       ${whereClause}
+       ORDER BY published_at DESC NULLS LAST, created_at DESC
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, pageSize, offset],
+    );
+
+    const items = listResult.rows.map(mapNewsRow);
+    return res.status(200).json({ items, total, page, pageSize });
+  } catch (error) {
+    console.error('List news error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a híreket' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/news/public', async (req, res) => {
+  const client = await pool.connect();
+  const search = (req.query.search || '').toString().trim();
+  const limit = Number(req.query.limit) > 0 ? Number(req.query.limit) : 6;
+
+  const filters = ['published = TRUE'];
+  const values = [];
+
+  if (search) {
+    values.push(`%${search}%`);
+    filters.push(
+      `(LOWER(category) LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'hu' ->> 'excerpt') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'excerpt') LIKE LOWER($${values.length}))`,
+    );
+  }
+
+  const whereClause = `WHERE ${filters.join(' AND ')}`;
+
+  try {
+    const result = await client.query(
+      `SELECT *
+       FROM news_articles
+       ${whereClause}
+       ORDER BY published_at DESC NULLS LAST, created_at DESC
+       LIMIT $${values.length + 1}`,
+      [...values, limit],
+    );
+
+    return res.status(200).json({ items: result.rows.map(mapNewsRow) });
+  } catch (error) {
+    console.error('Public news error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a híreket' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/news/slug/:slug', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT * FROM news_articles
+       WHERE (slug_hu = $1 OR slug_en = $1) AND published = TRUE
+       LIMIT 1`,
+      [req.params.slug],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'A hír nem található' });
+    }
+
+    return res.status(200).json(mapNewsRow(result.rows[0]));
+  } catch (error) {
+    console.error('Fetch news by slug error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a hírt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/news', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+
+  if (!payload.translations?.hu?.slug || !payload.translations?.en?.slug) {
+    return res.status(400).json({ message: 'A magyar és angol slug mező megadása kötelező' });
+  }
+
+  try {
+    await validateUniqueSlugs(client, {
+      slugHu: payload.translations.hu.slug,
+      slugEn: payload.translations.en.slug,
+    });
+
+    const publishedAt = payload.published ? new Date().toISOString() : null;
+
+    const result = await client.query(
+      `INSERT INTO news_articles
+       (category, image_url, image_alt, published, published_at, slug_hu, slug_en, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        payload.category,
+        payload.imageUrl || null,
+        payload.imageAlt || null,
+        Boolean(payload.published),
+        publishedAt,
+        payload.translations.hu.slug,
+        payload.translations.en.slug,
+        payload.translations,
+      ],
+    );
+
+    return res.status(201).json(mapNewsRow(result.rows[0]));
+  } catch (error) {
+    console.error('Create news error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült létrehozni a hírt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/news/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+  const newsId = req.params.id;
+
+  if (!payload.translations?.hu?.slug || !payload.translations?.en?.slug) {
+    return res.status(400).json({ message: 'A magyar és angol slug mező megadása kötelező' });
+  }
+
+  try {
+    await validateUniqueSlugs(client, {
+      slugHu: payload.translations.hu.slug,
+      slugEn: payload.translations.en.slug,
+      excludeId: newsId,
+    });
+
+    const existing = await client.query('SELECT * FROM news_articles WHERE id = $1 LIMIT 1', [newsId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A hír nem található' });
+    }
+
+    const current = existing.rows[0];
+    const publishedAt = payload.published
+      ? current.published_at || new Date().toISOString()
+      : null;
+
+    const result = await client.query(
+      `UPDATE news_articles
+       SET category = $1,
+           image_url = $2,
+           image_alt = $3,
+           published = $4,
+           published_at = $5,
+           slug_hu = $6,
+           slug_en = $7,
+           translations = $8,
+           updated_at = NOW()
+       WHERE id = $9
+       RETURNING *`,
+      [
+        payload.category,
+        payload.imageUrl || null,
+        payload.imageAlt || null,
+        Boolean(payload.published),
+        publishedAt,
+        payload.translations.hu.slug,
+        payload.translations.en.slug,
+        payload.translations,
+        newsId,
+      ],
+    );
+
+    return res.status(200).json(mapNewsRow(result.rows[0]));
+  } catch (error) {
+    console.error('Update news error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a hírt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/news/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('DELETE FROM news_articles WHERE id = $1', [req.params.id]);
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete news error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a hírt' });
+  } finally {
+    client.release();
+  }
+});
+
 app.use(express.static(DIST_PATH));
 
 app.get('*', (req, res) => {
@@ -183,7 +489,7 @@ app.get('*', (req, res) => {
   return res.sendFile(path.join(DIST_PATH, 'index.html'));
 });
 
-ensureAdminUser()
+Promise.all([ensureAdminUser(), ensureNewsTables()])
   .then(() => {
     app.listen(PORT, () => {
       console.log(`API server listening on port ${PORT}`);
