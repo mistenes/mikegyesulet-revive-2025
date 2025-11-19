@@ -163,14 +163,22 @@ export default function Regiok() {
               className="scroll-mt-24 animate-fade-in"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
-              {/* Region Header */}
-              <div className="mb-8 pb-4 border-b-4 border-primary">
-                <h2 
-                  className="text-4xl lg:text-5xl font-bold text-foreground"
-                  style={{ fontFamily: "'Sora', sans-serif" }}
-                >
-                  {language === 'hu' ? region.nameHu : region.nameEn}
-                </h2>
+              {/* Region Header with Image */}
+              <div className="relative h-[300px] rounded-t-lg overflow-hidden mb-8">
+                <img 
+                  src={region.image} 
+                  alt={language === 'hu' ? region.nameHu : region.nameEn}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-8">
+                  <h2 
+                    className="text-4xl lg:text-5xl font-bold text-white"
+                    style={{ fontFamily: "'Sora', sans-serif" }}
+                  >
+                    {language === 'hu' ? region.nameHu : region.nameEn}
+                  </h2>
+                </div>
               </div>
               
               {/* Organizations List */}
