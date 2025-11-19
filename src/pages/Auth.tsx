@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Shield, Mail, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { isAuthenticated, login } from "@/services/authService";
+import { getSession, login } from "@/services/authService";
 
 const authSchema = z.object({
   email: z.string().email("Érvényes e-mail címet adj meg"),
@@ -21,9 +21,26 @@ export default function Auth() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isAuthenticated()) {
-      navigate("/admin");
+    let active = true;
+
+    async function redirectIfAuthed() {
+      try {
+        const session = await getSession();
+        if (!active) return;
+
+        if (session) {
+          navigate("/admin");
+        }
+      } catch (error) {
+        // ignore validation errors during initial load
+      }
     }
+
+    redirectIfAuthed();
+
+    return () => {
+      active = false;
+    };
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {

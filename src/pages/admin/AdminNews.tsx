@@ -20,6 +20,7 @@ import { z } from "zod";
 import { createNews, deleteNews, getAllNews, updateNews } from "@/services/newsService";
 import type { NewsArticle, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
+import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 
 const translationSchema = z.object({
   title: z.string().min(1, "A cím kötelező").max(200),
@@ -51,6 +52,7 @@ const createEmptyTranslations = () => ({
 });
 
 export default function AdminNews() {
+  const { isLoading, session } = useAdminAuthGuard();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<NewsArticle | null>(null);
@@ -65,6 +67,19 @@ export default function AdminNews() {
   useEffect(() => {
     loadArticles();
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Betöltés...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return null;
 
   const loadArticles = async () => {
     const data = await getAllNews();

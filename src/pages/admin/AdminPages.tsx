@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { getAllSections, getSectionContent, saveSection } from "@/services/pageContentService";
 import type { LanguageCode } from "@/types/language";
 import type { LocalizedSectionContent, SectionContent } from "@/types/pageContent";
+import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 
 const sectionGroups = {
   fooldal: [
@@ -40,11 +41,25 @@ const sectionGroups = {
 type SectionKey = string;
 
 export default function AdminPages() {
+  const { isLoading, session } = useAdminAuthGuard();
   const [pageContent, setPageContent] = useState<Record<SectionKey, LocalizedSectionContent>>({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<keyof typeof sectionGroups>("fooldal");
   const [activeLanguage, setActiveLanguage] = useState<LanguageCode>("hu");
   const [savingSection, setSavingSection] = useState<string | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Betöltés...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return null;
 
   useEffect(() => {
     const sections = getAllSections();

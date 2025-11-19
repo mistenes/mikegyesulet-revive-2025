@@ -8,8 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Settings, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getSettings, updateSetting } from "@/services/settingsService";
+import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 
 export default function AdminSettings() {
+  const { isLoading: authLoading, session } = useAdminAuthGuard();
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -23,6 +25,19 @@ export default function AdminSettings() {
     setFormData(initial);
     setLoading(false);
   }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Betöltés...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return null;
 
   const handleSave = async () => {
     setSaving(true);

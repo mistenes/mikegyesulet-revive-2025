@@ -1,26 +1,15 @@
-import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Users, FileText, Map, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { isAuthenticated, logout } from "@/services/authService";
+import { logout } from "@/services/authService";
+import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 
 export default function Admin() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isAuthenticated()) {
-      navigate('/auth');
-      return;
-    }
-
-    setIsAdmin(true);
-    setIsLoading(false);
-  }, [navigate]);
+  const { isLoading, session } = useAdminAuthGuard();
 
   const handleLogout = () => {
     logout();
@@ -39,9 +28,7 @@ export default function Admin() {
     );
   }
 
-  if (!isAdmin) {
-    return null;
-  }
+  if (!session) return null;
 
   return (
     <AdminLayout>

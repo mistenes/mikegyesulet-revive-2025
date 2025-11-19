@@ -1,46 +1,64 @@
-const STORAGE_KEY = "mik-admin-session";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
-const DEFAULT_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || "admin@mik.hu";
-const DEFAULT_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "mik-admin";
-
-type Session = {
+export type Session = {
   email: string;
-  loggedInAt: string;
 };
 
-const isBrowser = typeof window !== "undefined";
+let cachedSession: Session | null = null;
 
-export function getSession(): Session | null {
-  if (!isBrowser) return null;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
+async function handleResponse(response: Response) {
+  let payload: any = null;
   try {
-    return JSON.parse(raw) as Session;
-  } catch {
+    payload = await response.json();
+  } catch (error) {
+    // Ignore JSON parse errors and fall back to generic messages
+  }
+
+  if (!response.ok) {
+    const message = payload?.message || 'Ismeretlen hiba történt';
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+export async function login(email: string, password: string): Promise<Session> {
+  const response = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await handleResponse(response);
+  cachedSession = data.user as Session;
+  return cachedSession;
+}
+
+export async function logout(): Promise<void> {
+  cachedSession = null;
+  await fetch(`${API_BASE}/api/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+}
+
+export async function getSession(): Promise<Session | null> {
+  if (cachedSession) return cachedSession;
+
+  const response = await fetch(`${API_BASE}/api/auth/me`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    cachedSession = null;
     return null;
   }
-}
 
-export function isAuthenticated(): boolean {
-  return Boolean(getSession());
-}
-
-export function login(email: string, password: string) {
-  if (email !== DEFAULT_EMAIL || password !== DEFAULT_PASSWORD) {
-    throw new Error("Helytelen belépési adatok");
-  }
-
-  if (!isBrowser) return;
-
-  const session: Session = {
-    email,
-    loggedInAt: new Date().toISOString(),
-  };
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-}
-
-export function logout() {
-  if (!isBrowser) return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  const data = await handleResponse(response);
+  cachedSession = data.user as Session;
+  return cachedSession;
 }
