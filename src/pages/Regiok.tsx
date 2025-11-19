@@ -2,35 +2,12 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Mail, ChevronLeft, ChevronRight } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Mail } from "lucide-react";
 import { regionsData } from "@/data/regions";
-import { useRef } from "react";
 
 export default function Regiok() {
   const { language, t } = useLanguage();
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const scrollLeft = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: -300, behavior: 'smooth' });
-    }
-  };
-
-  const scrollRight = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: 300, behavior: 'smooth' });
-    }
-  };
-
-  // Flatten all organizations from all regions
-  const allOrganizations = regionsData.flatMap(region => 
-    region.organizations.map(org => ({
-      ...org,
-      regionName: language === 'hu' ? region.nameHu : region.nameEn,
-      regionId: region.id
-    }))
-  );
 
   return (
     <div className="min-h-screen bg-background" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -69,86 +46,6 @@ export default function Regiok() {
                 {language === 'hu' ? region.nameHu : region.nameEn}
               </Button>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Organizations Carousel */}
-      <section className="py-16 px-4 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-10">
-            <h2 
-              className="text-3xl md:text-4xl font-bold text-foreground mb-4"
-              style={{ fontFamily: "'Sora', sans-serif" }}
-            >
-              {language === 'hu' ? 'Összes Tagszervezet' : 'All Member Organizations'}
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              {language === 'hu' 
-                ? 'Görgess végig a Kárpát-medence összes tagszervezetén' 
-                : 'Browse through all member organizations across the Carpathian Basin'}
-            </p>
-          </div>
-
-          <div className="relative group">
-            {/* Left Arrow */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-background/95 backdrop-blur-sm shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={scrollLeft}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-
-            {/* Scrollable Container */}
-            <div 
-              ref={scrollContainerRef}
-              className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth pb-4"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {allOrganizations.map((org, index) => (
-                <Card 
-                  key={index}
-                  className="min-w-[320px] max-w-[320px] flex-shrink-0 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer border-border/50"
-                  onClick={() => {
-                    document.getElementById(org.regionId)?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  <CardContent className="p-6 space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1 flex-1">
-                        <div className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs font-semibold rounded-full mb-2">
-                          {org.regionName}
-                        </div>
-                        <h3 className="font-bold text-lg text-foreground line-clamp-2">
-                          {language === 'hu' ? org.name : org.nameEn}
-                        </h3>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
-                      {language === 'hu' ? org.description : org.descriptionEn}
-                    </p>
-                    {org.email && (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t border-border">
-                        <Mail className="h-3 w-3" />
-                        <span className="truncate">{org.email}</span>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Right Arrow */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-background/95 backdrop-blur-sm shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={scrollRight}
-            >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
           </div>
         </div>
       </section>
