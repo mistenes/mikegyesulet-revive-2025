@@ -20,11 +20,6 @@ services:
         sync: false
       - key: ADMIN_JWT_SECRET
         sync: false
-      - key: FRONTEND_ORIGIN
-        fromService:
-          name: mik-app
-          type: web
-          property: url
     autoDeploy: true
 
 databases:

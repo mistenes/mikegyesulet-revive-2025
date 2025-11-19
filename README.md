@@ -29,7 +29,7 @@ Create a `.env` file based on `.env.example`.
 | `ADMIN_EMAIL` | Seeded admin e-mail stored in Postgres |
 | `ADMIN_PASSWORD` | Seeded admin jelszó stored in Postgres |
 | `ADMIN_JWT_SECRET` | Secret for signing admin session tokens |
-| `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`; auto-filled on Render) |
+| `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`; optional on Render because `RENDER_EXTERNAL_URL` is used automatically) |
 
 ### Admin access
 
@@ -47,7 +47,7 @@ Use `render.yaml` to provision:
 - a single Node/Express web service that builds/serves the Vite frontend and exposes the API
 - a managed Postgres database
 
-After importing the blueprint, Render will inject the service URL into `FRONTEND_ORIGIN` automatically and wire Postgres into the `DATABASE_URL`. The API seeds the `admin_users` table with `ADMIN_EMAIL`/`ADMIN_PASSWORD` and secures routes with HTTP-only cookies while serving the built SPA from `dist`.
+After importing the blueprint, Render wires Postgres into the `DATABASE_URL`. The API seeds the `admin_users` table with `ADMIN_EMAIL`/`ADMIN_PASSWORD` and secures routes with HTTP-only cookies while serving the built SPA from `dist`. CORS will automatically allow the deployed site using `RENDER_EXTERNAL_URL`; only set `FRONTEND_ORIGIN` when testing from a separate frontend origin (e.g., local Vite dev).
 
 ## Tests / build
 

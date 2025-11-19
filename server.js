@@ -17,7 +17,8 @@ const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me';
 const COOKIE_NAME = 'mik_admin_session';
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || process.env.RENDER_EXTERNAL_URL || '';
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
+const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
 const HASH_ITERATIONS = 310000;
 
@@ -30,7 +31,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const app = express();
 
-const allowedOrigins = [FRONTEND_ORIGIN, LOCAL_DEV_ORIGIN].filter(Boolean);
+const allowedOrigins = [FRONTEND_ORIGIN, RENDER_EXTERNAL_URL, LOCAL_DEV_ORIGIN].filter(Boolean);
 app.use(
   cors({
     origin: allowedOrigins,
