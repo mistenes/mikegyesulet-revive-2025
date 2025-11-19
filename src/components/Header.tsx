@@ -19,9 +19,9 @@ export const Header = () => {
     { label: t('nav.about'), href: "/rolunk" },
     { label: t('nav.regions'), href: "/regiok" },
     { label: t('nav.documents'), href: "/dokumentumok" },
-    { label: t('nav.contact'), href: "/kapcsolat" },
     { label: t('nav.gallery'), href: "/galeria" },
     { label: t('nav.projects'), href: "/projektek" },
+    { label: t('nav.contact'), href: "/kapcsolat" },
   ];
 
   const isActive = (href: string) => {
