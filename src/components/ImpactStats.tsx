@@ -9,8 +9,8 @@ export const ImpactStats = () => {
   const stats = [
     {
       icon: Users,
-      value: "2000+",
-      label: "Aktív Tag",
+      value: "1000+",
+      label: "Tagszervezeteinken keresztül",
       description: "Fiatal magyar közösségi vezetők",
       color: "text-primary",
       bgColor: "bg-primary/10",
