@@ -10,8 +10,8 @@ export const ImpactStats = () => {
     {
       icon: Users,
       value: "1000+",
-      label: "Tagszervezeteinken keresztül",
-      description: "Fiatal magyar közösségi vezetők",
+      label: "Tag",
+      description: "Tagszervezeteinken keresztül",
       color: "text-primary",
       bgColor: "bg-primary/10",
     },
