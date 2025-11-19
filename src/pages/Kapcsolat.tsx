@@ -186,14 +186,16 @@ export default function Kapcsolat() {
                 </h3>
                 <div className="space-y-4">
                   <div className="space-y-2 text-muted-foreground">
-                    <p className="font-semibold text-foreground">Forintos:</p>
+                    <p className="font-semibold text-foreground">Forint:</p>
                     <p><span className="font-medium">IBAN:</span> HU24 1171 3081 2124 1587 0000 0000</p>
                     <p><span className="font-medium">SZÁMLASZÁM:</span> 11713081-21241587</p>
+                    <p><span className="font-medium">BIC/SWIFT:</span> OTPVHUHB (OTP Bank)</p>
                   </div>
                   <div className="space-y-2 text-muted-foreground">
-                    <p className="font-semibold text-foreground">Eurós:</p>
+                    <p className="font-semibold text-foreground">Euró:</p>
                     <p><span className="font-medium">IBAN:</span> HU65 1176 3134 3717 3887 0000 0000</p>
                     <p><span className="font-medium">SZÁMLASZÁM:</span> 11763134-37173887</p>
+                    <p><span className="font-medium">BIC/SWIFT:</span> OTPVHUHB (OTP Bank)</p>
                   </div>
                 </div>
               </div>
