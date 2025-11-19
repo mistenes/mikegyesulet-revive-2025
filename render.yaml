@@ -1,17 +1,9 @@
 services:
   - type: web
-    name: mik-frontend
-    env: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_BASE_URL
-        value: https://mik-api.onrender.com
-  - type: web
-    name: mik-api
+    name: mik-app
     env: node
     plan: starter
-    buildCommand: npm install
+    buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
       - key: PORT
@@ -29,7 +21,10 @@ services:
       - key: ADMIN_JWT_SECRET
         sync: false
       - key: FRONTEND_ORIGIN
-        value: https://mik-frontend.onrender.com
+        fromService:
+          name: mik-app
+          type: web
+          property: url
     autoDeploy: true
 
 databases:

@@ -3,15 +3,22 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
 
 const { Pool } = pkg;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DIST_PATH = path.join(__dirname, 'dist');
 
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me';
 const COOKIE_NAME = 'mik_admin_session';
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || process.env.RENDER_EXTERNAL_URL || '';
+const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
 const HASH_ITERATIONS = 310000;
 
 if (!process.env.DATABASE_URL) {
@@ -23,10 +30,13 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const app = express();
 
-app.use(cors({
-  origin: FRONTEND_ORIGIN,
-  credentials: true,
-}));
+const allowedOrigins = [FRONTEND_ORIGIN, LOCAL_DEV_ORIGIN].filter(Boolean);
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(cookieParser());
 
@@ -160,6 +170,16 @@ app.get('/api/auth/me', authenticateRequest, async (req, res) => {
 app.post('/api/auth/logout', (_req, res) => {
   res.clearCookie(COOKIE_NAME, { path: '/' });
   return res.status(200).json({ success: true });
+});
+
+app.use(express.static(DIST_PATH));
+
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ message: 'Nem található erőforrás' });
+  }
+
+  return res.sendFile(path.join(DIST_PATH, 'index.html'));
 });
 
 ensureAdminUser()

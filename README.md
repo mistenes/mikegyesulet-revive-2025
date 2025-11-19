@@ -1,6 +1,6 @@
 # Magyar Ifjúsági Konferencia – Revive 2025
 
-This repository contains the refreshed HYCA/MIK website. The app no longer depends on Lovable or Supabase – content is stored locally during development and the codebase is prepared for a Render + Postgres deployment.
+This repository contains the refreshed HYCA/MIK website. The app no longer depends on Lovable or Supabase – content is stored locally during development and the codebase is prepared for a single Render web service backed by Postgres.
 
 ## Tech stack
 
@@ -13,7 +13,7 @@ This repository contains the refreshed HYCA/MIK website. The app no longer depen
 ```bash
 npm install
 npm run dev # frontend (http://localhost:5173)
-npm run start # auth/API service (http://localhost:8080)
+npm run start # production-style build + API/static server (http://localhost:8080)
 ```
 
 ### Environment variables
@@ -24,12 +24,12 @@ Create a `.env` file based on `.env.example`.
 | --- | --- |
 | `VITE_ADMIN_EMAIL` | Front-end admin login e-mail (used for display defaults) |
 | `VITE_ADMIN_PASSWORD` | Front-end admin login jelszó (used for display defaults) |
-| `VITE_API_BASE_URL` | Base URL for the API service (e.g., `http://localhost:8080`) |
+| `VITE_API_BASE_URL` | Base URL for the API service (leave empty for same-origin in production) |
 | `DATABASE_URL` | Postgres connection string for the API service |
 | `ADMIN_EMAIL` | Seeded admin e-mail stored in Postgres |
 | `ADMIN_PASSWORD` | Seeded admin jelszó stored in Postgres |
 | `ADMIN_JWT_SECRET` | Secret for signing admin session tokens |
-| `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`) |
+| `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`; auto-filled on Render) |
 
 ### Admin access
 
@@ -44,11 +44,10 @@ All page sections are bilingual. When you edit or add news the Hungarian and Eng
 
 Use `render.yaml` to provision:
 
-- a static-site service for the Vite build
-- a Node/Express API service connected to
+- a single Node/Express web service that builds/serves the Vite frontend and exposes the API
 - a managed Postgres database
 
-After importing the blueprint, set `VITE_API_BASE_URL` for the static site and map the Postgres connection string into the API service. The API seeds the `admin_users` table with `ADMIN_EMAIL`/`ADMIN_PASSWORD` and secures routes with HTTP-only cookies.
+After importing the blueprint, Render will inject the service URL into `FRONTEND_ORIGIN` automatically and wire Postgres into the `DATABASE_URL`. The API seeds the `admin_users` table with `ADMIN_EMAIL`/`ADMIN_PASSWORD` and secures routes with HTTP-only cookies while serving the built SPA from `dist`.
 
 ## Tests / build
 
@@ -60,6 +59,6 @@ npm run build
 
 - `src/services/*` – local storage backed services replacing Supabase
 - `src/data/default*.ts` – bilingual seed content and news used on first load
-- `render.yaml` – Render blueprint with static site + API + Postgres resources
+- `render.yaml` – Render blueprint with a single web service plus Postgres
 
 Feel free to adapt these services once the Render API is available.
