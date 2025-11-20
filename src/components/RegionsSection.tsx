@@ -149,7 +149,7 @@ export const RegionsSection = () => {
                   className="rounded-full border-border bg-muted/50 hover:border-primary hover:bg-primary/5 text-sm font-medium text-foreground px-4 py-2 h-auto"
                 >
                   {regionAnchors[region] ? (
-                    <Link to={`/rolunk#${regionAnchors[region]}`}>{region}</Link>
+                    <Link to={`/regiok#${regionAnchors[region]}`}>{region}</Link>
                   ) : (
                     <span>{region}</span>
                   )}
