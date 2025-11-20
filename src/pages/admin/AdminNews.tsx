@@ -23,6 +23,7 @@ import type { NewsArticle, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { renderMarkdown } from "@/utils/markdown";
+import { Navigate } from "react-router-dom";
 
 const translationSchema = z.object({
   title: z.string().min(1, "A cím kötelező").max(200),
@@ -123,7 +124,7 @@ export default function AdminNews() {
     );
   }
 
-  if (!session) return null;
+  if (!session) return <Navigate to="/auth" replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
