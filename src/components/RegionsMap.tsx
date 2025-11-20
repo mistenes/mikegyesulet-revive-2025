@@ -149,13 +149,13 @@ export const RegionsMap = () => {
           border-radius: 16px !important;
           overflow: hidden;
         }
-        
+
         .mapboxgl-popup-tip {
           border-top-color: rgba(255, 255, 255, 0.95) !important;
         }
       `;
       document.head.appendChild(style);
-      
+
       mapboxgl.accessToken = tokenToUse;
 
       map.current = new mapboxgl.Map({
@@ -182,6 +182,8 @@ export const RegionsMap = () => {
       // Wait for map to load before adding markers
       map.current.on('load', () => {
         if (!map.current) return;
+
+        map.current.resize();
 
         // Track currently open popup
         let currentPopup: mapboxgl.Popup | null = null;
@@ -296,6 +298,7 @@ export const RegionsMap = () => {
         setIsMapInitialized(true);
         toast.success("Térkép betöltve! Kattints a jelölőkre a részletekért.");
       });
+
     } catch (error) {
       toast.error("Hiba a térkép betöltésekor. Ellenőrizd a token-t!");
       console.error(error);
@@ -307,6 +310,20 @@ export const RegionsMap = () => {
       map.current?.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isMapInitialized || !map.current) return;
+
+    const handleResize = () => {
+      map.current?.resize();
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [isMapInitialized]);
 
   return (
     <section
@@ -395,9 +412,9 @@ export const RegionsMap = () => {
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none z-10" />
             <div
               ref={mapContainer}
-              className="w-full h-[600px] relative"
-              style={{ 
-                display: isMapInitialized ? "block" : "none",
+              className="w-full h-[600px] relative transition-opacity duration-300"
+              style={{
+                opacity: isMapInitialized ? 1 : 0,
                 background: 'linear-gradient(to bottom, #f8f9fa, #e9ecef)'
               }}
             />
