@@ -53,6 +53,18 @@ export async function getPublishedNews(limit = 6): Promise<NewsArticle[]> {
   return data.items;
 }
 
+export async function getPublishedNewsPage(params: {
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<NewsListResponse> {
+  const url = new URL(`${API_BASE}/api/news/public`);
+  if (params.page) url.searchParams.set("page", String(params.page));
+  if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
+
+  const response = await fetch(url.toString());
+  return handleResponse<NewsListResponse>(response);
+}
+
 export async function getNewsBySlug(slug: string): Promise<NewsArticle | null> {
   if (!slug) return null;
   const response = await fetch(`${API_BASE}/api/news/slug/${encodeURIComponent(slug)}`);

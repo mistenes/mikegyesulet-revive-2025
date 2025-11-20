@@ -22,6 +22,7 @@ import Projektek from "./pages/Projektek";
 import Galeria from "./pages/Galeria";
 import NotFound from "./pages/NotFound";
 import NewsArticlePage from "./pages/NewsArticle";
+import NewsIndex from "./pages/NewsIndex";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ const App = () => {
               <Route path="/dokumentumok" element={<Dokumentumok />} />
               <Route path="/projektek" element={<Projektek />} />
               <Route path="/galeria" element={<Galeria />} />
+              <Route path="/news" element={<NewsIndex />} />
               <Route path="/news/:slug" element={<NewsArticlePage />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/admin" element={<Admin />} />
