@@ -143,6 +143,39 @@ async function ensureNewsTables() {
   }
 }
 
+async function ensureProjectsTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        hero_image_url TEXT,
+        hero_image_alt TEXT,
+        location TEXT,
+        date_range TEXT,
+        link_url TEXT,
+        published BOOLEAN NOT NULL DEFAULT TRUE,
+        translations JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS projects_sort_order_idx ON projects(sort_order, created_at DESC);',
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS projects_published_idx ON projects(published, sort_order);',
+    );
+  } finally {
+    client.release();
+  }
+}
+
 function mapNewsRow(row) {
   return {
     id: row.id,
@@ -154,6 +187,22 @@ function mapNewsRow(row) {
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
     translations: row.translations || { hu: {}, en: {} },
+  };
+}
+
+function mapProjectRow(row) {
+  return {
+    id: row.id,
+    sortOrder: row.sort_order ?? 0,
+    heroImageUrl: row.hero_image_url || '',
+    heroImageAlt: row.hero_image_alt || '',
+    location: row.location || '',
+    dateRange: row.date_range || '',
+    linkUrl: row.link_url || '',
+    published: row.published,
+    translations: row.translations || { hu: {}, en: {} },
+    createdAt: row.created_at ? row.created_at.toISOString() : '',
+    updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
   };
 }
 
@@ -252,6 +301,209 @@ app.get('/api/public/mapbox-token', (_req, res) => {
   }
 
   return res.status(200).json({ token: MAPBOX_TOKEN });
+});
+
+app.get('/api/projects', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const search = (req.query.search || '').toString().trim();
+  const status = (req.query.status || 'all').toString();
+
+  const filters = [];
+  const values = [];
+
+  if (status === 'published') {
+    filters.push('published = TRUE');
+  } else if (status === 'draft') {
+    filters.push('published = FALSE');
+  }
+
+  if (search) {
+    values.push(`%${search}%`);
+    filters.push(
+      `(LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'hu' ->> 'description') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'description') LIKE LOWER($${values.length})
+        OR LOWER(location) LIKE LOWER($${values.length}))`,
+    );
+  }
+
+  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+  try {
+    const result = await client.query(
+      `SELECT *
+       FROM projects
+       ${whereClause}
+       ORDER BY sort_order ASC, created_at DESC`,
+      values,
+    );
+
+    const items = result.rows.map(mapProjectRow);
+    return res.status(200).json({ items });
+  } catch (error) {
+    console.error('List projects error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a projekteket' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/projects/public', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT *
+       FROM projects
+       WHERE published = TRUE
+       ORDER BY sort_order ASC, created_at DESC`,
+    );
+
+    return res.status(200).json({ items: result.rows.map(mapProjectRow) });
+  } catch (error) {
+    console.error('Public projects error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a projekteket' });
+  } finally {
+    client.release();
+  }
+});
+
+function validateProjectPayload(payload) {
+  if (!payload?.translations?.hu?.title || !payload?.translations?.en?.title) {
+    const error = new Error('A magyar és angol cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!payload?.translations?.hu?.description || !payload?.translations?.en?.description) {
+    const error = new Error('A magyar és angol leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+}
+
+app.post('/api/projects', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+
+  try {
+    validateProjectPayload(payload);
+
+    const orderResult = await client.query('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM projects');
+    const nextOrder = Number(orderResult.rows[0]?.next_order || 1);
+
+    const result = await client.query(
+      `INSERT INTO projects
+       (sort_order, hero_image_url, hero_image_alt, location, date_range, link_url, published, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        payload.sortOrder ?? nextOrder,
+        payload.heroImageUrl || null,
+        payload.heroImageAlt || null,
+        payload.location || null,
+        payload.dateRange || null,
+        payload.linkUrl || null,
+        Boolean(payload.published),
+        payload.translations,
+      ],
+    );
+
+    return res.status(201).json(mapProjectRow(result.rows[0]));
+  } catch (error) {
+    console.error('Create project error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült létrehozni a projektet' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/projects/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+  const projectId = req.params.id;
+
+  try {
+    validateProjectPayload(payload);
+
+    const existing = await client.query('SELECT * FROM projects WHERE id = $1 LIMIT 1', [projectId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A projekt nem található' });
+    }
+
+    const result = await client.query(
+      `UPDATE projects
+       SET sort_order = $1,
+           hero_image_url = $2,
+           hero_image_alt = $3,
+           location = $4,
+           date_range = $5,
+           link_url = $6,
+           published = $7,
+           translations = $8,
+           updated_at = NOW()
+       WHERE id = $9
+       RETURNING *`,
+      [
+        payload.sortOrder ?? existing.rows[0].sort_order,
+        payload.heroImageUrl || null,
+        payload.heroImageAlt || null,
+        payload.location || null,
+        payload.dateRange || null,
+        payload.linkUrl || null,
+        Boolean(payload.published),
+        payload.translations,
+        projectId,
+      ],
+    );
+
+    return res.status(200).json(mapProjectRow(result.rows[0]));
+  } catch (error) {
+    console.error('Update project error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a projektet' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/projects/reorder', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const order = Array.isArray(req.body?.order) ? req.body.order : [];
+
+  if (!order.length) {
+    return res.status(400).json({ message: 'Érvénytelen rendezési sorrend' });
+  }
+
+  try {
+    await client.query('BEGIN');
+    for (let index = 0; index < order.length; index += 1) {
+      const id = order[index];
+      await client.query('UPDATE projects SET sort_order = $1, updated_at = NOW() WHERE id = $2', [index + 1, id]);
+    }
+    await client.query('COMMIT');
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Reorder projects error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a sorrendet' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/projects/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete project error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a projektet' });
+  } finally {
+    client.release();
+  }
 });
 
 app.get('/api/news', authenticateRequest, async (req, res) => {
@@ -498,7 +750,7 @@ app.get('*', (req, res) => {
   return res.sendFile(path.join(DIST_PATH, 'index.html'));
 });
 
-Promise.all([ensureAdminUser(), ensureNewsTables()])
+Promise.all([ensureAdminUser(), ensureNewsTables(), ensureProjectsTables()])
   .then(() => {
     app.listen(PORT, () => {
       console.log(`API server listening on port ${PORT}`);

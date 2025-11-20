@@ -10,6 +10,7 @@ import Admin from "./pages/Admin";
 import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminProjects from "./pages/admin/AdminProjects";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -41,6 +42,7 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/pages" element={<AdminPages />} />
             <Route path="/admin/news" element={<AdminNews />} />
+            <Route path="/admin/projects" element={<AdminProjects />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
