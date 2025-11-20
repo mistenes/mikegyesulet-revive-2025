@@ -1,9 +1,12 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LanguageProvider } from "@/contexts/LanguageContext";
+import { getSettings } from "@/services/settingsService";
+import mikLogo from "@/assets/mik-logo.svg";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
@@ -22,35 +25,51 @@ import NewsArticlePage from "./pages/NewsArticle";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <LanguageProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/rolunk" element={<Rolunk />} />
-            <Route path="/regiok" element={<Regiok />} />
-            <Route path="/kapcsolat" element={<Kapcsolat />} />
-            <Route path="/dokumentumok" element={<Dokumentumok />} />
-            <Route path="/projektek" element={<Projektek />} />
-            <Route path="/galeria" element={<Galeria />} />
-            <Route path="/news/:slug" element={<NewsArticlePage />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/admin/pages" element={<AdminPages />} />
-            <Route path="/admin/news" element={<AdminNews />} />
-            <Route path="/admin/projects" element={<AdminProjects />} />
-            <Route path="/admin/settings" element={<AdminSettings />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </LanguageProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  useEffect(() => {
+    const settings = getSettings();
+    const faviconUrl =
+      settings.general.site_favicon?.value || settings.general.site_logo?.value || mikLogo;
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.type = "image/svg+xml";
+    link.href = faviconUrl;
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <LanguageProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/rolunk" element={<Rolunk />} />
+              <Route path="/regiok" element={<Regiok />} />
+              <Route path="/kapcsolat" element={<Kapcsolat />} />
+              <Route path="/dokumentumok" element={<Dokumentumok />} />
+              <Route path="/projektek" element={<Projektek />} />
+              <Route path="/galeria" element={<Galeria />} />
+              <Route path="/news/:slug" element={<NewsArticlePage />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/pages" element={<AdminPages />} />
+              <Route path="/admin/news" element={<AdminNews />} />
+              <Route path="/admin/projects" element={<AdminProjects />} />
+              <Route path="/admin/settings" element={<AdminSettings />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </LanguageProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

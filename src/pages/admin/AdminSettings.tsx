@@ -107,6 +107,17 @@ export default function AdminSettings() {
                 onChange={(e) => setFormData({ ...formData, site_logo: e.target.value })}
                 placeholder="https://..."
               />
+              <p className="text-xs text-muted-foreground">Ugyanez az ikon kerül a fejlécbe és a faviconhoz is.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Favicon URL</Label>
+              <Input
+                value={formData.site_favicon || ""}
+                onChange={(e) => setFormData({ ...formData, site_favicon: e.target.value })}
+                placeholder="https://..."
+              />
+              <p className="text-xs text-muted-foreground">Ha üres, automatikusan a fenti logó kerül használatra.</p>
             </div>
 
             <Button onClick={handleSave} disabled={saving} className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">

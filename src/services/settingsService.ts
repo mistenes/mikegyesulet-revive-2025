@@ -1,3 +1,4 @@
+import mikLogo from "@/assets/mik-logo.svg";
 import { readJson, writeJson } from "./storage";
 
 type Setting = {
@@ -26,7 +27,11 @@ const defaultSettings: SettingsStore = {
     },
     site_logo: {
       label: "Logó URL",
-      value: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop",
+      value: mikLogo,
+    },
+    site_favicon: {
+      label: "Favicon URL",
+      value: mikLogo,
     },
   },
 };
