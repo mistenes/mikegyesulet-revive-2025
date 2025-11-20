@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,24 +84,7 @@ export default function AdminNews() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  useEffect(() => {
-    loadArticles();
-  }, [page, debouncedSearch, statusFilter]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Betöltés...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!session) return null;
-
-  const loadArticles = async () => {
+  const loadArticles = useCallback(async () => {
     setIsListLoading(true);
     try {
       const { items, total: count } = await getAdminNews({
@@ -116,7 +100,25 @@ export default function AdminNews() {
     } finally {
       setIsListLoading(false);
     }
-  };
+  }, [debouncedSearch, page, statusFilter]);
+
+  useEffect(() => {
+    if (!session) return;
+    loadArticles();
+  }, [loadArticles, session]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Betöltés...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return <Navigate to="/auth" replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
