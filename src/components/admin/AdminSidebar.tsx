@@ -10,16 +10,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  LayoutDashboard,
-  FileText,
-  Settings,
-  Key,
-  Users,
-  Map,
-  Image,
-  FileEdit,
-} from "lucide-react";
+import { LayoutDashboard, FileText, Settings, FileEdit, FolderKanban } from "lucide-react";
 
 const menuItems = [
   {
@@ -38,9 +29,9 @@ const menuItems = [
     icon: FileText,
   },
   {
-    title: "API Kulcsok",
-    url: "/admin/api-settings",
-    icon: Key,
+    title: "Projektek",
+    url: "/admin/projects",
+    icon: FolderKanban,
   },
   {
     title: "Beállítások",

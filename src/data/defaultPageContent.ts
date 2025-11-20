@@ -1,0 +1,90 @@
+import { PageContentStore } from "@/types/pageContent";
+
+export const defaultPageContent: PageContentStore = {
+  hero_content: {
+    hu: {
+      title: "ÜDVÖZLÜNK A MAGYAR IFJÚSÁGI KONFERENCIA HONLAPJÁN!",
+      description: "A Magyar Ifjúsági Konferencia Egyesület összeköti a Kárpát-medence magyar fiataljait.",
+      primaryButtonText: "TAGSZERVEZETI PORTÁL",
+      primaryButtonUrl: "https://dashboard.mikegyesulet.hu",
+      secondaryButtonText: "TUDJ MEG TÖBBET"
+    },
+    en: {
+      title: "VOICE OF HUNGARIAN YOUTH",
+      description: "The Hungarian Youth Conference Association unites young Hungarians across the Carpathian Basin.",
+      primaryButtonText: "MEMBER PORTAL",
+      primaryButtonUrl: "https://dashboard.mikegyesulet.hu",
+      secondaryButtonText: "LEARN MORE"
+    }
+  },
+  hero_stats: {
+    hu: {
+      stats: [
+        { value: "2000+", label: "Aktív tag" },
+        { value: "10", label: "Régió" },
+        { value: "150+", label: "Projekt" }
+      ]
+    },
+    en: {
+      stats: [
+        { value: "2000+", label: "Active members" },
+        { value: "10", label: "Regions" },
+        { value: "150+", label: "Projects" }
+      ]
+    }
+  },
+  news_section: {
+    hu: {
+      subtitle: "FRISS HÍREINK, ÍRÁSAINK",
+      title: "TÁJÉKOZÓDJ SZÜLŐFÖLDÜNKRŐL!",
+      description: "Olvasd el legfrissebb híreinket a magyar fiatalokról a Kárpát-medencében.",
+      buttonText: "MINDEN HÍR"
+    },
+    en: {
+      subtitle: "OUR LATEST UPDATES",
+      title: "STAY INFORMED ABOUT HUNGARIAN COMMUNITIES",
+      description: "Read the latest stories about Hungarian youth living across the Carpathian Basin.",
+      buttonText: "VIEW ALL NEWS"
+    }
+  },
+  regions_section: {
+    hu: {
+      eyebrow: "RÉGIÓK",
+      title: "Közösségeink a Kárpát-medencében",
+      description: "Több mint 10 régióban képviseljük a magyar fiatalokat.",
+      buttonText: "Fedezd fel a régiókat",
+      chips: ["Erdély", "Felvidék", "Kárpátalja", "Vajdaság", "Horvátország", "Szlovénia"]
+    },
+    en: {
+      eyebrow: "REGIONS",
+      title: "Our communities across the Carpathian Basin",
+      description: "We represent young Hungarians in more than 10 regions.",
+      buttonText: "Discover the regions",
+      chips: ["Transylvania", "Upper Hungary", "Transcarpathia", "Vojvodina", "Croatia", "Slovenia"]
+    }
+  },
+  about_section: {
+    hu: {
+      badge: "RÓLUNK",
+      title: "KIK VAGYUNK MI?",
+      subtitle: "Magyar fiatalok összefogása",
+      description: "Kattints, hogy megtudd, kik alkotják a MIK-et, hogyan oszlik meg a munka, és ismerd meg szervezeti struktúránkat.",
+      buttonText: "Magunkról",
+      ctaBadge: "ALAPÍTÓ NYILATKOZAT",
+      ctaTitle: "Célkitűzéseink",
+      ctaDescription: "Alapítóink világosan leírták, miért kell a magyar fiataloknak közös egyeztető fórum.",
+      ctaButton: "Megnyitás"
+    },
+    en: {
+      badge: "ABOUT",
+      title: "WHO ARE WE?",
+      subtitle: "Uniting Hungarian youth",
+      description: "Learn who keeps HYCA running, how we work together and how the organisation is structured.",
+      buttonText: "About us",
+      ctaBadge: "FOUNDERS' STATEMENT",
+      ctaTitle: "Our mission",
+      ctaDescription: "The founders outlined why Hungarian youth needs a shared platform across the world.",
+      ctaButton: "Open"
+    }
+  }
+};

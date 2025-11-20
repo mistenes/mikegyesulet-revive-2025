@@ -1,73 +1,72 @@
-# Welcome to your Lovable project
+# Magyar Ifjúsági Konferencia – Revive 2025
 
-## Project info
+This repository contains the refreshed HYCA/MIK website. The app no longer depends on Lovable or Supabase – content is stored locally during development and the codebase is prepared for a single Render web service backed by Postgres.
 
-**URL**: https://lovable.dev/projects/d24b0c23-af68-493e-8722-d46346c880f5
+## Tech stack
 
-## How can I edit this code?
+- [Vite](https://vitejs.dev/) + React + TypeScript
+- [shadcn/ui](https://ui.shadcn.com/) + Tailwind CSS
+- Local data services (`newsService`, `pageContentService`, `settingsService`) with an accompanying API (`server.js`) that authenticates admins against Postgres and issues HTTP-only session cookies
 
-There are several ways of editing your application.
+## Getting started
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/d24b0c23-af68-493e-8722-d46346c880f5) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```bash
+npm install
+npm run dev # frontend (http://localhost:5173)
+npm run start # production-style build + API/static server (http://localhost:8080)
 ```
 
-**Edit a file directly in GitHub**
+> Tip: keep `npm run start` running when you need `/admin/news` or other admin screens to persist data during development. The Vite dev server proxies `/api` to `http://localhost:8080`, so the admin UI can talk to the API without changing URLs.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Environment variables
 
-**Use GitHub Codespaces**
+Create a `.env` file based on `.env.example`.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+| Variable | Purpose |
+| --- | --- |
+| `VITE_ADMIN_EMAIL` | Front-end admin login e-mail (used for display defaults) |
+| `VITE_ADMIN_PASSWORD` | Front-end admin login jelszó (used for display defaults) |
+| `VITE_API_BASE_URL` | Base URL for the API service (leave empty for same-origin in production) |
+| `DATABASE_URL` | Postgres connection string for the API service |
+| `ADMIN_EMAIL` | Seeded admin e-mail stored in Postgres |
+| `ADMIN_PASSWORD` | Seeded admin jelszó stored in Postgres |
+| `ADMIN_JWT_SECRET` | Secret for signing admin session tokens |
+| `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`; optional on Render because `RENDER_EXTERNAL_URL` is used automatically) |
+| `MAPBOX_TOKEN` | Server-side token exposed to the frontend via `/api/public/mapbox-token` for the regions map |
+| `VITE_MAPBOX_TOKEN` | Optional direct token for local dev; overrides the API lookup when set |
 
-## What technologies are used for this project?
+### Admin access
 
-This project is built with:
+1. Visit `/auth`
+2. Ensure `npm run start` is running with a reachable Postgres (`DATABASE_URL`)
+3. Sign in with the credentials from `.env` (seeded into Postgres on boot)
+4. Edit content via `/admin/pages`, `/admin/news`, and `/admin/settings`
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+All page sections are bilingual. When you edit or add news the Hungarian and English versions are saved together, and the home page updates instantly.
 
-## How can I deploy this project?
+## Render blueprint
 
-Simply open [Lovable](https://lovable.dev/projects/d24b0c23-af68-493e-8722-d46346c880f5) and click on Share -> Publish.
+Use `render.yaml` to provision:
 
-## Can I connect a custom domain to my Lovable project?
+- a single Node/Express web service that builds/serves the Vite frontend and exposes the API
+- a managed Postgres database
 
-Yes, you can!
+After importing the blueprint, Render wires Postgres into the `DATABASE_URL`. The API seeds the `admin_users` table with `ADMIN_EMAIL`/`ADMIN_PASSWORD` and secures routes with HTTP-only cookies while serving the built SPA from `dist`. CORS will automatically allow the deployed site using `RENDER_EXTERNAL_URL`; only set `FRONTEND_ORIGIN` when testing from a separate frontend origin (e.g., local Vite dev).
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+The blueprint leaves secrets (`MAPBOX_TOKEN`, `ADMIN_PASSWORD`, `ADMIN_JWT_SECRET`) blank so Render always prompts for them on deploy and keeps them in sync without needing manual YAML edits. Updating those values in the Render dashboard and redeploying will refresh the running environment.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+For the regions map to render, set `MAPBOX_TOKEN` in the Render dashboard. The frontend fetches it from `/api/public/mapbox-token`, so no admin form is required.
+
+## Tests / build
+
+```bash
+npm run build
+```
+
+## Folder highlights
+
+- `src/services/*` – local storage backed services replacing Supabase
+- `src/data/default*.ts` – bilingual seed content and news used on first load
+- `render.yaml` – Render blueprint with a single web service plus Postgres
+
+Feel free to adapt these services once the Render API is available.

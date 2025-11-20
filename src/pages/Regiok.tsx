@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -8,6 +10,20 @@ import { regionsData } from "@/data/regions";
 
 export default function Regiok() {
   const { language, t } = useLanguage();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!location.hash) return;
+
+    const anchor = location.hash.replace('#', '');
+    const target = document.getElementById(anchor);
+    if (target) {
+      // Delay ensures layout is ready before scrolling
+      setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
+    }
+  }, [location.hash]);
 
   return (
     <div className="min-h-screen bg-background" style={{ fontFamily: "'Inter', sans-serif" }}>

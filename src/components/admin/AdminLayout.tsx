@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "./AdminSidebar";
 import { LogOut, Shield } from "lucide-react";
 import { toast } from "sonner";
+import { logout } from "@/services/authService";
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -14,7 +15,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem("adminAuth");
+    logout();
     toast.success("Kijelentkezve");
     navigate("/admin");
   };

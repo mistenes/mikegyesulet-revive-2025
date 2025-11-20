@@ -1,72 +1,121 @@
 import { useRef } from "react";
 import { TrendingUp, Users, Globe, Award } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+import { useLanguage } from "@/contexts/LanguageContext";
+
+const copy = {
+  hu: {
+    badge: "Büszkék vagyunk",
+    title: "Hatásunk számokban",
+    description: "Több mint két évtizede építjük a magyar ifjúság jövőjét, és számíthatunk közösségünk erejére.",
+    stats: [
+      {
+        icon: Users,
+        value: "1000+",
+        label: "Tag",
+        description: "Tagszervezeteinken keresztül",
+        color: "text-primary",
+        bgColor: "bg-primary/10",
+      },
+      {
+        icon: Globe,
+        value: "10",
+        label: "Régió",
+        description: "A Kárpát-medence minden sarkából",
+        color: "text-accent",
+        bgColor: "bg-accent/10",
+      },
+      {
+        icon: TrendingUp,
+        value: "150+",
+        label: "Projekt",
+        description: "Sikeres közösségi programok",
+        color: "text-primary-glow",
+        bgColor: "bg-primary-glow/10",
+      },
+      {
+        icon: Award,
+        value: "25+",
+        label: "Év",
+        description: "Tapasztalat és elkötelezettség",
+        color: "text-accent",
+        bgColor: "bg-accent/10",
+      },
+    ],
+  },
+  en: {
+    badge: "What we are proud of",
+    title: "Our impact in numbers",
+    description: "For more than two decades we have been building the future of Hungarian youth together.",
+    stats: [
+      {
+        icon: Users,
+        value: "1000+",
+        label: "Members",
+        description: "Through our network of organisations",
+        color: "text-primary",
+        bgColor: "bg-primary/10",
+      },
+      {
+        icon: Globe,
+        value: "10",
+        label: "Regions",
+        description: "Across the entire Carpathian Basin",
+        color: "text-accent",
+        bgColor: "bg-accent/10",
+      },
+      {
+        icon: TrendingUp,
+        value: "150+",
+        label: "Projects",
+        description: "Successful community programmes",
+        color: "text-primary-glow",
+        bgColor: "bg-primary-glow/10",
+      },
+      {
+        icon: Award,
+        value: "25+",
+        label: "Years",
+        description: "Experience and dedication",
+        color: "text-accent",
+        bgColor: "bg-accent/10",
+      },
+    ],
+  },
+};
 
 export const ImpactStats = () => {
   const sectionRef = useRef<HTMLElement>(null);
   const isVisible = useScrollAnimation(sectionRef);
-
-  const stats = [
-    {
-      icon: Users,
-      value: "1000+",
-      label: "Tag",
-      description: "Tagszervezeteinken keresztül",
-      color: "text-primary",
-      bgColor: "bg-primary/10",
-    },
-    {
-      icon: Globe,
-      value: "10",
-      label: "Régió",
-      description: "A Kárpát-medence minden sarkából",
-      color: "text-accent",
-      bgColor: "bg-accent/10",
-    },
-    {
-      icon: TrendingUp,
-      value: "150+",
-      label: "Projekt",
-      description: "Sikeres közösségi programok",
-      color: "text-primary-glow",
-      bgColor: "bg-primary-glow/10",
-    },
-    {
-      icon: Award,
-      value: "25+",
-      label: "Év",
-      description: "Tapasztalat és elkötelezettség",
-      color: "text-accent",
-      bgColor: "bg-accent/10",
-    },
-  ];
+  const { language } = useLanguage();
+  const content = copy[language];
 
   return (
     <section ref={sectionRef} className="py-24 bg-muted/30 relative overflow-hidden">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-grid-pattern opacity-5" />
-      
+
       <div className="container px-4 relative z-10">
         <div className="text-center mb-16">
-          <div 
+          <div
             className={`transition-all duration-700 ${
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
             }`}
           >
             <p className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">
-              Büszkék vagyunk
+              {content.badge}
             </p>
             <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Hatásunk Számokban
+              {content.title}
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Több mint két évtizede építjük a magyar ifjúság jövőjét, és számíthatunk közösségünk erejére
+              {content.description}
             </p>
           </div>
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {stats.map((stat, index) => (
+          {content.stats.map((stat, index) => (
             <div
               key={index}
               className={`group transition-all duration-700 delay-${index * 100} ${
@@ -82,7 +131,7 @@ export const ImpactStats = () => {
 
                 {/* Value */}
                 <div className="mb-2">
-                  <span 
+                  <span
                     className={`text-5xl font-bold ${stat.color}`}
                     style={{ fontFamily: "'Sora', sans-serif" }}
                   >
