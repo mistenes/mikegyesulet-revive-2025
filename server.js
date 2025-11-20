@@ -24,6 +24,95 @@ const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN || process.env.VITE_MAPBOX_TOKEN |
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 
+const defaultPageContent = {
+  hero_content: {
+    hu: {
+      title: 'ÜDVÖZLÜNK A MAGYAR IFJÚSÁGI KONFERENCIA HONLAPJÁN!',
+      description: 'A Magyar Ifjúsági Konferencia Egyesület összeköti a Kárpát-medence magyar fiataljait.',
+      primaryButtonText: 'TAGSZERVEZETI PORTÁL',
+      primaryButtonUrl: 'https://dashboard.mikegyesulet.hu',
+      secondaryButtonText: 'TUDJ MEG TÖBBET',
+    },
+    en: {
+      title: 'VOICE OF HUNGARIAN YOUTH',
+      description: 'The Hungarian Youth Conference Association unites young Hungarians across the Carpathian Basin.',
+      primaryButtonText: 'MEMBER PORTAL',
+      primaryButtonUrl: 'https://dashboard.mikegyesulet.hu',
+      secondaryButtonText: 'LEARN MORE',
+    },
+  },
+  hero_stats: {
+    hu: {
+      stats: [
+        { value: '2000+', label: 'Aktív tag' },
+        { value: '10', label: 'Régió' },
+        { value: '150+', label: 'Projekt' },
+      ],
+    },
+    en: {
+      stats: [
+        { value: '2000+', label: 'Active members' },
+        { value: '10', label: 'Regions' },
+        { value: '150+', label: 'Projects' },
+      ],
+    },
+  },
+  news_section: {
+    hu: {
+      subtitle: 'FRISS HÍREINK, ÍRÁSAINK',
+      title: 'TÁJÉKOZÓDJ SZÜLŐFÖLDÜNKRŐL!',
+      description: 'Olvasd el legfrissebb híreinket a magyar fiatalokról a Kárpát-medencében.',
+      buttonText: 'MINDEN HÍR',
+    },
+    en: {
+      subtitle: 'OUR LATEST UPDATES',
+      title: 'STAY INFORMED ABOUT HUNGARIAN COMMUNITIES',
+      description: 'Read the latest stories about Hungarian youth living across the Carpathian Basin.',
+      buttonText: 'VIEW ALL NEWS',
+    },
+  },
+  regions_section: {
+    hu: {
+      eyebrow: 'RÉGIÓK',
+      title: 'Közösségeink a Kárpát-medencében',
+      description: 'Több mint 10 régióban képviseljük a magyar fiatalokat.',
+      buttonText: 'Fedezd fel a régiókat',
+      chips: ['Erdély', 'Felvidék', 'Kárpátalja', 'Vajdaság', 'Horvátország', 'Szlovénia'],
+    },
+    en: {
+      eyebrow: 'REGIONS',
+      title: 'Our communities across the Carpathian Basin',
+      description: 'We represent young Hungarians in more than 10 regions.',
+      buttonText: 'Discover the regions',
+      chips: ['Transylvania', 'Upper Hungary', 'Transcarpathia', 'Vojvodina', 'Croatia', 'Slovenia'],
+    },
+  },
+  about_section: {
+    hu: {
+      badge: 'RÓLUNK',
+      title: 'KIK VAGYUNK MI?',
+      subtitle: 'Magyar fiatalok összefogása',
+      description: 'Kattints, hogy megtudd, kik alkotják a MIK-et, hogyan oszlik meg a munka, és ismerd meg szervezeti struktúránkat.',
+      buttonText: 'Magunkról',
+      ctaBadge: 'ALAPÍTÓ NYILATKOZAT',
+      ctaTitle: 'Célkitűzéseink',
+      ctaDescription: 'Alapítóink világosan leírták, miért kell a magyar fiataloknak közös egyeztető fórum.',
+      ctaButton: 'Megnyitás',
+    },
+    en: {
+      badge: 'ABOUT',
+      title: 'WHO ARE WE?',
+      subtitle: 'Uniting Hungarian youth',
+      description: 'Learn who keeps HYCA running, how we work together and how the organisation is structured.',
+      buttonText: 'About us',
+      ctaBadge: 'FOUNDERS\' STATEMENT',
+      ctaTitle: 'Our mission',
+      ctaDescription: 'The founders outlined why Hungarian youth needs a shared platform across the world.',
+      ctaButton: 'Open',
+    },
+  },
+};
+
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL must be set to start the API server.');
   process.exit(1);
@@ -176,6 +265,31 @@ async function ensureProjectsTables() {
   }
 }
 
+async function ensurePageContentTable() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS page_content (
+        section_key TEXT PRIMARY KEY,
+        translations JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    for (const [sectionKey, translations] of Object.entries(defaultPageContent)) {
+      await client.query(
+        `INSERT INTO page_content (section_key, translations)
+         VALUES ($1, $2)
+         ON CONFLICT (section_key) DO NOTHING`,
+        [sectionKey, translations],
+      );
+    }
+  } finally {
+    client.release();
+  }
+}
+
 function mapNewsRow(row) {
   return {
     id: row.id,
@@ -204,6 +318,14 @@ function mapProjectRow(row) {
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
   };
+}
+
+function mapPageContentRows(rows) {
+  const store = { ...defaultPageContent };
+  rows.forEach((row) => {
+    store[row.section_key] = row.translations || { hu: {}, en: {} };
+  });
+  return store;
 }
 
 async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
@@ -301,6 +423,61 @@ app.get('/api/public/mapbox-token', (_req, res) => {
   }
 
   return res.status(200).json({ token: MAPBOX_TOKEN });
+});
+
+app.get('/api/page-content/public', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT section_key, translations FROM page_content');
+    return res.status(200).json({ sections: mapPageContentRows(result.rows) });
+  } catch (error) {
+    console.error('Public page content error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni az oldal tartalmait' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/page-content', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT section_key, translations FROM page_content');
+    return res.status(200).json({ sections: mapPageContentRows(result.rows) });
+  } catch (error) {
+    console.error('Admin page content error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni az oldal tartalmait' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const sectionKey = req.params.sectionKey;
+  const translations = req.body?.translations;
+
+  if (!translations || typeof translations !== 'object') {
+    return res.status(400).json({ message: 'Érvénytelen tartalom' });
+  }
+
+  try {
+    const result = await client.query(
+      `INSERT INTO page_content (section_key, translations)
+       VALUES ($1, $2)
+       ON CONFLICT (section_key)
+       DO UPDATE SET translations = EXCLUDED.translations, updated_at = NOW()
+       RETURNING section_key, translations`,
+      [sectionKey, translations],
+    );
+
+    const row = result.rows[0];
+    return res.status(200).json({ sectionKey: row.section_key, translations: row.translations });
+  } catch (error) {
+    console.error('Save page content error', error);
+    return res.status(500).json({ message: 'Nem sikerült menteni a tartalmat' });
+  } finally {
+    client.release();
+  }
 });
 
 app.get('/api/projects', authenticateRequest, async (req, res) => {
@@ -750,7 +927,7 @@ app.get('*', (req, res) => {
   return res.sendFile(path.join(DIST_PATH, 'index.html'));
 });
 
-Promise.all([ensureAdminUser(), ensureNewsTables(), ensureProjectsTables()])
+Promise.all([ensureAdminUser(), ensureNewsTables(), ensureProjectsTables(), ensurePageContentTable()])
   .then(() => {
     app.listen(PORT, () => {
       console.log(`API server listening on port ${PORT}`);

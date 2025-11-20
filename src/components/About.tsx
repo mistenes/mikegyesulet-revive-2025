@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import umbrellaImage from "@/assets/umbrella-person.jpg";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getSectionContent, PAGE_CONTENT_EVENT } from "@/services/pageContentService";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 type AboutContent = {
   badge?: string;
@@ -21,21 +22,22 @@ type AboutContent = {
 export const About = () => {
   const { language } = useLanguage();
   const [content, setContent] = useState<AboutContent>({
-    badge: "RÓLUNK",
-    title: "KIK VAGYUNK MI?",
-    subtitle: "Magyar fiatalok összefogása",
-    description: "Kattints, hogy megtudd, kik alkotják a MIK-et, hogyan oszlik meg a munka, és ismerd meg szervezeti struktúránkat.",
-    buttonText: "Magunkról",
-    ctaBadge: "ALAPÍTÓ NYILATKOZAT",
-    ctaTitle: "Célkitűzéseink",
-    ctaDescription: "Alapítóink világosan leírták, miért kell a magyar fiataloknak közös egyeztető fórum.",
-    ctaButton: "Megnyitás",
+    ...defaultPageContent.about_section.hu,
   });
 
   useEffect(() => {
-    const loadContent = () => {
-      const section = getSectionContent("about_section");
-      setContent((section[language] || section.hu || content) as AboutContent);
+    let active = true;
+
+    const loadContent = async () => {
+      try {
+        const section = await getSectionContent("about_section");
+        if (!active) return;
+        setContent((section[language] || section.hu || defaultPageContent.about_section.hu) as AboutContent);
+      } catch (error) {
+        console.error("Failed to load about section", error);
+        if (!active) return;
+        setContent(defaultPageContent.about_section[language] || defaultPageContent.about_section.hu);
+      }
     };
 
     loadContent();
@@ -50,7 +52,10 @@ export const About = () => {
     };
 
     window.addEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
-    return () => window.removeEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
+    };
   }, [language]);
 
   return (

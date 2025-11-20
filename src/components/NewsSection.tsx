@@ -8,6 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { getPublishedNews, NEWS_EVENT } from "@/services/newsService";
 import { getSectionContent, PAGE_CONTENT_EVENT } from "@/services/pageContentService";
 import type { NewsArticle } from "@/types/news";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 interface NewsSectionContent {
   subtitle: string;
@@ -23,17 +24,41 @@ export const NewsSection = () => {
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [sectionContent, setSectionContent] = useState<NewsSectionContent>({
-    subtitle: "FRISS HÍREINK, ÍRÁSAINK",
-    title: "TÁJÉKOZÓDJ SZÜLŐFÖLDÜNKRŐL!",
-    description: "Vagy olvass el minden írást a HYCA blogon",
-    buttonText: "HYCA BLOG",
+    ...defaultPageContent.news_section.hu,
   });
 
   useEffect(() => {
+    let active = true;
+
+    const loadNews = async () => {
+      setLoading(true);
+      try {
+        const articles = await getPublishedNews();
+        if (!active) return;
+        setNews(articles);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    const loadSectionContent = async () => {
+      try {
+        const content = await getSectionContent("news_section");
+        if (!active) return;
+        setSectionContent((content[language] || content.hu || defaultPageContent.news_section.hu) as NewsSectionContent);
+      } catch (error) {
+        console.error("Failed to load news section content", error);
+        if (!active) return;
+        setSectionContent(defaultPageContent.news_section[language] || defaultPageContent.news_section.hu);
+      }
+    };
+
     loadNews();
     loadSectionContent();
 
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return undefined;
 
     const newsHandler = () => loadNews();
     const contentHandler = (event: Event) => {
@@ -47,27 +72,11 @@ export const NewsSection = () => {
     window.addEventListener(PAGE_CONTENT_EVENT, contentHandler as EventListener);
 
     return () => {
+      active = false;
       window.removeEventListener(NEWS_EVENT, newsHandler as EventListener);
       window.removeEventListener(PAGE_CONTENT_EVENT, contentHandler as EventListener);
     };
   }, [language]);
-
-  const loadNews = async () => {
-    setLoading(true);
-    try {
-      const articles = await getPublishedNews();
-      setNews(articles);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadSectionContent = () => {
-    const content = getSectionContent("news_section");
-    setSectionContent((content[language] || content.hu) as NewsSectionContent);
-  };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "";

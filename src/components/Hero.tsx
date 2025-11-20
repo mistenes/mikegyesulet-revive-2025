@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import mikTeam from "@/assets/mik-team.jpg";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getSectionContent, PAGE_CONTENT_EVENT } from "@/services/pageContentService";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 type HeroContent = {
   title: string;
@@ -24,28 +25,35 @@ type HeroStats = {
 export const Hero = () => {
   const { language } = useLanguage();
   const [content, setContent] = useState<HeroContent>({
-    title: "Üdvözlünk a Magyar Ifjúsági Konferencia honlapján!",
-    description: "Akár a Kárpát-medencében, és azon kívül élő magyarság, akár szervezetünk érdekelnek, itt mindent megtalálsz.",
-    primaryButtonText: "TAGSZERVEZETI PORTÁL",
-    primaryButtonUrl: "https://dashboard.mikegyesulet.hu",
-    secondaryButtonText: "TUDJ MEG TÖBBET",
+    ...defaultPageContent.hero_content.hu,
   });
   const [stats, setStats] = useState<Array<{
     value: string;
     label: string;
-  }>>([
-    { value: "10+", label: "Régió" },
-    { value: "1000+", label: "Tag" },
-    { value: "100+", label: "Esemény" },
-  ]);
+  }>>(defaultPageContent.hero_stats.hu?.stats || []);
 
   useEffect(() => {
-    const loadContent = () => {
-      const heroContent = getSectionContent("hero_content");
-      const heroStats = getSectionContent("hero_stats");
+    let active = true;
 
-      setContent((heroContent[language] || heroContent.hu || content) as HeroContent);
-      setStats((heroStats[language]?.stats || heroStats.hu?.stats || stats) as HeroStats["stats"]);
+    const loadContent = async () => {
+      try {
+        const heroContent = await getSectionContent("hero_content");
+        const heroStats = await getSectionContent("hero_stats");
+
+        if (!active) return;
+
+        setContent(
+          (heroContent[language] || heroContent.hu || defaultPageContent.hero_content.hu) as HeroContent,
+        );
+        setStats(
+          (heroStats[language]?.stats || heroStats.hu?.stats || defaultPageContent.hero_stats.hu?.stats || []) as HeroStats["stats"],
+        );
+      } catch (error) {
+        console.error("Failed to load hero content", error);
+        if (!active) return;
+        setContent(defaultPageContent.hero_content[language] || defaultPageContent.hero_content.hu);
+        setStats(defaultPageContent.hero_stats[language]?.stats || defaultPageContent.hero_stats.hu?.stats || []);
+      }
     };
 
     loadContent();
@@ -61,7 +69,10 @@ export const Hero = () => {
     };
 
     window.addEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
-    return () => window.removeEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
+    };
   }, [language]);
 
   return (

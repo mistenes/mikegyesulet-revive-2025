@@ -8,10 +8,11 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Save, Loader2, Languages } from "lucide-react";
 import { toast } from "sonner";
-import { getAllSections, getSectionContent, saveSection } from "@/services/pageContentService";
+import { getAllSections, saveSection } from "@/services/pageContentService";
 import type { LanguageCode } from "@/types/language";
 import type { LocalizedSectionContent, SectionContent } from "@/types/pageContent";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 const sectionGroups = {
   fooldal: [
@@ -51,9 +52,26 @@ export default function AdminPages() {
   useEffect(() => {
     if (!session) return;
 
-    const sections = getAllSections();
-    setPageContent(sections);
-    setLoading(false);
+    let active = true;
+
+    const loadSections = async () => {
+      try {
+        const sections = await getAllSections();
+        if (!active) return;
+        setPageContent(sections);
+      } catch (error) {
+        console.error("Failed to load page content", error);
+        toast.error("Nem sikerült betölteni az oldal tartalmait");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadSections();
+
+    return () => {
+      active = false;
+    };
   }, [session]);
 
   if (isLoading) {
@@ -73,8 +91,7 @@ export default function AdminPages() {
     const existing = pageContent[sectionKey];
     if (existing) return existing;
 
-    const fallback = getSectionContent(sectionKey);
-    return fallback;
+    return defaultPageContent[sectionKey] || { hu: {}, en: {} };
   };
 
   const handleFieldChange = (sectionKey: SectionKey, field: string, value: any) => {
@@ -100,7 +117,11 @@ export default function AdminPages() {
     setSavingSection(sectionKey);
 
     try {
-      saveSection(sectionKey, section);
+      const saved = await saveSection(sectionKey, section);
+      setPageContent((prev) => ({
+        ...prev,
+        [sectionKey]: saved,
+      }));
       toast.success("Változások mentve!");
     } catch (error) {
       console.error(error);

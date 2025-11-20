@@ -5,6 +5,7 @@ import { ArrowRight, MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getSectionContent, PAGE_CONTENT_EVENT } from "@/services/pageContentService";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 // Import region images
 import erdelyImg from "@/assets/region-erdely.jpg";
@@ -45,17 +46,22 @@ export const RegionsSection = () => {
   const isVisible = useScrollAnimation(sectionRef);
   const { language } = useLanguage();
   const [content, setContent] = useState<RegionsContent>({
-    eyebrow: "RÉGIÓK",
-    title: "Ismerd meg partnereinket!",
-    description: "A MIK tagszervezetei a Kárpát-medence minden régiójában képviselik a magyar ifjúság érdekeit.",
-    buttonText: "Fedezd fel a régiókat",
-    chips: ["Erdély", "Felvidék", "Kárpátalja", "Vajdaság", "Horvátország", "Szlovénia"],
+    ...defaultPageContent.regions_section.hu,
   });
 
   useEffect(() => {
-    const loadContent = () => {
-      const section = getSectionContent("regions_section");
-      setContent((section[language] || section.hu || content) as RegionsContent);
+    let active = true;
+
+    const loadContent = async () => {
+      try {
+        const section = await getSectionContent("regions_section");
+        if (!active) return;
+        setContent((section[language] || section.hu || defaultPageContent.regions_section.hu) as RegionsContent);
+      } catch (error) {
+        console.error("Failed to load regions content", error);
+        if (!active) return;
+        setContent(defaultPageContent.regions_section[language] || defaultPageContent.regions_section.hu);
+      }
     };
 
     loadContent();
@@ -70,7 +76,10 @@ export const RegionsSection = () => {
     };
 
     window.addEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
-    return () => window.removeEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
+    };
   }, [language]);
 
   return (
