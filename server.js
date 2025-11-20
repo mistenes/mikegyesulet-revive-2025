@@ -739,7 +739,10 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
 app.get('/api/news/public', async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
-  const limit = Number(req.query.limit) > 0 ? Number(req.query.limit) : 6;
+  const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
+  const pageSizeParam = Number(req.query.pageSize);
+  const limitParam = Number(req.query.limit);
+  const pageSize = pageSizeParam > 0 ? pageSizeParam : limitParam > 0 ? limitParam : 6;
 
   const filters = ['published = TRUE'];
   const values = [];
@@ -756,18 +759,27 @@ app.get('/api/news/public', async (req, res) => {
   }
 
   const whereClause = `WHERE ${filters.join(' AND ')}`;
+  const offset = (page - 1) * pageSize;
 
   try {
-    const result = await client.query(
+    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const total = Number(countResult.rows[0]?.count || 0);
+
+    const listResult = await client.query(
       `SELECT *
        FROM news_articles
        ${whereClause}
        ORDER BY published_at DESC NULLS LAST, created_at DESC
-       LIMIT $${values.length + 1}`,
-      [...values, limit],
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, pageSize, offset],
     );
 
-    return res.status(200).json({ items: result.rows.map(mapNewsRow) });
+    return res.status(200).json({
+      items: listResult.rows.map(mapNewsRow),
+      total,
+      page,
+      pageSize,
+    });
   } catch (error) {
     console.error('Public news error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni a híreket' });

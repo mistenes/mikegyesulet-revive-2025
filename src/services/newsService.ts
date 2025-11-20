@@ -62,7 +62,18 @@ export async function getPublishedNewsPage(params: {
   if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
 
   const response = await fetch(url.toString());
-  return handleResponse<NewsListResponse>(response);
+  const data = await handleResponse<Partial<NewsListResponse> & { items: NewsArticle[] }>(response);
+
+  const total = typeof data.total === "number" ? data.total : data.items.length;
+  const page = typeof data.page === "number" ? data.page : params.page ?? 1;
+  const pageSize = typeof data.pageSize === "number" ? data.pageSize : params.pageSize ?? data.items.length;
+
+  return {
+    items: data.items,
+    total,
+    page,
+    pageSize,
+  };
 }
 
 export async function getNewsBySlug(slug: string): Promise<NewsArticle | null> {
