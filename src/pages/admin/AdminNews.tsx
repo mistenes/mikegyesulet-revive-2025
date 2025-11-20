@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,7 +124,7 @@ export default function AdminNews() {
     );
   }
 
-  if (!session) return null;
+  if (!session) return <Navigate to="/auth" replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
