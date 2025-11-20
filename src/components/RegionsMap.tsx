@@ -1,6 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { MapPin, X } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
@@ -296,7 +295,6 @@ export const RegionsMap = () => {
         });
 
         setIsMapInitialized(true);
-        toast.success("Térkép betöltve! Kattints a jelölőkre a részletekért.");
       });
 
     } catch (error) {
@@ -386,21 +384,6 @@ export const RegionsMap = () => {
               </div>
             </div>
           </div>
-        )}
-
-        {isMapInitialized && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setIsMapInitialized(false);
-              map.current?.remove();
-            }}
-            className="absolute top-4 right-4 z-10 bg-background/80 backdrop-blur"
-          >
-            <X className="h-4 w-4 mr-2" />
-            Térkép újratöltése
-          </Button>
         )}
 
         <div
