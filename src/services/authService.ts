@@ -1,0 +1,64 @@
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+export type Session = {
+  email: string;
+};
+
+let cachedSession: Session | null = null;
+
+async function handleResponse(response: Response) {
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    // Ignore JSON parse errors and fall back to generic messages
+  }
+
+  if (!response.ok) {
+    const message = payload?.message || 'Ismeretlen hiba történt';
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+export async function login(email: string, password: string): Promise<Session> {
+  const response = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await handleResponse(response);
+  cachedSession = data.user as Session;
+  return cachedSession;
+}
+
+export async function logout(): Promise<void> {
+  cachedSession = null;
+  await fetch(`${API_BASE}/api/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+}
+
+export async function getSession(): Promise<Session | null> {
+  if (cachedSession) return cachedSession;
+
+  const response = await fetch(`${API_BASE}/api/auth/me`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    cachedSession = null;
+    return null;
+  }
+
+  const data = await handleResponse(response);
+  cachedSession = data.user as Session;
+  return cachedSession;
+}

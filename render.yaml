@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: mik-app
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mik-postgres
+          property: connectionString
+      - key: MAPBOX_TOKEN
+        value: ""
+      - key: ADMIN_EMAIL
+        value: admin@mik.hu
+      - key: ADMIN_PASSWORD
+        value: ""
+      - key: ADMIN_JWT_SECRET
+        value: ""
+    autoDeploy: true
+
+databases:
+  - name: mik-postgres
+    plan: free

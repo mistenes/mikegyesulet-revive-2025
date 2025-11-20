@@ -203,11 +203,18 @@ export const Contact = () => {
               <div className="space-y-3 text-sm">
                 <div className="flex items-center gap-3">
                   <Mail className="h-4 w-4 opacity-80" />
-                  <span>info@mikegyesulet.hu</span>
+                  <a
+                    href="mailto:titkarsag@mikegyesulet.hu"
+                    className="underline-offset-2 hover:underline"
+                  >
+                    titkarsag@mikegyesulet.hu
+                  </a>
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="h-4 w-4 opacity-80" />
-                  <span>+36 XX XXX XXXX</span>
+                  <a href="tel:+36309594595" className="underline-offset-2 hover:underline">
+                    +36 30 959 4595
+                  </a>
                 </div>
               </div>
             </Card>

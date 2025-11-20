@@ -6,256 +6,202 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Save, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { FileText, Save, Loader2, Languages } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
+import { getAllSections, getSectionContent, saveSection } from "@/services/pageContentService";
+import type { LanguageCode } from "@/types/language";
+import type { LocalizedSectionContent, SectionContent } from "@/types/pageContent";
+import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 
-type PageContent = {
-  id: string;
-  section_key: string;
-  section_name: string;
-  content: any;
-  created_at: string;
-  updated_at: string;
-};
+const sectionGroups = {
+  fooldal: [
+    { key: "hero_content", label: "Hero Szekció" },
+    { key: "about_section", label: "Rólunk Röviden" },
+    { key: "hero_stats", label: "Statisztikák" },
+    { key: "news_section", label: "Hírek Szekció" },
+    { key: "regions_section", label: "Régiók Szekció" },
+  ],
+  regiok: [
+    { key: "regions_intro", label: "Bevezető Szekció" },
+    { key: "regions_map", label: "Térkép Szekció" },
+    { key: "regions_list", label: "Régiók Lista" },
+  ],
+  rolunk: [
+    { key: "about_intro", label: "Bevezető" },
+    { key: "mission", label: "Küldetés" },
+    { key: "vision", label: "Jövőkép" },
+    { key: "team", label: "Csapat" },
+  ],
+  galeria: [
+    { key: "gallery_intro", label: "Bevezető Szekció" },
+    { key: "gallery_images", label: "Galéria Képek" },
+  ],
+} as const;
 
-const pageContentSchema = z.object({
-  title: z.string().min(1, "A cím kötelező").max(200),
-  subtitle: z.string().max(300).optional(),
-  description: z.string().max(2000).optional(),
-});
+type SectionKey = string;
 
 export default function AdminPages() {
-  const [pages, setPages] = useState<PageContent[]>([]);
+  const { isLoading, session } = useAdminAuthGuard();
+  const [pageContent, setPageContent] = useState<Record<SectionKey, LocalizedSectionContent>>({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("fooldal");
-  const [saving, setSaving] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<keyof typeof sectionGroups>("fooldal");
+  const [activeLanguage, setActiveLanguage] = useState<LanguageCode>("hu");
+  const [savingSection, setSavingSection] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchPages();
-  }, []);
+    if (!session) return;
 
-  const fetchPages = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("page_content")
-        .select("*")
-        .order("section_name");
+    const sections = getAllSections();
+    setPageContent(sections);
+    setLoading(false);
+  }, [session]);
 
-      if (error) throw error;
-      setPages(data || []);
-    } catch (error) {
-      console.error("Error fetching pages:", error);
-      toast.error("Hiba az oldaltartalmak betöltésekor");
-    } finally {
-      setLoading(false);
-    }
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Betöltés...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return null;
+
+  const ensureSection = (sectionKey: SectionKey): LocalizedSectionContent => {
+    const existing = pageContent[sectionKey];
+    if (existing) return existing;
+
+    const fallback = getSectionContent(sectionKey);
+    return fallback;
   };
 
-  const handleSave = async (sectionKey: string, content: any) => {
-    setSaving(sectionKey);
-    
-    try {
-      const existingPage = pages.find(p => p.section_key === sectionKey);
+  const handleFieldChange = (sectionKey: SectionKey, field: string, value: any) => {
+    setPageContent((prev) => {
+      const section = ensureSection(sectionKey);
+      const updatedLanguageContent: SectionContent = {
+        ...(section[activeLanguage] || {}),
+        [field]: value,
+      };
 
-      if (existingPage) {
-        // Update existing
-        const { error } = await supabase
-          .from("page_content")
-          .update({ content, updated_at: new Date().toISOString() })
-          .eq("section_key", sectionKey);
-
-        if (error) throw error;
-      } else {
-        // Create new
-        const { error } = await supabase
-          .from("page_content")
-          .insert({
-            section_key: sectionKey,
-            section_name: getSectionDisplayName(sectionKey),
-            content
-          });
-
-        if (error) throw error;
-      }
-
-      toast.success("Változások sikeresen mentve!");
-      await fetchPages();
-    } catch (error) {
-      console.error("Error saving page:", error);
-      toast.error("Hiba a mentés során");
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const getSectionDisplayName = (key: string): string => {
-    const names: Record<string, string> = {
-      hero_content: "Főoldal - Hero",
-      about_section: "Főoldal - Rólunk röviden",
-      hero_stats: "Főoldal - Statisztikák",
-      news_section: "Főoldal - Hírek szekció",
-      regions_section: "Főoldal - Régiók szekció",
-      regions_intro: "Régiók - Bevezető",
-      regions_map: "Régiók - Térkép",
-      regions_list: "Régiók - Lista",
-      about_intro: "Rólunk - Bevezető",
-      mission: "Rólunk - Küldetés",
-      vision: "Rólunk - Jövőkép",
-      team: "Rólunk - Csapat",
-      gallery_intro: "Galéria - Bevezető",
-      gallery_images: "Galéria - Képek"
-    };
-    return names[key] || key;
-  };
-
-  const getPageContent = (sectionKey: string) => {
-    const page = pages.find(p => p.section_key === sectionKey);
-    return page?.content || {};
-  };
-
-  const updateLocalContent = (sectionKey: string, field: string, value: any) => {
-    setPages(prev => {
-      const existing = prev.find(p => p.section_key === sectionKey);
-      const updatedContent = { ...getPageContent(sectionKey), [field]: value };
-      
-      if (existing) {
-        return prev.map(p => 
-          p.section_key === sectionKey 
-            ? { ...p, content: updatedContent }
-            : p
-        );
-      }
-      
-      // If doesn't exist yet, add a temporary entry
-      return [...prev, {
-        id: '',
-        section_key: sectionKey,
-        section_name: getSectionDisplayName(sectionKey),
-        content: updatedContent,
-        created_at: '',
-        updated_at: ''
-      }];
+      return {
+        ...prev,
+        [sectionKey]: {
+          ...section,
+          [activeLanguage]: updatedLanguageContent,
+        },
+      };
     });
   };
 
-  const renderSectionEditor = (sectionKey: string) => {
-    const content = getPageContent(sectionKey);
-    const isSaving = saving === sectionKey;
+  const handleSave = async (sectionKey: SectionKey) => {
+    const section = pageContent[sectionKey] || ensureSection(sectionKey);
+    setSavingSection(sectionKey);
+
+    try {
+      saveSection(sectionKey, section);
+      toast.success("Változások mentve!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Hiba történt a mentés során");
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  const renderSectionEditor = (sectionKey: SectionKey) => {
+    const section = pageContent[sectionKey] || ensureSection(sectionKey);
+    const content = section[activeLanguage] || {};
+    const isSaving = savingSection === sectionKey;
 
     return (
       <Card className="p-6 space-y-6">
         <div className="space-y-4">
-          {/* Show all existing fields from the content */}
           {Object.keys(content).length > 0 ? (
             Object.entries(content).map(([key, value]) => {
-              if (key === 'stats' && Array.isArray(value)) {
-                // Special handling for stats array
+              if (Array.isArray(value)) {
                 return (
                   <div key={key} className="space-y-2">
-                    <Label>Statisztikák (JSON)</Label>
+                    <Label>{key}</Label>
                     <Textarea
                       value={JSON.stringify(value, null, 2)}
                       onChange={(e) => {
                         try {
                           const parsed = JSON.parse(e.target.value);
-                          updateLocalContent(sectionKey, key, parsed);
+                          handleFieldChange(sectionKey, key, parsed);
                         } catch {
-                          // Invalid JSON, don't update yet
+                          // ignore invalid JSON
                         }
                       }}
-                      rows={8}
+                      rows={6}
                       className="font-mono text-sm"
                     />
                   </div>
                 );
               }
-              
-              if (typeof value === 'string') {
-                const isLongText = value.length > 100;
-                const fieldLabel = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
-                
+
+              if (typeof value === "string") {
+                const isLongText = value.length > 120;
+                const fieldLabel = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, " $1");
+
                 return (
                   <div key={key} className="space-y-2">
-                    <Label htmlFor={`${sectionKey}-${key}`}>{fieldLabel}</Label>
+                    <Label>{fieldLabel}</Label>
                     {isLongText ? (
                       <Textarea
-                        id={`${sectionKey}-${key}`}
                         value={value}
-                        onChange={(e) => updateLocalContent(sectionKey, key, e.target.value)}
+                        onChange={(e) => handleFieldChange(sectionKey, key, e.target.value)}
                         rows={4}
                       />
                     ) : (
                       <Input
-                        id={`${sectionKey}-${key}`}
                         value={value}
-                        onChange={(e) => updateLocalContent(sectionKey, key, e.target.value)}
+                        onChange={(e) => handleFieldChange(sectionKey, key, e.target.value)}
                       />
                     )}
                   </div>
                 );
               }
-              
+
               return null;
             })
           ) : (
-            // Empty state - show basic fields
+            <div className="space-y-2">
+              <Label>Cím</Label>
+              <Input
+                value={content.title || ""}
+                onChange={(e) => handleFieldChange(sectionKey, "title", e.target.value)}
+                placeholder="Add meg a szekció címét"
+              />
+              <Label>Alcím</Label>
+              <Input
+                value={content.subtitle || ""}
+                onChange={(e) => handleFieldChange(sectionKey, "subtitle", e.target.value)}
+                placeholder="Add meg az alcímet"
+              />
+              <Label>Leírás</Label>
+              <Textarea
+                value={content.description || ""}
+                onChange={(e) => handleFieldChange(sectionKey, "description", e.target.value)}
+                rows={4}
+                placeholder="Add meg a leírást"
+              />
+            </div>
+          )}
+        </div>
+
+        <Button onClick={() => handleSave(sectionKey)} disabled={isSaving} className="w-full">
+          {isSaving ? (
             <>
-              <div className="space-y-2">
-                <Label htmlFor={`${sectionKey}-title`}>Cím *</Label>
-                <Input
-                  id={`${sectionKey}-title`}
-                  value={content.title || ""}
-                  onChange={(e) => updateLocalContent(sectionKey, 'title', e.target.value)}
-                  placeholder="Add meg a szekció címét"
-                  maxLength={200}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor={`${sectionKey}-subtitle`}>Alcím (opcionális)</Label>
-                <Input
-                  id={`${sectionKey}-subtitle`}
-                  value={content.subtitle || ""}
-                  onChange={(e) => updateLocalContent(sectionKey, 'subtitle', e.target.value)}
-                  placeholder="Add meg az alcímet"
-                  maxLength={300}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor={`${sectionKey}-description`}>Leírás (opcionális)</Label>
-                <Textarea
-                  id={`${sectionKey}-description`}
-                  value={content.description || ""}
-                  onChange={(e) => updateLocalContent(sectionKey, 'description', e.target.value)}
-                  placeholder="Add meg a leírást"
-                  rows={4}
-                  maxLength={2000}
-                />
-              </div>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Mentés...
+            </>
+          ) : (
+            <>
+              <Save className="mr-2 h-4 w-4" /> Változások mentése
             </>
           )}
-
-          <Button 
-            onClick={() => handleSave(sectionKey, content)}
-            disabled={isSaving}
-            className="w-full"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Mentés...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Változások mentése
-              </>
-            )}
-          </Button>
-        </div>
+        </Button>
       </Card>
     );
   };
@@ -273,7 +219,7 @@ export default function AdminPages() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
             <FileText className="h-6 w-6 text-primary" />
           </div>
@@ -281,13 +227,21 @@ export default function AdminPages() {
             <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
               Oldal Tartalmak
             </h1>
-            <p className="text-muted-foreground">
-              Szerkeszd az oldal szöveges tartalmait
-            </p>
+            <p className="text-muted-foreground">Szerkeszd az oldal szöveges tartalmait magyarul és angolul.</p>
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex items-center gap-3">
+          <Languages className="h-4 w-4 text-muted-foreground" />
+          <Tabs value={activeLanguage} onValueChange={(val) => setActiveLanguage(val as LanguageCode)}>
+            <TabsList>
+              <TabsTrigger value="hu">Magyar</TabsTrigger>
+              <TabsTrigger value="en">English</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as keyof typeof sectionGroups)}>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="fooldal">Főoldal</TabsTrigger>
             <TabsTrigger value="regiok">Régiók</TabsTrigger>
@@ -295,94 +249,16 @@ export default function AdminPages() {
             <TabsTrigger value="galeria">Galéria</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="fooldal" className="space-y-6 mt-6">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Hero Szekció</h3>
-                {renderSectionEditor("hero_content")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Rólunk Röviden</h3>
-                {renderSectionEditor("about_section")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Statisztikák</h3>
-                {renderSectionEditor("hero_stats")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Hírek Szekció</h3>
-                {renderSectionEditor("news_section")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Régiók Szekció</h3>
-                {renderSectionEditor("regions_section")}
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="regiok" className="space-y-6 mt-6">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Bevezető Szekció</h3>
-                {renderSectionEditor("regions_intro")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Térkép Szekció</h3>
-                {renderSectionEditor("regions_map")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Régiók Lista</h3>
-                {renderSectionEditor("regions_list")}
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="rolunk" className="space-y-6 mt-6">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Bevezető</h3>
-                {renderSectionEditor("about_intro")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Küldetés</h3>
-                {renderSectionEditor("mission")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Jövőkép</h3>
-                {renderSectionEditor("vision")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Csapat</h3>
-                {renderSectionEditor("team")}
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="galeria" className="space-y-6 mt-6">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Bevezető Szekció</h3>
-                {renderSectionEditor("gallery_intro")}
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Galéria Képek</h3>
-                {renderSectionEditor("gallery_images")}
-                <p className="text-sm text-muted-foreground mt-2">
-                  Megjegyzés: A képek kezeléséhez később külön galéria kezelő készül
-                </p>
-              </div>
-            </div>
-          </TabsContent>
+          {(Object.keys(sectionGroups) as Array<keyof typeof sectionGroups>).map((tabKey) => (
+            <TabsContent key={tabKey} value={tabKey} className="space-y-6 mt-6">
+              {sectionGroups[tabKey].map((section) => (
+                <div key={section.key} className="space-y-3">
+                  <h3 className="text-lg font-semibold">{section.label}</h3>
+                  {renderSectionEditor(section.key)}
+                </div>
+              ))}
+            </TabsContent>
+          ))}
         </Tabs>
       </div>
     </AdminLayout>
