@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
@@ -28,6 +29,15 @@ type RegionsContent = {
   description: string;
   buttonText?: string;
   chips?: string[];
+};
+
+const regionAnchors: Record<string, string> = {
+  "Erdély": "erdely",
+  "Felvidék": "felvidek",
+  "Kárpátalja": "karpatalja",
+  "Vajdaság": "vajdasag",
+  "Horvátország": "horvatorszag",
+  "Szlovénia": "szlovenia",
 };
 
 export const RegionsSection = () => {
@@ -132,21 +142,30 @@ export const RegionsSection = () => {
 
             <div className="flex flex-wrap gap-3 pt-4">
               {(content.chips || []).map((region, i) => (
-                <span
+                <Button
                   key={i}
-                  className="px-4 py-2 bg-muted/50 rounded-full text-sm font-medium text-foreground border border-border hover:border-primary hover:bg-primary/5 transition-all duration-300 cursor-pointer"
+                  asChild={Boolean(regionAnchors[region])}
+                  variant="outline"
+                  className="rounded-full border-border bg-muted/50 hover:border-primary hover:bg-primary/5 text-sm font-medium text-foreground px-4 py-2 h-auto"
                 >
-                  {region}
-                </span>
+                  {regionAnchors[region] ? (
+                    <Link to={`/rolunk#${regionAnchors[region]}`}>{region}</Link>
+                  ) : (
+                    <span>{region}</span>
+                  )}
+                </Button>
               ))}
             </div>
 
             <Button
               size="lg"
               className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl mt-6"
+              asChild
             >
-              {content.buttonText || "Fedezd fel a régiókat"}
-              <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+              <Link to="/regiok">
+                {content.buttonText || "Fedezd fel a régiókat"}
+                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
             </Button>
           </div>
         </div>

@@ -4,6 +4,15 @@ import { Footer } from "@/components/Footer";
 import { Card } from "@/components/ui/card";
 import { Mail } from "lucide-react";
 
+const regionAnchors: Record<string, string> = {
+  "Erdély": "erdely",
+  "Felvidék": "felvidek",
+  "Kárpátalja": "karpatalja",
+  "Vajdaság": "vajdasag",
+  "Horvátország": "horvatorszag",
+  "Szlovénia": "szlovenia",
+};
+
 const timeline = [
   { year: "1999", event: "Megalakul a MIK" },
   { year: "2016", event: "Önálló jogi személlyé válás" },
@@ -166,7 +175,11 @@ export default function Rolunk() {
           
           <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-6">
             {standingCommittee.map((person, index) => (
-              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
+              <Card
+                key={index}
+                id={regionAnchors[person.region]}
+                className="p-6 hover:shadow-lg transition-shadow"
+              >
                 <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
                   {person.name ? (
                     <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center">
