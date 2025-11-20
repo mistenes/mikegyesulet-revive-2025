@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Edit, Trash2, Eye, Calendar, Image } from "lucide-react";
+import { Plus, Edit, Trash2, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -48,6 +49,11 @@ type NewsArticle = {
 
 export default function AdminNews() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<NewsArticle | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -61,21 +67,79 @@ export default function AdminNews() {
     published: false,
   });
 
+  const navigate = useNavigate();
+  const hasNavigatedRef = useRef(false);
+
   useEffect(() => {
-    fetchArticles();
+    checkSession();
   }, []);
 
-  const fetchArticles = async () => {
-    const { data, error } = await supabase
-      .from("news_articles")
-      .select("*")
-      .order("created_at", { ascending: false });
+  useEffect(() => {
+    if (isAuthorized) {
+      fetchArticles();
+    }
+  }, [isAuthorized]);
 
-    if (error) {
+  const checkSession = async () => {
+    setIsCheckingSession(true);
+    setAuthError(null);
+
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error) throw error;
+
+      if (!session) {
+        setAuthError("Be kell jelentkezned a hírek kezeléséhez.");
+        return;
+      }
+
+      const { data: roles, error: roleError } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .eq("role", "admin")
+        .single();
+
+      if (roleError || !roles) {
+        await supabase.auth.signOut();
+        setAuthError("Nincs admin jogosultságod a hírek kezeléséhez.");
+        toast.error("Nincs admin jogosultságod");
+        return;
+      }
+
+      setIsAuthorized(true);
+    } catch (error) {
+      console.error("Session check error:", error);
+      toast.error("Hiba történt a jogosultság ellenőrzésekor");
+      setAuthError("Nem sikerült ellenőrizni a jogosultságot. Próbáld újra.");
+    } finally {
+      setIsCheckingSession(false);
+    }
+  };
+
+  const fetchArticles = async () => {
+    setIsFetching(true);
+    setFetchError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("news_articles")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      setArticles(data || []);
+    } catch (error) {
       toast.error("Hiba a hírek betöltésekor");
       console.error(error);
-    } else {
-      setArticles(data || []);
+      setFetchError("Nem sikerült betölteni a híreket. Frissítsd az oldalt vagy próbáld újra később.");
+    } finally {
+      setIsFetching(false);
     }
   };
 
@@ -233,6 +297,52 @@ export default function AdminNews() {
     }
   };
 
+  const renderUnauthorizedState = () => (
+    <div className="min-h-screen bg-gradient-subtle flex items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-lg p-8 space-y-6 text-center">
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
+            {authError || "Bejelentkezés szükséges"}
+          </h2>
+          <p className="text-muted-foreground">
+            Jelentkezz be az admin felületre, hogy szerkeszthesd a híreket. A gomb a bejelentkezési oldalra
+            visz.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button
+            onClick={() => {
+              if (hasNavigatedRef.current) return;
+              hasNavigatedRef.current = true;
+              navigate("/auth");
+            }}
+            className="flex-1"
+          >
+            Ugrás a bejelentkezéshez
+          </Button>
+          <Button variant="outline" onClick={checkSession} className="flex-1">
+            Újrapróbálás
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
+          <p className="text-muted-foreground">Jogosultság ellenőrzése...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return renderUnauthorizedState();
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -382,6 +492,16 @@ export default function AdminNews() {
         </div>
 
         <div className="grid gap-4">
+          {fetchError && (
+            <Card className="p-4 border-destructive/50 bg-destructive/5">
+              <p className="text-destructive font-medium">{fetchError}</p>
+            </Card>
+          )}
+          {isFetching && !articles.length && (
+            <Card className="p-4">
+              <p className="text-muted-foreground">Hírek betöltése folyamatban...</p>
+            </Card>
+          )}
           {articles.map((article) => (
             <Card key={article.id} className="p-4">
               <div className="flex items-start justify-between gap-4">
