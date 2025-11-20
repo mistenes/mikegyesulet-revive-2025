@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Card } from "@/components/ui/card";
-import { Lightbox } from "@/components/Lightbox";
+import { LightGallery } from "@/components/LightGallery";
 
 // Example gallery data - will be editable through admin later
 const galleryAlbums = [
@@ -156,9 +156,9 @@ export default function Galeria() {
 
       <Footer />
 
-      {/* Lightbox */}
+      {/* LightGallery */}
       {currentAlbum && (
-        <Lightbox
+        <LightGallery
           isOpen={lightboxOpen}
           onClose={() => setLightboxOpen(false)}
           images={currentAlbum.images}
