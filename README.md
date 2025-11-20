@@ -16,6 +16,8 @@ npm run dev # frontend (http://localhost:5173)
 npm run start # production-style build + API/static server (http://localhost:8080)
 ```
 
+> Tip: keep `npm run start` running when you need `/admin/news` or other admin screens to persist data during development. The Vite dev server proxies `/api` to `http://localhost:8080`, so the admin UI can talk to the API without changing URLs.
+
 ### Environment variables
 
 Create a `.env` file based on `.env.example`.
