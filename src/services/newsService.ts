@@ -5,7 +5,7 @@ const EVENT_NAME = "news-updated";
 const isBrowser = typeof window !== "undefined";
 
 async function handleResponse<T>(response: Response): Promise<T> {
-  let payload: any = null;
+  let payload: unknown = null;
   try {
     payload = await response.json();
   } catch (error) {

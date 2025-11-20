@@ -112,6 +112,8 @@ export default function AdminNews() {
     }
   }, [error]);
 
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
@@ -288,8 +290,6 @@ export default function AdminNews() {
     };
     reader.readAsDataURL(file);
   };
-
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
   const renderTranslationTab = (lang: LanguageCode) => {
     const translation = formData.translations[lang];

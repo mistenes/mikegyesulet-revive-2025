@@ -54,9 +54,10 @@ export default function AdminProjects() {
         setLoading(true);
         const items = await getAdminProjects();
         setProjects(items.sort((a, b) => a.sortOrder - b.sortOrder));
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(error);
-        toast.error(error?.message || "Nem sikerült betölteni a projekteket");
+        const message = error instanceof Error ? error.message : "Nem sikerült betölteni a projekteket";
+        toast.error(message);
       } finally {
         setLoading(false);
       }
@@ -107,14 +108,15 @@ export default function AdminProjects() {
 
   const persistOrder = async (ordered: Project[]) => {
     setProjects(ordered);
-    try {
-      await reorderProjects(ordered.map((p) => p.id));
-      toast.success("Sorrend frissítve");
-    } catch (error: any) {
-      console.error(error);
-      toast.error(error?.message || "Nem sikerült frissíteni a sorrendet");
-    }
-  };
+      try {
+        await reorderProjects(ordered.map((p) => p.id));
+        toast.success("Sorrend frissítve");
+      } catch (error: unknown) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "Nem sikerült frissíteni a sorrendet";
+        toast.error(message);
+      }
+    };
 
   const handleDragStart = (id: string) => setDraggingId(id);
 
@@ -174,9 +176,10 @@ export default function AdminProjects() {
         published: saved.published,
         translations: saved.translations,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error?.message || "Nem sikerült menteni a projektet");
+      const message = error instanceof Error ? error.message : "Nem sikerült menteni a projektet";
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -196,9 +199,10 @@ export default function AdminProjects() {
         resetForm();
       }
       toast.success("Projekt törölve");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error?.message || "Nem sikerült törölni a projektet");
+      const message = error instanceof Error ? error.message : "Nem sikerült törölni a projektet";
+      toast.error(message);
     }
   };
 

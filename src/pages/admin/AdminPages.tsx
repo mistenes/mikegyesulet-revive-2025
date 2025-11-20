@@ -94,7 +94,7 @@ export default function AdminPages() {
     return defaultPageContent[sectionKey] || { hu: {}, en: {} };
   };
 
-  const handleFieldChange = (sectionKey: SectionKey, field: string, value: any) => {
+  const handleFieldChange = (sectionKey: SectionKey, field: string, value: unknown) => {
     setPageContent((prev) => {
       const section = ensureSection(sectionKey);
       const updatedLanguageContent: SectionContent = {
