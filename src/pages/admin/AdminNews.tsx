@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +58,7 @@ const createEmptyTranslations = () => ({
 const PAGE_SIZE = 6;
 
 export default function AdminNews() {
-  const { isLoading, session } = useAdminAuthGuard();
+  const { isLoading, session, error } = useAdminAuthGuard({ redirectToAuth: false });
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -107,6 +107,12 @@ export default function AdminNews() {
     loadArticles();
   }, [loadArticles, session]);
 
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+    }
+  }, [error]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
@@ -118,7 +124,34 @@ export default function AdminNews() {
     );
   }
 
-  if (!session) return <Navigate to="/auth" replace />;
+  if (!session) {
+    return (
+      <AdminLayout>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Card className="max-w-lg w-full p-8 space-y-4 text-center">
+            <h2 className="text-2xl font-semibold">Admin bejelentkezés szükséges</h2>
+            <p className="text-muted-foreground">
+              Jelentkezz be, hogy szerkeszthesd a híreket. Ha a bejelentkezés nem töltődik be,
+              frissítsd az oldalt vagy próbáld újra később.
+            </p>
+            {error && (
+              <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                {error}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row sm:justify-center gap-3">
+              <Button asChild>
+                <Link to="/auth">Tovább a bejelentkezéshez</Link>
+              </Button>
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Újrapróbálom
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
