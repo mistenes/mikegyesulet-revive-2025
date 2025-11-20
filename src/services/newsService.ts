@@ -3,6 +3,7 @@ import type { NewsArticle, NewsInput, NewsListResponse } from "@/types/news";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "news-updated";
 const isBrowser = typeof window !== "undefined";
+const defaultBase = API_BASE || (isBrowser ? window.location.origin : "http://localhost");
 
 async function handleResponse<T>(response: Response): Promise<T> {
   let payload: unknown = null;
@@ -31,7 +32,7 @@ export async function getAdminNews(params: {
   page?: number;
   pageSize?: number;
 } = {}): Promise<NewsListResponse> {
-  const url = new URL(`${API_BASE}/api/news`);
+  const url = new URL("/api/news", defaultBase);
   if (params.search) url.searchParams.set("search", params.search);
   if (params.status) url.searchParams.set("status", params.status);
   if (params.page) url.searchParams.set("page", String(params.page));
@@ -45,7 +46,7 @@ export async function getAdminNews(params: {
 }
 
 export async function getPublishedNews(limit = 6): Promise<NewsArticle[]> {
-  const url = new URL(`${API_BASE}/api/news/public`);
+  const url = new URL("/api/news/public", defaultBase);
   url.searchParams.set("limit", String(limit));
 
   const response = await fetch(url.toString());
@@ -57,7 +58,7 @@ export async function getPublishedNewsPage(params: {
   page?: number;
   pageSize?: number;
 } = {}): Promise<NewsListResponse> {
-  const url = new URL(`${API_BASE}/api/news/public`);
+  const url = new URL("/api/news/public", defaultBase);
   if (params.page) url.searchParams.set("page", String(params.page));
   if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
 
