@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { MapPin, X } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
-import { getSettings } from "@/services/settingsService";
+import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -95,15 +95,44 @@ export const RegionsMap = () => {
   const [mapboxToken, setMapboxToken] = useState("");
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    const settings = getSettings();
-    const token = settings.integrations.mapbox_token?.value || "";
-    if (token) {
-      setMapboxToken(token);
-      setTimeout(() => initializeMap(token), 100);
-    }
-    setIsLoading(false);
+    const loadToken = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const envToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+        if (envToken) {
+          setMapboxToken(envToken);
+          setTimeout(() => initializeMap(envToken), 100);
+          return;
+        }
+
+        const response = await fetch("/api/public/mapbox-token");
+        if (!response.ok) {
+          throw new Error("Mapbox token not configured");
+        }
+
+        const data = await response.json();
+        if (!data?.token) {
+          throw new Error("Missing token");
+        }
+
+        setMapboxToken(data.token);
+        setTimeout(() => initializeMap(data.token), 100);
+      } catch (error) {
+        console.error("Failed to load Mapbox token", error);
+        setLoadError(
+          "A Mapbox token nincs beállítva a környezetben. Add meg a MAPBOX_TOKEN értékét a Render környezeti változók között.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadToken();
   }, []);
 
   const initializeMap = (token?: string) => {
@@ -332,15 +361,11 @@ export const RegionsMap = () => {
                   Mapbox token hiányzik
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Az admin felületen add meg a Mapbox API tokent az{" "}
-                  <a
-                    href="/admin/api-settings"
-                    className="text-primary hover:underline"
-                  >
-                    API Kulcsok
-                  </a>{" "}
-                  menüpontban a térkép megjelenítéséhez.
+                  Állítsd be a MAPBOX_TOKEN környezeti változót a Render szolgáltatásnál, majd indítsd újra az alkalmazást.
                 </p>
+                {loadError && (
+                  <p className="text-sm text-destructive mt-2">{loadError}</p>
+                )}
               </div>
             </div>
           </div>

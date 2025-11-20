@@ -30,13 +30,15 @@ Create a `.env` file based on `.env.example`.
 | `ADMIN_PASSWORD` | Seeded admin jelszó stored in Postgres |
 | `ADMIN_JWT_SECRET` | Secret for signing admin session tokens |
 | `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`; optional on Render because `RENDER_EXTERNAL_URL` is used automatically) |
+| `MAPBOX_TOKEN` | Server-side token exposed to the frontend via `/api/public/mapbox-token` for the regions map |
+| `VITE_MAPBOX_TOKEN` | Optional direct token for local dev; overrides the API lookup when set |
 
 ### Admin access
 
 1. Visit `/auth`
 2. Ensure `npm run start` is running with a reachable Postgres (`DATABASE_URL`)
 3. Sign in with the credentials from `.env` (seeded into Postgres on boot)
-4. Edit content via `/admin/pages`, `/admin/news`, `/admin/settings` and `/admin/api-settings`
+4. Edit content via `/admin/pages`, `/admin/news`, and `/admin/settings`
 
 All page sections are bilingual. When you edit or add news the Hungarian and English versions are saved together, and the home page updates instantly.
 
@@ -50,6 +52,8 @@ Use `render.yaml` to provision:
 After importing the blueprint, Render wires Postgres into the `DATABASE_URL`. The API seeds the `admin_users` table with `ADMIN_EMAIL`/`ADMIN_PASSWORD` and secures routes with HTTP-only cookies while serving the built SPA from `dist`. CORS will automatically allow the deployed site using `RENDER_EXTERNAL_URL`; only set `FRONTEND_ORIGIN` when testing from a separate frontend origin (e.g., local Vite dev).
 
 The blueprint leaves secrets (`MAPBOX_TOKEN`, `ADMIN_PASSWORD`, `ADMIN_JWT_SECRET`) blank so Render always prompts for them on deploy and keeps them in sync without needing manual YAML edits. Updating those values in the Render dashboard and redeploying will refresh the running environment.
+
+For the regions map to render, set `MAPBOX_TOKEN` in the Render dashboard. The frontend fetches it from `/api/public/mapbox-token`, so no admin form is required.
 
 ## Tests / build
 

@@ -20,6 +20,7 @@ const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
+const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN || process.env.VITE_MAPBOX_TOKEN || '';
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 
@@ -243,6 +244,14 @@ app.get('/api/auth/me', authenticateRequest, async (req, res) => {
 app.post('/api/auth/logout', (_req, res) => {
   res.clearCookie(COOKIE_NAME, { path: '/' });
   return res.status(200).json({ success: true });
+});
+
+app.get('/api/public/mapbox-token', (_req, res) => {
+  if (!MAPBOX_TOKEN) {
+    return res.status(404).json({ message: 'Mapbox token is not configured' });
+  }
+
+  return res.status(200).json({ token: MAPBOX_TOKEN });
 });
 
 app.get('/api/news', authenticateRequest, async (req, res) => {

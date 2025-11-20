@@ -10,16 +10,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  LayoutDashboard,
-  FileText,
-  Settings,
-  Key,
-  Users,
-  Map,
-  Image,
-  FileEdit,
-} from "lucide-react";
+import { LayoutDashboard, FileText, Settings, FileEdit } from "lucide-react";
 
 const menuItems = [
   {
@@ -36,11 +27,6 @@ const menuItems = [
     title: "Hírek",
     url: "/admin/news",
     icon: FileText,
-  },
-  {
-    title: "API Kulcsok",
-    url: "/admin/api-settings",
-    icon: Key,
   },
   {
     title: "Beállítások",

@@ -9,7 +9,6 @@ import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
-import AdminApiSettings from "./pages/admin/AdminApiSettings";
 import AdminSettings from "./pages/admin/AdminSettings";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
@@ -42,7 +41,6 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/pages" element={<AdminPages />} />
             <Route path="/admin/news" element={<AdminNews />} />
-            <Route path="/admin/api-settings" element={<AdminApiSettings />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
