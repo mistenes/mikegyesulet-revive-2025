@@ -4,6 +4,8 @@ import { Calendar, ArrowLeft, ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getPublishedNewsPage } from "@/services/newsService";
 import type { NewsArticle } from "@/types/news";
@@ -82,8 +84,10 @@ export default function NewsIndex() {
   };
 
   return (
-    <div className="bg-gradient-subtle min-h-screen">
-      <div className="container px-4 py-12 lg:py-16">
+    <div className="min-h-screen bg-gradient-subtle">
+      <Header />
+
+      <main className="container px-4 pt-32 pb-16 lg:pb-20">
         <div className="max-w-4xl mx-auto text-center mb-10 space-y-3">
           <p className="text-sm font-semibold text-primary uppercase tracking-wider">HYCA Blog</p>
           <h1 className="text-3xl md:text-4xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
@@ -143,7 +147,9 @@ export default function NewsIndex() {
             {language === "hu" ? "Még nincsenek publikált hírek." : "No news published yet."}
           </div>
         )}
-      </div>
+      </main>
+
+      <Footer />
     </div>
   );
 }

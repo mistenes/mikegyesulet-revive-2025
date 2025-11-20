@@ -148,11 +148,6 @@ export const Footer = () => {
                   Legfrissebb bejegyzések
                 </Link>
               </li>
-              <li>
-                <Link to="/admin/news" className="hover:text-primary transition-colors">
-                  Hírek létrehozása (admin)
-                </Link>
-              </li>
             </ul>
           </div>
 
