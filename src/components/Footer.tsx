@@ -75,11 +75,21 @@ export const Footer = () => {
           <div>
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm">KAPCSOLAT</h4>
             <ul className="space-y-3 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-primary transition-colors">Üzenet küldése</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">E-mail írása</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Instagram</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Facebook</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">YouTube</a></li>
+              <li>
+                <span className="block text-xs text-muted-foreground/70 uppercase tracking-wide">E-mail</span>
+                <a
+                  href="mailto:titkarsag@mikegyesulet.hu"
+                  className="hover:text-primary transition-colors"
+                >
+                  titkarsag@mikegyesulet.hu
+                </a>
+              </li>
+              <li>
+                <span className="block text-xs text-muted-foreground/70 uppercase tracking-wide">Telefon</span>
+                <a href="tel:+36309594595" className="hover:text-primary transition-colors">
+                  +36 30 959 4595
+                </a>
+              </li>
             </ul>
           </div>
         </div>
