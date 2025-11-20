@@ -1,10 +1,7 @@
 import { useRef, useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { MapPin, X } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -97,34 +94,45 @@ export const RegionsMap = () => {
   const [mapboxToken, setMapboxToken] = useState("");
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMapboxToken();
-  }, []);
+    const loadToken = async () => {
+      setIsLoading(true);
+      setLoadError(null);
 
-  const fetchMapboxToken = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("site_settings")
-        .select("setting_value")
-        .eq("setting_key", "mapbox_token")
-        .single();
+      try {
+        const envToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+        if (envToken) {
+          setMapboxToken(envToken);
+          setTimeout(() => initializeMap(envToken), 100);
+          return;
+        }
 
-      if (error) throw error;
+        const response = await fetch("/api/public/mapbox-token");
+        if (!response.ok) {
+          throw new Error("Mapbox token not configured");
+        }
 
-      if (data?.setting_value) {
-        setMapboxToken(data.setting_value);
-        setIsLoading(false);
-        // Auto-initialize if token exists
-        setTimeout(() => initializeMap(data.setting_value), 100);
-      } else {
+        const data = await response.json();
+        if (!data?.token) {
+          throw new Error("Missing token");
+        }
+
+        setMapboxToken(data.token);
+        setTimeout(() => initializeMap(data.token), 100);
+      } catch (error) {
+        console.error("Failed to load Mapbox token", error);
+        setLoadError(
+          "A Mapbox token nincs beállítva a környezetben. Add meg a MAPBOX_TOKEN értékét a Render környezeti változók között.",
+        );
+      } finally {
         setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching Mapbox token:", error);
-      setIsLoading(false);
-    }
-  };
+    };
+
+    loadToken();
+  }, []);
 
   const initializeMap = (token?: string) => {
     const tokenToUse = token || mapboxToken;
@@ -140,13 +148,13 @@ export const RegionsMap = () => {
           border-radius: 16px !important;
           overflow: hidden;
         }
-        
+
         .mapboxgl-popup-tip {
           border-top-color: rgba(255, 255, 255, 0.95) !important;
         }
       `;
       document.head.appendChild(style);
-      
+
       mapboxgl.accessToken = tokenToUse;
 
       map.current = new mapboxgl.Map({
@@ -173,6 +181,8 @@ export const RegionsMap = () => {
       // Wait for map to load before adding markers
       map.current.on('load', () => {
         if (!map.current) return;
+
+        map.current.resize();
 
         // Track currently open popup
         let currentPopup: mapboxgl.Popup | null = null;
@@ -285,8 +295,8 @@ export const RegionsMap = () => {
         });
 
         setIsMapInitialized(true);
-        toast.success("Térkép betöltve! Kattints a jelölőkre a részletekért.");
       });
+
     } catch (error) {
       toast.error("Hiba a térkép betöltésekor. Ellenőrizd a token-t!");
       console.error(error);
@@ -298,6 +308,20 @@ export const RegionsMap = () => {
       map.current?.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isMapInitialized || !map.current) return;
+
+    const handleResize = () => {
+      map.current?.resize();
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [isMapInitialized]);
 
   return (
     <section
@@ -352,33 +376,14 @@ export const RegionsMap = () => {
                   Mapbox token hiányzik
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Az admin felületen add meg a Mapbox API tokent az{" "}
-                  <a
-                    href="/admin/api-settings"
-                    className="text-primary hover:underline"
-                  >
-                    API Kulcsok
-                  </a>{" "}
-                  menüpontban a térkép megjelenítéséhez.
+                  Állítsd be a MAPBOX_TOKEN környezeti változót a Render szolgáltatásnál, majd indítsd újra az alkalmazást.
                 </p>
+                {loadError && (
+                  <p className="text-sm text-destructive mt-2">{loadError}</p>
+                )}
               </div>
             </div>
           </div>
-        )}
-
-        {isMapInitialized && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setIsMapInitialized(false);
-              map.current?.remove();
-            }}
-            className="absolute top-4 right-4 z-10 bg-background/80 backdrop-blur"
-          >
-            <X className="h-4 w-4 mr-2" />
-            Térkép újratöltése
-          </Button>
         )}
 
         <div
@@ -390,9 +395,9 @@ export const RegionsMap = () => {
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none z-10" />
             <div
               ref={mapContainer}
-              className="w-full h-[600px] relative"
-              style={{ 
-                display: isMapInitialized ? "block" : "none",
+              className="w-full h-[600px] relative transition-opacity duration-300"
+              style={{
+                opacity: isMapInitialized ? 1 : 0,
                 background: 'linear-gradient(to bottom, #f8f9fa, #e9ecef)'
               }}
             />
