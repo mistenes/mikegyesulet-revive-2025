@@ -48,6 +48,14 @@ export default function AdminPages() {
   const [activeLanguage, setActiveLanguage] = useState<LanguageCode>("hu");
   const [savingSection, setSavingSection] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!session) return;
+
+    const sections = getAllSections();
+    setPageContent(sections);
+    setLoading(false);
+  }, [session]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
@@ -60,12 +68,6 @@ export default function AdminPages() {
   }
 
   if (!session) return null;
-
-  useEffect(() => {
-    const sections = getAllSections();
-    setPageContent(sections);
-    setLoading(false);
-  }, []);
 
   const ensureSection = (sectionKey: SectionKey): LocalizedSectionContent => {
     const existing = pageContent[sectionKey];
