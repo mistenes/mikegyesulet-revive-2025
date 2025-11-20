@@ -49,6 +49,16 @@ const supervisoryBoard = [
   { name: "Boncsarovszky Péter", position: "Tag", email: "peter.boncsarovszky@mikegyesulet.hu" },
 ];
 
+const hyca = [
+  { name: "Mészáros János", position: "Elnök", email: "" },
+];
+
+const hycaSupervisoryBoard = [
+  { name: "Búcsú Ákos", position: "Tag", email: "" },
+  { name: "Bence Norbert", position: "Tag", email: "" },
+  { name: "Bogar Patrik", position: "Tag", email: "" },
+];
+
 const operationalTeam = [
   { name: "Bokor Boglárka", position: "Titkár", email: "titkarsag@mikegyesulet.hu" },
   { name: "Mészáros János", position: "Gazdasági vezető", email: "janos.meszaros@mikegyesulet.hu" },
@@ -212,6 +222,76 @@ export default function Rolunk() {
                   <Mail className="h-4 w-4" />
                   Kapcsolat
                 </a>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* HYCA Section */}
+      <section className="py-16 px-4">
+        <div className="container mx-auto max-w-7xl">
+          <h2 className="text-4xl font-bold mb-4 text-foreground">HYCA</h2>
+          <p className="text-lg text-muted-foreground mb-12 max-w-3xl">
+            A Hunyouth (HYCA) vezetése, amely a nemzetközi kapcsolatok és ifjúsági együttműködések koordinációjáért felel.
+          </p>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {hyca.map((person, index) => (
+              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
+                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
+                  <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center">
+                    <span className="text-4xl font-bold text-primary">
+                      {person.name.split(" ").map(n => n[0]).join("")}
+                    </span>
+                  </div>
+                </div>
+                <h3 className="text-xl font-semibold mb-1">{person.name}</h3>
+                <p className="text-muted-foreground mb-3">{person.position}</p>
+                {person.email && (
+                  <a
+                    href={`mailto:${person.email}`}
+                    className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Kapcsolat
+                  </a>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* HYCA Supervisory Board Section */}
+      <section className="py-16 px-4 bg-card/30">
+        <div className="container mx-auto max-w-7xl">
+          <h2 className="text-4xl font-bold mb-4 text-foreground">HYCA Felügyelő Bizottság</h2>
+          <p className="text-lg text-muted-foreground mb-12 max-w-3xl">
+            A HYCA felügyelő bizottsága biztosítja a szervezet működésének átláthatóságát és megfelelőségét.
+          </p>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {hycaSupervisoryBoard.map((person, index) => (
+              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
+                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
+                  <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center">
+                    <span className="text-4xl font-bold text-primary">
+                      {person.name.split(" ").map(n => n[0]).join("")}
+                    </span>
+                  </div>
+                </div>
+                <h3 className="text-xl font-semibold mb-1">{person.name}</h3>
+                <p className="text-muted-foreground mb-3">{person.position}</p>
+                {person.email && (
+                  <a
+                    href={`mailto:${person.email}`}
+                    className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Kapcsolat
+                  </a>
+                )}
               </Card>
             ))}
           </div>
