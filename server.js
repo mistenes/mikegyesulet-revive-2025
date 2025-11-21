@@ -463,17 +463,22 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+function ensureFolderPath(path) {
+  const normalized = (path || '').toString().trim().replace(/\\+/g, '/').replace(/\/$/, '');
+  if (!normalized) {
+    return '/';
+  }
+
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
 function normalizeFolderPath(baseFolder, requestedFolder) {
-  const base = (baseFolder || '').replace(/\/$/, '');
+  const base = ensureFolderPath(baseFolder || '/');
   if (!requestedFolder) {
     return base;
   }
 
-  const requested = requestedFolder.toString().trim().replace(/\/$/, '');
-  if (!requested) {
-    return base;
-  }
-
+  const requested = ensureFolderPath(requestedFolder);
   if (!base || requested === base || requested.startsWith(`${base}/`)) {
     return requested;
   }
