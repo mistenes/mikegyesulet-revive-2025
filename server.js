@@ -21,6 +21,10 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN || process.env.VITE_MAPBOX_TOKEN || '';
+const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY || '';
+const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
+const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
+const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 
@@ -265,6 +269,39 @@ async function ensureProjectsTables() {
   }
 }
 
+async function ensureGalleryTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS gallery_albums (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        subtitle TEXT DEFAULT '',
+        event_date DATE,
+        cover_image_url TEXT NOT NULL,
+        cover_image_alt TEXT DEFAULT '',
+        images JSONB NOT NULL DEFAULT '[]',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        published BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS gallery_sort_idx ON gallery_albums(sort_order, created_at DESC);',
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS gallery_published_idx ON gallery_albums(published, sort_order);',
+    );
+  } finally {
+    client.release();
+  }
+}
+
 async function ensurePageContentTable() {
   const client = await pool.connect();
   try {
@@ -315,6 +352,24 @@ function mapProjectRow(row) {
     linkUrl: row.link_url || '',
     published: row.published,
     translations: row.translations || { hu: {}, en: {} },
+    createdAt: row.created_at ? row.created_at.toISOString() : '',
+    updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
+  };
+}
+
+function mapGalleryRow(row) {
+  const eventDate = row.event_date instanceof Date ? row.event_date.toISOString().split('T')[0] : null;
+
+  return {
+    id: row.id,
+    title: row.title || '',
+    subtitle: row.subtitle || '',
+    eventDate,
+    coverImageUrl: row.cover_image_url || '',
+    coverImageAlt: row.cover_image_alt || '',
+    images: Array.isArray(row.images) ? row.images : [],
+    sortOrder: row.sort_order ?? 0,
+    published: row.published,
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
   };
@@ -408,6 +463,89 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.get('/api/gallery/imagekit-auth', authenticateRequest, async (_req, res) => {
+  if (!IMAGEKIT_PUBLIC_KEY || !IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const token = crypto.randomBytes(16).toString('hex');
+  const expire = Math.floor(Date.now() / 1000) + 10 * 60; // 10 minutes
+  const signature = crypto
+    .createHmac('sha1', IMAGEKIT_PRIVATE_KEY)
+    .update(token + expire)
+    .digest('hex');
+
+  return res.status(200).json({
+    token,
+    expire,
+    signature,
+    publicKey: IMAGEKIT_PUBLIC_KEY,
+    urlEndpoint: IMAGEKIT_URL_ENDPOINT.replace(/\/$/, ''),
+    folder: IMAGEKIT_GALLERY_FOLDER,
+  });
+});
+
+app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
+  const search = (req.query.search || '').toString().trim();
+  const requestedPath = (req.query.path || '').toString().trim();
+  const baseFolder = IMAGEKIT_GALLERY_FOLDER || '/';
+  const path = requestedPath || baseFolder;
+
+  const params = new URLSearchParams({
+    path,
+    sort: 'ASC_NAME',
+    limit: limit.toString(),
+    includeFolder: 'true',
+    includeFiles: 'true',
+  });
+
+  if (search) {
+    params.set('searchQuery', `name:"${search}"`);
+  }
+
+  const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
+
+  try {
+    const response = await fetch(`https://api.imagekit.io/v1/files?${params.toString()}`, {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const message = `ImageKit list hiba: ${response.status}`;
+      console.error(message, await response.text());
+      return res.status(502).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });
+    }
+
+    const payload = (await response.json()) || [];
+    const files = Array.isArray(payload)
+      ? payload.map((item) => ({
+          id: item.fileId || item.folderId || `${item.type}:${item.name}`,
+          name: item.name,
+          url: item.url,
+          thumbnailUrl: item.thumbnail,
+          width: item.width,
+          height: item.height,
+          createdAt: item.createdAt,
+          isFolder: item.type === 'folder',
+          path: item.filePath || item.folderPath || `${path.replace(/\/$/, '')}/${item.name}`,
+        }))
+      : [];
+
+    return res.status(200).json({ files, folder: path, baseFolder });
+  } catch (error) {
+    console.error('ImageKit list error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });
+  }
+});
+
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
   return res.status(200).json({ user: { email: req.user.email } });
 });
@@ -480,6 +618,21 @@ app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) =
   }
 });
 
+app.get('/api/gallery', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      'SELECT * FROM gallery_albums ORDER BY sort_order ASC, event_date DESC NULLS LAST, created_at DESC',
+    );
+    return res.json({ items: result.rows.map(mapGalleryRow) });
+  } catch (error) {
+    console.error('Get gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a galériákat' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
@@ -545,6 +698,23 @@ app.get('/api/projects/public', async (_req, res) => {
   }
 });
 
+app.get('/api/gallery/public', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT * FROM gallery_albums
+       WHERE published = true
+       ORDER BY sort_order ASC, event_date DESC NULLS LAST, created_at DESC`,
+    );
+    return res.json({ items: result.rows.map(mapGalleryRow) });
+  } catch (error) {
+    console.error('Get public gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
 function validateProjectPayload(payload) {
   if (!payload?.translations?.hu?.title || !payload?.translations?.en?.title) {
     const error = new Error('A magyar és angol cím megadása kötelező');
@@ -554,6 +724,30 @@ function validateProjectPayload(payload) {
 
   if (!payload?.translations?.hu?.description || !payload?.translations?.en?.description) {
     const error = new Error('A magyar és angol leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+}
+
+function validateGalleryPayload(payload) {
+  if (!payload?.title) {
+    const error = new Error('A galéria cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!payload?.coverImageUrl) {
+    const error = new Error('Add meg a borítókép URL-jét');
+    error.status = 400;
+    throw error;
+  }
+
+  const images = Array.isArray(payload?.images)
+    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
+    : [];
+
+  if (!images.length) {
+    const error = new Error('Legalább egy kép megadása kötelező');
     error.status = 400;
     throw error;
   }
@@ -683,6 +877,141 @@ app.delete('/api/projects/:id', authenticateRequest, async (req, res) => {
   }
 });
 
+app.post('/api/gallery', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+  const images = Array.isArray(payload.images)
+    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
+    : [];
+
+  try {
+    validateGalleryPayload({ ...payload, images });
+
+    const orderResult = await client.query(
+      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM gallery_albums',
+    );
+    const nextOrder = Number(orderResult.rows[0]?.next_order || 1);
+
+    const result = await client.query(
+      `INSERT INTO gallery_albums
+       (title, subtitle, event_date, cover_image_url, cover_image_alt, images, sort_order, published)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        payload.title,
+        payload.subtitle || '',
+        payload.eventDate || null,
+        payload.coverImageUrl,
+        payload.coverImageAlt || '',
+        JSON.stringify(images),
+        payload.sortOrder ?? nextOrder,
+        Boolean(payload.published),
+      ],
+    );
+
+    return res.status(201).json(mapGalleryRow(result.rows[0]));
+  } catch (error) {
+    console.error('Create gallery error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült létrehozni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+  const albumId = req.params.id;
+  const images = Array.isArray(payload.images)
+    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
+    : [];
+
+  try {
+    validateGalleryPayload({ ...payload, images });
+
+    const existing = await client.query('SELECT * FROM gallery_albums WHERE id = $1 LIMIT 1', [albumId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A galéria nem található' });
+    }
+
+    const result = await client.query(
+      `UPDATE gallery_albums
+       SET title = $1,
+           subtitle = $2,
+           event_date = $3,
+           cover_image_url = $4,
+           cover_image_alt = $5,
+           images = $6,
+           sort_order = $7,
+           published = $8,
+           updated_at = NOW()
+       WHERE id = $9
+       RETURNING *`,
+      [
+        payload.title,
+        payload.subtitle || '',
+        payload.eventDate || null,
+        payload.coverImageUrl,
+        payload.coverImageAlt || '',
+        JSON.stringify(images),
+        payload.sortOrder ?? existing.rows[0].sort_order,
+        Boolean(payload.published),
+        albumId,
+      ],
+    );
+
+    return res.status(200).json(mapGalleryRow(result.rows[0]));
+  } catch (error) {
+    console.error('Update gallery error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/gallery/reorder', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const order = Array.isArray(req.body?.order) ? req.body.order : [];
+
+  if (!order.length) {
+    return res.status(400).json({ message: 'Érvénytelen rendezési sorrend' });
+  }
+
+  try {
+    await client.query('BEGIN');
+    for (let index = 0; index < order.length; index += 1) {
+      const id = order[index];
+      await client.query(
+        'UPDATE gallery_albums SET sort_order = $1, updated_at = NOW() WHERE id = $2',
+        [index + 1, id],
+      );
+    }
+    await client.query('COMMIT');
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Reorder gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a sorrendet' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/gallery/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('DELETE FROM gallery_albums WHERE id = $1', [req.params.id]);
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/news', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
@@ -739,7 +1068,10 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
 app.get('/api/news/public', async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
-  const limit = Number(req.query.limit) > 0 ? Number(req.query.limit) : 6;
+  const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
+  const pageSizeParam = Number(req.query.pageSize);
+  const limitParam = Number(req.query.limit);
+  const pageSize = pageSizeParam > 0 ? pageSizeParam : limitParam > 0 ? limitParam : 6;
 
   const filters = ['published = TRUE'];
   const values = [];
@@ -756,18 +1088,27 @@ app.get('/api/news/public', async (req, res) => {
   }
 
   const whereClause = `WHERE ${filters.join(' AND ')}`;
+  const offset = (page - 1) * pageSize;
 
   try {
-    const result = await client.query(
+    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const total = Number(countResult.rows[0]?.count || 0);
+
+    const listResult = await client.query(
       `SELECT *
        FROM news_articles
        ${whereClause}
        ORDER BY published_at DESC NULLS LAST, created_at DESC
-       LIMIT $${values.length + 1}`,
-      [...values, limit],
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, pageSize, offset],
     );
 
-    return res.status(200).json({ items: result.rows.map(mapNewsRow) });
+    return res.status(200).json({
+      items: listResult.rows.map(mapNewsRow),
+      total,
+      page,
+      pageSize,
+    });
   } catch (error) {
     console.error('Public news error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni a híreket' });
@@ -927,7 +1268,13 @@ app.get('*', (req, res) => {
   return res.sendFile(path.join(DIST_PATH, 'index.html'));
 });
 
-Promise.all([ensureAdminUser(), ensureNewsTables(), ensureProjectsTables(), ensurePageContentTable()])
+Promise.all([
+  ensureAdminUser(),
+  ensureNewsTables(),
+  ensureProjectsTables(),
+  ensureGalleryTables(),
+  ensurePageContentTable(),
+])
   .then(() => {
     app.listen(PORT, () => {
       console.log(`API server listening on port ${PORT}`);

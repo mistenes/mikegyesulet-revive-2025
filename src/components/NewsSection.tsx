@@ -114,9 +114,15 @@ export const NewsSection = () => {
           <p className="text-lg text-muted-foreground mb-6 max-w-2xl">
             {sectionContent.description}
           </p>
-          <Button variant="outline" className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300">
-            {sectionContent.buttonText}
-            <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+          <Button
+            asChild
+            variant="outline"
+            className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300"
+          >
+            <Link to="/news" className="inline-flex items-center">
+              {sectionContent.buttonText}
+              <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+            </Link>
           </Button>
         </div>
 

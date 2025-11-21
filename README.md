@@ -34,6 +34,13 @@ Create a `.env` file based on `.env.example`.
 | `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`; optional on Render because `RENDER_EXTERNAL_URL` is used automatically) |
 | `MAPBOX_TOKEN` | Server-side token exposed to the frontend via `/api/public/mapbox-token` for the regions map |
 | `VITE_MAPBOX_TOKEN` | Optional direct token for local dev; overrides the API lookup when set |
+| `IMAGEKIT_PUBLIC_KEY` | Public key used by the gallery ImageKit uploads |
+| `IMAGEKIT_PRIVATE_KEY` | Private key used to sign ImageKit upload requests |
+| `IMAGEKIT_URL_ENDPOINT` | Base URL endpoint for hosted ImageKit images |
+| `IMAGEKIT_GALLERY_FOLDER` | Optional ImageKit folder path for gallery uploads (e.g., `hyca/gallery`) |
+| `LOCAL_DEV_ORIGIN` | Override the allowed local origin for cookies; defaults to `http://localhost:5173` |
+
+For `IMAGEKIT_GALLERY_FOLDER`, use a subfolder path (for example `hyca/gallery`) to keep gallery images organized under your ImageKit account. ImageKit will create the folder automatically on first upload if it does not already exist.
 
 ### Admin access
 
