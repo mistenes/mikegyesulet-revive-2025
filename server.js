@@ -479,7 +479,11 @@ function normalizeFolderPath(baseFolder, requestedFolder) {
   }
 
   const requested = ensureFolderPath(requestedFolder);
-  if (!base || requested === base || requested.startsWith(`${base}/`)) {
+  if (base === '/') {
+    return requested;
+  }
+
+  if (requested === base || requested.startsWith(`${base}/`)) {
     return requested;
   }
 
