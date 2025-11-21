@@ -496,7 +496,7 @@ async function ensureFolderHierarchy(authHeader, fullPath) {
   let parent = '/';
 
   for (const segment of segments) {
-    const response = await fetch('https://upload.imagekit.io/api/v1/folder', {
+    const response = await fetch('https://api.imagekit.io/v1/folder', {
       method: 'POST',
       headers: {
         Authorization: `Basic ${authHeader}`,
@@ -632,7 +632,7 @@ app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) 
   try {
     await ensureFolderHierarchy(authHeader, parentFolderPath);
 
-    const response = await fetch('https://upload.imagekit.io/api/v1/folder', {
+    const response = await fetch('https://api.imagekit.io/v1/folder', {
       method: 'POST',
       headers: {
         Authorization: `Basic ${authHeader}`,
