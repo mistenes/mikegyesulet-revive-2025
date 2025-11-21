@@ -463,10 +463,32 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.get('/api/gallery/imagekit-auth', authenticateRequest, async (_req, res) => {
+function normalizeFolderPath(baseFolder, requestedFolder) {
+  const base = (baseFolder || '').replace(/\/$/, '');
+  if (!requestedFolder) {
+    return base;
+  }
+
+  const requested = requestedFolder.toString().trim().replace(/\/$/, '');
+  if (!requested) {
+    return base;
+  }
+
+  if (!base || requested === base || requested.startsWith(`${base}/`)) {
+    return requested;
+  }
+
+  return base;
+}
+
+app.get('/api/gallery/imagekit-auth', authenticateRequest, async (req, res) => {
   if (!IMAGEKIT_PUBLIC_KEY || !IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
     return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
   }
+
+  const baseFolder = IMAGEKIT_GALLERY_FOLDER || '';
+  const requestedFolder = (req.query.folder || '').toString();
+  const folder = normalizeFolderPath(baseFolder, requestedFolder);
 
   const token = crypto.randomBytes(16).toString('hex');
   const expire = Math.floor(Date.now() / 1000) + 10 * 60; // 10 minutes
@@ -481,7 +503,7 @@ app.get('/api/gallery/imagekit-auth', authenticateRequest, async (_req, res) => 
     signature,
     publicKey: IMAGEKIT_PUBLIC_KEY,
     urlEndpoint: IMAGEKIT_URL_ENDPOINT.replace(/\/$/, ''),
-    folder: IMAGEKIT_GALLERY_FOLDER,
+    folder,
   });
 });
 
@@ -494,7 +516,7 @@ app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => 
   const search = (req.query.search || '').toString().trim();
   const requestedPath = (req.query.path || '').toString().trim();
   const baseFolder = IMAGEKIT_GALLERY_FOLDER || '/';
-  const path = requestedPath || baseFolder;
+  const path = normalizeFolderPath(baseFolder, requestedPath) || baseFolder;
 
   const params = new URLSearchParams({
     path,
@@ -543,6 +565,49 @@ app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => 
   } catch (error) {
     console.error('ImageKit list error', error);
     return res.status(500).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });
+  }
+});
+
+app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const name = (req.body?.name || '').toString().trim();
+  const requestedParent = (req.body?.parentPath || '').toString().trim();
+  const baseFolder = IMAGEKIT_GALLERY_FOLDER || '/';
+  const parentFolderPath = normalizeFolderPath(baseFolder, requestedParent) || baseFolder;
+
+  if (!name || /[\\/]/.test(name)) {
+    return res.status(400).json({ message: 'Érvénytelen mappanév' });
+  }
+
+  const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
+
+  try {
+    const response = await fetch('https://upload.imagekit.io/api/v1/folder', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        folderName: name,
+        parentFolderPath,
+      }),
+    });
+
+    if (!response.ok) {
+      const message = `ImageKit folder hiba: ${response.status}`;
+      console.error(message, await response.text());
+      return res.status(502).json({ message: 'Nem sikerült létrehozni a mappát az ImageKitben' });
+    }
+
+    return res.status(201).json({ success: true });
+  } catch (error) {
+    console.error('ImageKit folder error', error);
+    return res.status(500).json({ message: 'Nem sikerült létrehozni a mappát az ImageKitben' });
   }
 });
 

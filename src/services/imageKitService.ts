@@ -44,10 +44,18 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function getImageKitAuth(): Promise<ImageKitAuth> {
-  const response = await fetch(new URL("/api/gallery/imagekit-auth", defaultBase).toString(), {
-    credentials: "include",
-  });
+export async function getImageKitAuth(folder?: string): Promise<ImageKitAuth> {
+  const params = new URLSearchParams();
+  if (folder?.trim()) {
+    params.set("folder", folder.trim());
+  }
+
+  const response = await fetch(
+    new URL(`/api/gallery/imagekit-auth${params.size ? `?${params.toString()}` : ""}`, defaultBase).toString(),
+    {
+      credentials: "include",
+    },
+  );
   return handleResponse<ImageKitAuth>(response);
 }
 
@@ -55,8 +63,8 @@ function buildUploadUrl(urlEndpoint: string) {
   return `${urlEndpoint.replace(/\/$/, "")}/api/v1/files/upload`;
 }
 
-export async function uploadToImageKit(file: File): Promise<string> {
-  const auth = await getImageKitAuth();
+export async function uploadToImageKit(file: File, folder?: string): Promise<string> {
+  const auth = await getImageKitAuth(folder);
   const formData = new FormData();
 
   formData.append("file", file);
@@ -110,4 +118,15 @@ export async function listImageKitFiles(search?: string, path?: string): Promise
     folder: payload.folder || path || "",
     baseFolder: payload.baseFolder || "",
   };
+}
+
+export async function createImageKitFolder(parentPath: string, name: string): Promise<void> {
+  const response = await fetch(new URL("/api/gallery/imagekit-folders", defaultBase).toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ parentPath, name }),
+  });
+
+  await handleResponse(response);
 }
