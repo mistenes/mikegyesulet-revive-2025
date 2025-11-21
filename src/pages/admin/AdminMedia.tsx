@@ -27,6 +27,7 @@ export default function AdminMedia() {
   const [error, setError] = useState<string | null>(null);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
+  const [selectedItem, setSelectedItem] = useState<ImageKitItem | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const currentPath = path || basePath || "";
@@ -70,6 +71,15 @@ export default function AdminMedia() {
   const handleOpenFolder = (item: ImageKitItem) => {
     if (!item.isFolder) return;
     void loadFiles(undefined, item.path);
+  };
+
+  const handleOpenItem = (item: ImageKitItem) => {
+    if (item.isFolder) {
+      handleOpenFolder(item);
+      return;
+    }
+
+    setSelectedItem(item);
   };
 
   const handleBack = () => {
@@ -139,9 +149,11 @@ export default function AdminMedia() {
     }
 
     return (
-      <div
+      <button
         key={item.id}
-        className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 hover:border-primary/50 hover:shadow"
+        type="button"
+        onClick={() => handleOpenItem(item)}
+        className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 text-left hover:border-primary/50 hover:shadow"
       >
         <div className="flex items-center gap-3">
           <div className="rounded-full bg-muted p-2">
@@ -165,7 +177,7 @@ export default function AdminMedia() {
             </p>
           </div>
         </div>
-      </div>
+      </button>
     );
   };
 
@@ -287,6 +299,50 @@ export default function AdminMedia() {
               <Button onClick={() => void handleCreateFolder()}>Létrehozás</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedItem} onOpenChange={(open) => !open && setSelectedItem(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{selectedItem?.name}</DialogTitle>
+          </DialogHeader>
+          {selectedItem && (
+            <div className="space-y-4">
+              {selectedItem.url ? (
+                <div className="overflow-hidden rounded-lg border bg-muted">
+                  <img
+                    src={selectedItem.url}
+                    alt={selectedItem.name}
+                    className="mx-auto max-h-[60vh] w-full max-w-full object-contain"
+                    loading="lazy"
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Ehhez a fájlhoz nem érhető el előnézet.</p>
+              )}
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Elérési út</p>
+                <p className="break-all font-medium">{selectedItem.path}</p>
+              </div>
+              {selectedItem.url && (
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild>
+                    <a href={selectedItem.url} target="_blank" rel="noreferrer">
+                      Megnyitás új lapon
+                    </a>
+                  </Button>
+                  {selectedItem.thumbnailUrl && selectedItem.thumbnailUrl !== selectedItem.url && (
+                    <Button variant="secondary" asChild>
+                      <a href={selectedItem.thumbnailUrl} target="_blank" rel="noreferrer">
+                        Bélyegkép megnyitása
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </AdminLayout>
