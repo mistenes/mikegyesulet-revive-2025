@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar } from "lucide-react";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getNewsBySlug } from "@/services/newsService";
 import type { NewsArticle } from "@/types/news";
@@ -45,17 +47,29 @@ export default function NewsArticlePage() {
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center">
-          <div className="h-12 w-12 border-b-2 border-primary rounded-full animate-spin mx-auto" />
-          <p className="mt-4 text-muted-foreground">Betöltés...</p>
-        </div>
+      <div className="min-h-screen bg-gradient-subtle">
+        <Header />
+        <main className="container px-4 pt-32 pb-16 lg:pb-20 flex items-center justify-center">
+          <div className="text-center">
+            <div className="h-12 w-12 border-b-2 border-primary rounded-full animate-spin mx-auto" />
+            <p className="mt-4 text-muted-foreground">Betöltés...</p>
+          </div>
+        </main>
+        <Footer />
       </div>
     );
   }
 
   if (!article) {
-    return <EmptyState message={language === "hu" ? "A cikk nem található." : "Article not found."} />;
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <Header />
+        <main className="container px-4 pt-32 pb-16 lg:pb-20">
+          <EmptyState message={language === "hu" ? "A cikk nem található." : "Article not found."} />
+        </main>
+        <Footer />
+      </div>
+    );
   }
 
   const translation = article.translations[language] || article.translations.hu;
@@ -68,14 +82,16 @@ export default function NewsArticlePage() {
     : "";
 
   return (
-    <div className="bg-gradient-subtle">
-      <div className="container px-4 py-10 lg:py-16">
+    <div className="min-h-screen bg-gradient-subtle">
+      <Header />
+
+      <main className="container px-4 pt-32 pb-16 lg:pb-20">
         <div className="max-w-5xl mx-auto space-y-8">
           <div className="flex items-center justify-between gap-4">
-            <Link to="/">
+            <Link to="/news">
               <Button variant="ghost" className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
-                {language === "hu" ? "Vissza" : "Back"}
+                {language === "hu" ? "Vissza a hírekhez" : "Back to news"}
               </Button>
             </Link>
             <Badge variant={article.published ? "default" : "secondary"} className="uppercase tracking-wide">
@@ -106,7 +122,9 @@ export default function NewsArticlePage() {
 
           <div className="prose prose-neutral max-w-none" dangerouslySetInnerHTML={{ __html: renderMarkdown(translation.content) }} />
         </div>
-      </div>
+      </main>
+
+      <Footer />
     </div>
   );
 }
