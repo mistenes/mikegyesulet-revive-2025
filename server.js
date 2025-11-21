@@ -486,6 +486,46 @@ function normalizeFolderPath(baseFolder, requestedFolder) {
   return base;
 }
 
+async function ensureFolderHierarchy(authHeader, fullPath) {
+  const normalized = ensureFolderPath(fullPath);
+  if (normalized === '/') {
+    return '/';
+  }
+
+  const segments = normalized.replace(/^\//, '').split('/').filter(Boolean);
+  let parent = '/';
+
+  for (const segment of segments) {
+    const response = await fetch('https://upload.imagekit.io/api/v1/folder', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        folderName: segment,
+        parentFolderPath: parent,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      if (response.status === 400 && /already exists/i.test(text)) {
+        parent = ensureFolderPath(`${parent}/${segment}`);
+        continue;
+      }
+
+      console.error('ImageKit ensure folder hiba', response.status, text);
+      throw new Error('Nem sikerült előkészíteni az ImageKit mappát');
+    }
+
+    parent = ensureFolderPath(`${parent}/${segment}`);
+  }
+
+  return parent;
+}
+
 app.get('/api/gallery/imagekit-auth', authenticateRequest, async (req, res) => {
   if (!IMAGEKIT_PUBLIC_KEY || !IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
     return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
@@ -590,6 +630,8 @@ app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) 
   const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
 
   try {
+    await ensureFolderHierarchy(authHeader, parentFolderPath);
+
     const response = await fetch('https://upload.imagekit.io/api/v1/folder', {
       method: 'POST',
       headers: {
