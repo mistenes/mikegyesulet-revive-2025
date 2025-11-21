@@ -485,6 +485,62 @@ app.get('/api/gallery/imagekit-auth', authenticateRequest, async (_req, res) => 
   });
 });
 
+app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
+  const search = (req.query.search || '').toString().trim();
+  const folder = IMAGEKIT_GALLERY_FOLDER || '/';
+
+  const params = new URLSearchParams({
+    path: folder,
+    type: 'file',
+    sort: 'DESC_CREATED',
+    limit: limit.toString(),
+  });
+
+  if (search) {
+    params.set('searchQuery', `name:"${search}"`);
+  }
+
+  const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
+
+  try {
+    const response = await fetch(`https://api.imagekit.io/v1/files?${params.toString()}`, {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const message = `ImageKit list hiba: ${response.status}`;
+      console.error(message, await response.text());
+      return res.status(502).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });
+    }
+
+    const payload = (await response.json()) || [];
+    const files = Array.isArray(payload)
+      ? payload.map((item) => ({
+          id: item.fileId,
+          name: item.name,
+          url: item.url,
+          thumbnailUrl: item.thumbnail,
+          width: item.width,
+          height: item.height,
+          createdAt: item.createdAt,
+        }))
+      : [];
+
+    return res.status(200).json({ files, folder });
+  } catch (error) {
+    console.error('ImageKit list error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });
+  }
+});
+
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
   return res.status(200).json({ user: { email: req.user.email } });
 });

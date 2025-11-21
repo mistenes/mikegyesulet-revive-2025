@@ -16,6 +16,16 @@ type UploadResponse = {
   thumbnailUrl?: string;
 };
 
+export type ImageKitFile = {
+  id: string;
+  name: string;
+  url: string;
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
+  createdAt?: string;
+};
+
 async function handleResponse<T>(response: Response): Promise<T> {
   let payload: unknown = null;
   try {
@@ -68,4 +78,21 @@ export async function uploadToImageKit(file: File): Promise<string> {
   }
 
   return data.url;
+}
+
+export async function listImageKitFiles(search?: string): Promise<ImageKitFile[]> {
+  const params = new URLSearchParams();
+  if (search?.trim()) {
+    params.set("search", search.trim());
+  }
+
+  const response = await fetch(
+    new URL(`/api/gallery/imagekit-files${params.size ? `?${params.toString()}` : ""}`, defaultBase).toString(),
+    {
+      credentials: "include",
+    },
+  );
+
+  const payload = await handleResponse<{ files?: ImageKitFile[] }>(response);
+  return payload.files || [];
 }

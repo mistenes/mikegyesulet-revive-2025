@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +19,7 @@ import {
   reorderAlbums,
   updateAlbum,
 } from "@/services/galleryService";
-import { uploadToImageKit } from "@/services/imageKitService";
+import { listImageKitFiles, uploadToImageKit, type ImageKitFile } from "@/services/imageKitService";
 import type { GalleryAlbum, GalleryAlbumInput } from "@/types/gallery";
 
 const createEmptyAlbum = (sortOrder = 1): GalleryAlbumInput => ({
@@ -42,6 +44,12 @@ export default function AdminGallery() {
   const [imagesInput, setImagesInput] = useState("");
   const [coverUploading, setCoverUploading] = useState(false);
   const [imagesUploading, setImagesUploading] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [browserFiles, setBrowserFiles] = useState<ImageKitFile[]>([]);
+  const [browserTarget, setBrowserTarget] = useState<"cover" | "gallery">("cover");
+  const [browserSearch, setBrowserSearch] = useState("");
+  const [browserError, setBrowserError] = useState<string | null>(null);
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -127,6 +135,49 @@ export default function AdminGallery() {
     } finally {
       setImagesUploading(false);
     }
+  };
+
+  const loadImageKitFiles = async (term?: string) => {
+    setBrowserLoading(true);
+    setBrowserError(null);
+    try {
+      const files = await listImageKitFiles(term);
+      setBrowserFiles(files);
+      if (!files.length) {
+        toast.info("Nincs találat az ImageKitben");
+      }
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült lekérni az ImageKit fájlokat";
+      setBrowserError(message);
+      toast.error(message);
+    } finally {
+      setBrowserLoading(false);
+    }
+  };
+
+  const handleBrowserOpen = (target: "cover" | "gallery") => {
+    setBrowserTarget(target);
+    setBrowserOpen(true);
+    void loadImageKitFiles(browserSearch);
+  };
+
+  const handlePickImage = (file: ImageKitFile) => {
+    if (browserTarget === "cover") {
+      handleFieldChange("coverImageUrl", file.url);
+      if (!form.coverImageAlt.trim()) {
+        handleFieldChange("coverImageAlt", file.name);
+      }
+    } else {
+      setForm((prev) => {
+        const images = [...prev.images, file.url];
+        setImagesInput(images.join("\n"));
+        return { ...prev, images };
+      });
+    }
+
+    toast.success("Kép kiválasztva az ImageKitből");
+    setBrowserOpen(false);
   };
 
   const handleEdit = (album: GalleryAlbum) => {
@@ -352,6 +403,16 @@ export default function AdminGallery() {
                   >
                     {coverUploading && <Loader2 className="h-4 w-4 animate-spin" />}Feltöltés ImageKitre
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleBrowserOpen("cover")}
+                    disabled={coverUploading}
+                    className="gap-2"
+                  >
+                    ImageKit böngészése
+                  </Button>
                   <input
                     ref={coverInputRef}
                     type="file"
@@ -393,6 +454,16 @@ export default function AdminGallery() {
                     className="gap-2"
                   >
                     {imagesUploading && <Loader2 className="h-4 w-4 animate-spin" />}Képek feltöltése ImageKitre
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleBrowserOpen("gallery")}
+                    disabled={imagesUploading}
+                    className="gap-2"
+                  >
+                    Képek kiválasztása ImageKitből
                   </Button>
                   <input
                     ref={galleryInputRef}
@@ -511,6 +582,77 @@ export default function AdminGallery() {
             </div>
           )}
         </Card>
+
+        <Dialog open={browserOpen} onOpenChange={setBrowserOpen}>
+          <DialogContent className="max-w-5xl">
+            <DialogHeader>
+              <DialogTitle>ImageKit böngészése</DialogTitle>
+              <DialogDescription>
+                Válaszd ki, hogy melyik képet szeretnéd {browserTarget === "cover" ? "borítóként beállítani" : "a galériához hozzáadni"}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                <div className="flex gap-2 flex-1">
+                  <Input
+                    placeholder="Keresés fájlnévre"
+                    value={browserSearch}
+                    onChange={(event) => setBrowserSearch(event.target.value)}
+                  />
+                  <Button onClick={() => loadImageKitFiles(browserSearch)} disabled={browserLoading}>
+                    {browserLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Keresés"}
+                  </Button>
+                </div>
+                <Button variant="outline" onClick={() => loadImageKitFiles(browserSearch)} disabled={browserLoading}>
+                  Frissítés
+                </Button>
+              </div>
+
+              {browserError && <p className="text-sm text-destructive">{browserError}</p>}
+
+              {browserLoading ? (
+                <div className="py-10 text-center text-muted-foreground">Fájlok betöltése az ImageKitből...</div>
+              ) : !browserFiles.length ? (
+                <div className="py-10 text-center text-muted-foreground">Nincs megjeleníthető fájl.</div>
+              ) : (
+                <ScrollArea className="max-h-[60vh] pr-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {browserFiles.map((file) => (
+                      <div key={file.id} className="border rounded-lg p-3 space-y-2 bg-card shadow-sm">
+                        <div className="aspect-video overflow-hidden rounded-md bg-muted">
+                          {file.thumbnailUrl ? (
+                            <img src={file.thumbnailUrl} alt={file.name} className="h-full w-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
+                              Nincs előnézet
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <p className="font-medium text-sm truncate" title={file.name}>
+                            {file.name}
+                          </p>
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>
+                              {file.width && file.height ? `${file.width}×${file.height}` : "Méret nem elérhető"}
+                            </span>
+                            {file.createdAt && <span>{new Date(file.createdAt).toLocaleDateString()}</span>}
+                          </div>
+                        </div>
+                        <div className="flex justify-end">
+                          <Button size="sm" onClick={() => handlePickImage(file)}>
+                            {browserTarget === "cover" ? "Borító beállítása" : "Hozzáadás"}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminLayout>
   );
