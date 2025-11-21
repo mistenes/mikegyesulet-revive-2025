@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, Image as ImageIcon, Loader2, Pencil, Plus, Save, Trash } from "lucide-react";
+import { Folder, GripVertical, Image as ImageIcon, Loader2, Pencil, Plus, Save, Trash } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
@@ -19,7 +19,7 @@ import {
   reorderAlbums,
   updateAlbum,
 } from "@/services/galleryService";
-import { listImageKitFiles, uploadToImageKit, type ImageKitFile } from "@/services/imageKitService";
+import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
 import type { GalleryAlbum, GalleryAlbumInput } from "@/types/gallery";
 
 const createEmptyAlbum = (sortOrder = 1): GalleryAlbumInput => ({
@@ -46,10 +46,21 @@ export default function AdminGallery() {
   const [imagesUploading, setImagesUploading] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserLoading, setBrowserLoading] = useState(false);
-  const [browserFiles, setBrowserFiles] = useState<ImageKitFile[]>([]);
+  const [browserItems, setBrowserItems] = useState<ImageKitItem[]>([]);
   const [browserTarget, setBrowserTarget] = useState<"cover" | "gallery">("cover");
   const [browserSearch, setBrowserSearch] = useState("");
   const [browserError, setBrowserError] = useState<string | null>(null);
+  const [browserPath, setBrowserPath] = useState<string>("");
+  const [browserBasePath, setBrowserBasePath] = useState<string>("");
+
+  const currentBrowserPath = browserPath || browserBasePath || "";
+  const parentBrowserPath = useMemo(() => {
+    const trimmed = currentBrowserPath.replace(/\/$/, "");
+    const segments = trimmed.split("/").filter(Boolean);
+    if (segments.length <= 1) return browserBasePath || currentBrowserPath;
+    segments.pop();
+    return segments.join("/") || browserBasePath || currentBrowserPath;
+  }, [browserBasePath, currentBrowserPath]);
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -137,13 +148,15 @@ export default function AdminGallery() {
     }
   };
 
-  const loadImageKitFiles = async (term?: string) => {
+  const loadImageKitFiles = async (term?: string, path?: string) => {
     setBrowserLoading(true);
     setBrowserError(null);
     try {
-      const files = await listImageKitFiles(term);
-      setBrowserFiles(files);
-      if (!files.length) {
+      const { items, folder, baseFolder } = await listImageKitFiles(term, path || browserPath || undefined);
+      setBrowserItems(items);
+      setBrowserPath(folder || baseFolder);
+      setBrowserBasePath(baseFolder);
+      if (!items.length) {
         toast.info("Nincs találat az ImageKitben");
       }
     } catch (error) {
@@ -159,10 +172,15 @@ export default function AdminGallery() {
   const handleBrowserOpen = (target: "cover" | "gallery") => {
     setBrowserTarget(target);
     setBrowserOpen(true);
-    void loadImageKitFiles(browserSearch);
+    void loadImageKitFiles(browserSearch, browserPath);
   };
 
-  const handlePickImage = (file: ImageKitFile) => {
+  const handlePickImage = (file: ImageKitItem) => {
+    if (file.isFolder) return;
+    if (!file.url) {
+      toast.error("A kijelölt kép URL-je nem elérhető");
+      return;
+    }
     if (browserTarget === "cover") {
       handleFieldChange("coverImageUrl", file.url);
       if (!form.coverImageAlt.trim()) {
@@ -178,6 +196,18 @@ export default function AdminGallery() {
 
     toast.success("Kép kiválasztva az ImageKitből");
     setBrowserOpen(false);
+  };
+
+  const handleOpenFolder = (item: ImageKitItem) => {
+    if (!item.isFolder) return;
+    setBrowserSearch("");
+    void loadImageKitFiles(undefined, item.path);
+  };
+
+  const handleOpenParent = () => {
+    if (!parentBrowserPath || parentBrowserPath === currentBrowserPath) return;
+    setBrowserSearch("");
+    void loadImageKitFiles(undefined, parentBrowserPath);
   };
 
   const handleEdit = (album: GalleryAlbum) => {
@@ -613,40 +643,79 @@ export default function AdminGallery() {
 
               {browserLoading ? (
                 <div className="py-10 text-center text-muted-foreground">Fájlok betöltése az ImageKitből...</div>
-              ) : !browserFiles.length ? (
+              ) : !browserItems.length ? (
                 <div className="py-10 text-center text-muted-foreground">Nincs megjeleníthető fájl.</div>
               ) : (
                 <ScrollArea className="max-h-[60vh] pr-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {browserFiles.map((file) => (
-                      <div key={file.id} className="border rounded-lg p-3 space-y-2 bg-card shadow-sm">
-                        <div className="aspect-video overflow-hidden rounded-md bg-muted">
-                          {file.thumbnailUrl ? (
-                            <img src={file.thumbnailUrl} alt={file.name} className="h-full w-full object-cover" loading="lazy" />
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
-                              Nincs előnézet
-                            </div>
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <p className="font-medium text-sm truncate" title={file.name}>
-                            {file.name}
-                          </p>
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>
-                              {file.width && file.height ? `${file.width}×${file.height}` : "Méret nem elérhető"}
-                            </span>
-                            {file.createdAt && <span>{new Date(file.createdAt).toLocaleDateString()}</span>}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">Mappa:</span>
+                        <span className="break-all">{browserPath || browserBasePath || "/"}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {currentBrowserPath && parentBrowserPath && currentBrowserPath !== parentBrowserPath && (
+                          <Button size="sm" variant="ghost" onClick={handleOpenParent}>
+                            Egy szinttel feljebb
+                          </Button>
+                        )}
+                        {browserPath && browserBasePath && browserPath !== browserBasePath && (
+                          <Button size="sm" variant="ghost" onClick={() => loadImageKitFiles(undefined, browserBasePath)}>
+                            Alap mappa
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {browserItems.map((item) => (
+                        <div key={item.id} className="border rounded-lg p-3 space-y-2 bg-card shadow-sm">
+                          <div className="aspect-video overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                            {item.isFolder ? (
+                              <Folder className="h-10 w-10 text-muted-foreground" />
+                            ) : item.thumbnailUrl ? (
+                              <img
+                                src={item.thumbnailUrl}
+                                alt={item.name}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
+                                Nincs előnézet
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <p className="font-medium text-sm truncate" title={item.name}>
+                              {item.name}
+                            </p>
+                            {!item.isFolder && (
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>
+                                  {item.width && item.height ? `${item.width}×${item.height}` : "Méret nem elérhető"}
+                                </span>
+                                {item.createdAt && <span>{new Date(item.createdAt).toLocaleDateString()}</span>}
+                              </div>
+                            )}
+                            {item.isFolder && item.path && (
+                              <p className="text-xs text-muted-foreground break-all">{item.path}</p>
+                            )}
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            {item.isFolder ? (
+                              <Button size="sm" variant="outline" onClick={() => handleOpenFolder(item)}>
+                                Megnyitás
+                              </Button>
+                            ) : (
+                              <Button size="sm" onClick={() => handlePickImage(item)}>
+                                {browserTarget === "cover" ? "Borító beállítása" : "Hozzáadás"}
+                              </Button>
+                            )}
                           </div>
                         </div>
-                        <div className="flex justify-end">
-                          <Button size="sm" onClick={() => handlePickImage(file)}>
-                            {browserTarget === "cover" ? "Borító beállítása" : "Hozzáadás"}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </ScrollArea>
               )}

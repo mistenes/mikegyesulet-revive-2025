@@ -492,13 +492,16 @@ app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => 
 
   const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
   const search = (req.query.search || '').toString().trim();
-  const folder = IMAGEKIT_GALLERY_FOLDER || '/';
+  const requestedPath = (req.query.path || '').toString().trim();
+  const baseFolder = IMAGEKIT_GALLERY_FOLDER || '/';
+  const path = requestedPath || baseFolder;
 
   const params = new URLSearchParams({
-    path: folder,
-    type: 'file',
-    sort: 'DESC_CREATED',
+    path,
+    sort: 'ASC_NAME',
     limit: limit.toString(),
+    includeFolder: 'true',
+    includeFiles: 'true',
   });
 
   if (search) {
@@ -524,17 +527,19 @@ app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => 
     const payload = (await response.json()) || [];
     const files = Array.isArray(payload)
       ? payload.map((item) => ({
-          id: item.fileId,
+          id: item.fileId || item.folderId || `${item.type}:${item.name}`,
           name: item.name,
           url: item.url,
           thumbnailUrl: item.thumbnail,
           width: item.width,
           height: item.height,
           createdAt: item.createdAt,
+          isFolder: item.type === 'folder',
+          path: item.filePath || item.folderPath || `${path.replace(/\/$/, '')}/${item.name}`,
         }))
       : [];
 
-    return res.status(200).json({ files, folder });
+    return res.status(200).json({ files, folder: path, baseFolder });
   } catch (error) {
     console.error('ImageKit list error', error);
     return res.status(500).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });

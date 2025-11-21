@@ -16,10 +16,12 @@ type UploadResponse = {
   thumbnailUrl?: string;
 };
 
-export type ImageKitFile = {
+export type ImageKitItem = {
   id: string;
   name: string;
-  url: string;
+  path: string;
+  isFolder: boolean;
+  url?: string;
   thumbnailUrl?: string;
   width?: number;
   height?: number;
@@ -80,10 +82,19 @@ export async function uploadToImageKit(file: File): Promise<string> {
   return data.url;
 }
 
-export async function listImageKitFiles(search?: string): Promise<ImageKitFile[]> {
+export type ImageKitBrowseResult = {
+  items: ImageKitItem[];
+  folder: string;
+  baseFolder: string;
+};
+
+export async function listImageKitFiles(search?: string, path?: string): Promise<ImageKitBrowseResult> {
   const params = new URLSearchParams();
   if (search?.trim()) {
     params.set("search", search.trim());
+  }
+  if (path?.trim()) {
+    params.set("path", path.trim());
   }
 
   const response = await fetch(
@@ -93,6 +104,10 @@ export async function listImageKitFiles(search?: string): Promise<ImageKitFile[]
     },
   );
 
-  const payload = await handleResponse<{ files?: ImageKitFile[] }>(response);
-  return payload.files || [];
+  const payload = await handleResponse<{ files?: ImageKitItem[]; folder?: string; baseFolder?: string }>(response);
+  return {
+    items: payload.files || [],
+    folder: payload.folder || path || "",
+    baseFolder: payload.baseFolder || "",
+  };
 }
