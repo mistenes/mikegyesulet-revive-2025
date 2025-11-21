@@ -40,6 +40,8 @@ Create a `.env` file based on `.env.example`.
 | `IMAGEKIT_GALLERY_FOLDER` | Optional ImageKit folder path for gallery uploads (e.g., `hyca/gallery`) |
 | `LOCAL_DEV_ORIGIN` | Override the allowed local origin for cookies; defaults to `http://localhost:5173` |
 
+For `IMAGEKIT_GALLERY_FOLDER`, use a subfolder path (for example `hyca/gallery`) to keep gallery images organized under your ImageKit account. ImageKit will create the folder automatically on first upload if it does not already exist.
+
 ### Admin access
 
 1. Visit `/auth`
