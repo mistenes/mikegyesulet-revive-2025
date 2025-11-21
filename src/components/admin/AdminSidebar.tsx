@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, FileText, Settings, FileEdit, FolderKanban } from "lucide-react";
+import { LayoutDashboard, FileText, Settings, FileEdit, FolderKanban, Images } from "lucide-react";
 
 const menuItems = [
   {
@@ -32,6 +32,11 @@ const menuItems = [
     title: "Projektek",
     url: "/admin/projects",
     icon: FolderKanban,
+  },
+  {
+    title: "Galéria",
+    url: "/admin/gallery",
+    icon: Images,
   },
   {
     title: "Beállítások",
