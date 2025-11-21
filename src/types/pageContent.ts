@@ -1,6 +1,6 @@
-import { LanguageCode } from './language';
+import { LanguageCode } from "./language";
 
-export type SectionContent = Record<string, any>;
+export type SectionContent = Record<string, unknown>;
 
 export type LocalizedSectionContent = Record<LanguageCode, SectionContent>;
 

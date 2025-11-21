@@ -38,6 +38,9 @@ export const Header = () => {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
             <img src={mikLogo} alt="MIK Logo" className="h-16 w-auto transition-transform duration-300 group-hover:scale-105" />
+            <span className="text-xl font-semibold tracking-wide text-foreground group-hover:text-primary transition-colors">
+              MIK
+            </span>
           </Link>
 
           {/* Desktop Navigation */}

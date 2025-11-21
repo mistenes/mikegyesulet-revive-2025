@@ -58,8 +58,9 @@ export default function Auth() {
       await login(email, password);
       toast.success("Sikeres bejelentkezés!");
       navigate("/admin");
-    } catch (error: any) {
-      toast.error(error.message || "Helytelen belépési adatok");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Helytelen belépési adatok";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }

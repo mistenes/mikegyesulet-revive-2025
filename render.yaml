@@ -20,6 +20,14 @@ services:
         value: ""
       - key: ADMIN_JWT_SECRET
         value: ""
+      - key: IMAGEKIT_PUBLIC_KEY
+        value: ""
+      - key: IMAGEKIT_PRIVATE_KEY
+        value: ""
+      - key: IMAGEKIT_URL_ENDPOINT
+        value: ""
+      - key: IMAGEKIT_GALLERY_FOLDER
+        value: ""
     autoDeploy: true
 
 databases:

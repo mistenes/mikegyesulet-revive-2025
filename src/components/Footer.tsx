@@ -139,44 +139,14 @@ export const Footer = () => {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm">HYCA BLOG</h4>
             <ul className="space-y-3 text-sm text-muted-foreground">
               <li>
-                <a
-                  href="https://hyca.hu"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-primary transition-colors"
-                >
-                  HYCA Nyitóoldal
-                </a>
+                <Link to="/news" className="hover:text-primary transition-colors">
+                  Összes hír
+                </Link>
               </li>
               <li>
-                <a
-                  href="https://hyca.hu/bejegyzesek"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-primary transition-colors"
-                >
-                  Bejegyzések
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://hyca.hu/szerzok"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-primary transition-colors"
-                >
-                  Szerzők
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://hyca.hu/tamogatas"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-primary transition-colors"
-                >
-                  Támogatás
-                </a>
+                <Link to="/news" className="hover:text-primary transition-colors">
+                  Legfrissebb bejegyzések
+                </Link>
               </li>
             </ul>
           </div>
