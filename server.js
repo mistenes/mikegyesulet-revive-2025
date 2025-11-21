@@ -21,6 +21,10 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN || process.env.VITE_MAPBOX_TOKEN || '';
+const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY || '';
+const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
+const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
+const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 
@@ -457,6 +461,28 @@ app.post('/api/auth/login', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+app.get('/api/gallery/imagekit-auth', authenticateRequest, async (_req, res) => {
+  if (!IMAGEKIT_PUBLIC_KEY || !IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const token = crypto.randomBytes(16).toString('hex');
+  const expire = Math.floor(Date.now() / 1000) + 10 * 60; // 10 minutes
+  const signature = crypto
+    .createHmac('sha1', IMAGEKIT_PRIVATE_KEY)
+    .update(token + expire)
+    .digest('hex');
+
+  return res.status(200).json({
+    token,
+    expire,
+    signature,
+    publicKey: IMAGEKIT_PUBLIC_KEY,
+    urlEndpoint: IMAGEKIT_URL_ENDPOINT.replace(/\/$/, ''),
+    folder: IMAGEKIT_GALLERY_FOLDER,
+  });
 });
 
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {

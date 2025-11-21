@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
   reorderAlbums,
   updateAlbum,
 } from "@/services/galleryService";
+import { uploadToImageKit } from "@/services/imageKitService";
 import type { GalleryAlbum, GalleryAlbumInput } from "@/types/gallery";
 
 const createEmptyAlbum = (sortOrder = 1): GalleryAlbumInput => ({
@@ -39,6 +40,11 @@ export default function AdminGallery() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [imagesInput, setImagesInput] = useState("");
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [imagesUploading, setImagesUploading] = useState(false);
+
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!session) return;
@@ -85,6 +91,42 @@ export default function AdminGallery() {
       .map((line) => line.trim())
       .filter(Boolean);
     setForm((prev) => ({ ...prev, images: urls }));
+  };
+
+  const handleCoverUpload = async (file?: File | null) => {
+    if (!file) return;
+    setCoverUploading(true);
+    try {
+      const url = await uploadToImageKit(file);
+      handleFieldChange("coverImageUrl", url);
+      toast.success("Borítókép feltöltve");
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült feltölteni a borítóképet";
+      toast.error(message);
+    } finally {
+      setCoverUploading(false);
+    }
+  };
+
+  const handleGalleryUpload = async (files?: FileList | null) => {
+    if (!files || !files.length) return;
+    setImagesUploading(true);
+    try {
+      const uploads = await Promise.all([...files].map((file) => uploadToImageKit(file)));
+      setForm((prev) => {
+        const images = [...prev.images, ...uploads];
+        setImagesInput(images.join("\n"));
+        return { ...prev, images };
+      });
+      toast.success("Képek feltöltve");
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült feltölteni a képeket";
+      toast.error(message);
+    } finally {
+      setImagesUploading(false);
+    }
   };
 
   const handleEdit = (album: GalleryAlbum) => {
@@ -299,6 +341,28 @@ export default function AdminGallery() {
                   onChange={(e) => handleFieldChange("coverImageUrl", e.target.value)}
                   placeholder="https://..."
                 />
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => coverInputRef.current?.click()}
+                    disabled={coverUploading}
+                    className="gap-2"
+                  >
+                    {coverUploading && <Loader2 className="h-4 w-4 animate-spin" />}Feltöltés ImageKitre
+                  </Button>
+                  <input
+                    ref={coverInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      void handleCoverUpload(event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -319,6 +383,29 @@ export default function AdminGallery() {
                   placeholder="https://...\nhttps://..."
                   className="font-mono text-sm"
                 />
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => galleryInputRef.current?.click()}
+                    disabled={imagesUploading}
+                    className="gap-2"
+                  >
+                    {imagesUploading && <Loader2 className="h-4 w-4 animate-spin" />}Képek feltöltése ImageKitre
+                  </Button>
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      void handleGalleryUpload(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
