@@ -498,7 +498,7 @@ function mapPageContentRows(rows) {
 
 async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
   const params = [slugHu, slugEn];
-  let query = 'SELECT id, slug_hu, slug_en FROM news_articles WHERE slug_hu = $1 OR slug_en = $2';
+  let query = 'SELECT id, slug_hu, slug_en FROM news_articles WHERE (slug_hu = $1 OR slug_en = $2)';
 
   if (excludeId) {
     params.push(excludeId);
