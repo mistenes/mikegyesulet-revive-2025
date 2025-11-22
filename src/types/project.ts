@@ -6,6 +6,9 @@ export interface ProjectTranslation {
 export interface Project {
   id: string;
   sortOrder: number;
+  slugHu: string;
+  slugEn: string;
+  languageAvailability: "hu" | "en" | "both";
   heroImageUrl: string;
   heroImageAlt: string;
   location: string;

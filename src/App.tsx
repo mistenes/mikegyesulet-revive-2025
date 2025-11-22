@@ -21,6 +21,7 @@ import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
 import Dokumentumok from "./pages/Dokumentumok";
 import Projektek from "./pages/Projektek";
+import ProjectPage from "./pages/ProjectPage";
 import Galeria from "./pages/Galeria";
 import NotFound from "./pages/NotFound";
 import NewsArticlePage from "./pages/NewsArticle";
@@ -57,6 +58,7 @@ const App = () => {
               <Route path="/kapcsolat" element={<Kapcsolat />} />
               <Route path="/dokumentumok" element={<Dokumentumok />} />
               <Route path="/projektek" element={<Projektek />} />
+              <Route path="/projektek/:slug" element={<ProjectPage />} />
               <Route path="/galeria" element={<Galeria />} />
               <Route path="/news" element={<NewsIndex />} />
               <Route path="/news/:slug" element={<NewsArticlePage />} />

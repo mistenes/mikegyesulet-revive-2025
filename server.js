@@ -251,6 +251,9 @@ async function ensureProjectsTables() {
         location TEXT,
         date_range TEXT,
         link_url TEXT,
+        slug_hu TEXT,
+        slug_en TEXT,
+        language_availability TEXT NOT NULL DEFAULT 'both',
         published BOOLEAN NOT NULL DEFAULT TRUE,
         translations JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -258,12 +261,58 @@ async function ensureProjectsTables() {
       );
     `);
 
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug_hu TEXT;");
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug_en TEXT;");
+    await client.query(
+      "ALTER TABLE projects ADD COLUMN IF NOT EXISTS language_availability TEXT NOT NULL DEFAULT 'both';",
+    );
+
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS projects_slug_hu_idx ON projects(slug_hu) WHERE slug_hu IS NOT NULL;',
+    );
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS projects_slug_en_idx ON projects(slug_en) WHERE slug_en IS NOT NULL;',
+    );
+
     await client.query(
       'CREATE INDEX IF NOT EXISTS projects_sort_order_idx ON projects(sort_order, created_at DESC);',
     );
     await client.query(
       'CREATE INDEX IF NOT EXISTS projects_published_idx ON projects(published, sort_order);',
     );
+
+    const existingProjects = await client.query(
+      'SELECT id, translations, slug_hu, slug_en, language_availability FROM projects',
+    );
+
+    const usedHu = new Set(existingProjects.rows.map((row) => row.slug_hu).filter(Boolean));
+    const usedEn = new Set(existingProjects.rows.map((row) => row.slug_en).filter(Boolean));
+
+    for (const row of existingProjects.rows) {
+      const translations = row.translations || { hu: {}, en: {} };
+      let slugHu = row.slug_hu || slugifyText(translations.hu?.title || '');
+      let slugEn = row.slug_en || slugifyText(translations.en?.title || '');
+
+      if (!slugHu) {
+        slugHu = slugifyText(`projekt-${row.id}`);
+      }
+
+      if (!slugEn) {
+        slugEn = slugifyText(`project-${row.id}`);
+      }
+
+      slugHu = ensureUniqueSlug(slugHu, usedHu);
+      slugEn = ensureUniqueSlug(slugEn, usedEn);
+
+      const languageAvailability = row.language_availability || 'both';
+
+      if (slugHu !== row.slug_hu || slugEn !== row.slug_en || languageAvailability !== row.language_availability) {
+        await client.query(
+          'UPDATE projects SET slug_hu = $1, slug_en = $2, language_availability = $3 WHERE id = $4',
+          [slugHu, slugEn, languageAvailability, row.id],
+        );
+      }
+    }
   } finally {
     client.release();
   }
@@ -345,6 +394,9 @@ function mapProjectRow(row) {
   return {
     id: row.id,
     sortOrder: row.sort_order ?? 0,
+    slugHu: row.slug_hu || '',
+    slugEn: row.slug_en || '',
+    languageAvailability: row.language_availability || 'both',
     heroImageUrl: row.hero_image_url || '',
     heroImageAlt: row.hero_image_alt || '',
     location: row.location || '',
@@ -355,6 +407,31 @@ function mapProjectRow(row) {
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
   };
+}
+
+function slugifyText(text) {
+  return (text || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+function ensureUniqueSlug(base, usedSet) {
+  const safeBase = base || 'projekt';
+  let candidate = safeBase;
+  let suffix = 1;
+
+  while (usedSet.has(candidate)) {
+    candidate = `${safeBase}-${suffix}`;
+    suffix += 1;
+  }
+
+  usedSet.add(candidate);
+  return candidate;
 }
 
 function mapGalleryRow(row) {
@@ -795,13 +872,16 @@ app.get('/api/projects', authenticateRequest, async (req, res) => {
   }
 });
 
-app.get('/api/projects/public', async (_req, res) => {
+app.get('/api/projects/public', async (req, res) => {
   const client = await pool.connect();
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const availabilityCondition =
+    lang === 'en' ? "language_availability IN ('en', 'both')" : "language_availability IN ('hu', 'both')";
   try {
     const result = await client.query(
       `SELECT *
        FROM projects
-       WHERE published = TRUE
+       WHERE published = TRUE AND ${availabilityCondition}
        ORDER BY sort_order ASC, created_at DESC`,
     );
 
@@ -809,6 +889,37 @@ app.get('/api/projects/public', async (_req, res) => {
   } catch (error) {
     console.error('Public projects error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni a projekteket' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/projects/public/slug/:slug', async (req, res) => {
+  const client = await pool.connect();
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const slug = req.params.slug;
+  const availabilityCondition =
+    lang === 'en' ? "language_availability IN ('en', 'both')" : "language_availability IN ('hu', 'both')";
+
+  try {
+    const result = await client.query(
+      `SELECT *
+       FROM projects
+       WHERE published = TRUE
+         AND ${availabilityCondition}
+         AND (slug_hu = $1 OR slug_en = $1)
+       LIMIT 1`,
+      [slug],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'A projekt nem található' });
+    }
+
+    return res.status(200).json(mapProjectRow(result.rows[0]));
+  } catch (error) {
+    console.error('Public project error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a projektet' });
   } finally {
     client.release();
   }
@@ -832,15 +943,103 @@ app.get('/api/gallery/public', async (_req, res) => {
 });
 
 function validateProjectPayload(payload) {
-  if (!payload?.translations?.hu?.title || !payload?.translations?.en?.title) {
-    const error = new Error('A magyar és angol cím megadása kötelező');
+  const availability = payload?.languageAvailability || 'both';
+  const allowedLanguages = ['hu', 'en', 'both'];
+  if (!allowedLanguages.includes(availability)) {
+    const error = new Error('Érvénytelen nyelvi elérhetőség');
     error.status = 400;
     throw error;
   }
 
-  if (!payload?.translations?.hu?.description || !payload?.translations?.en?.description) {
-    const error = new Error('A magyar és angol leírás megadása kötelező');
+  if ((availability === 'hu' || availability === 'both') && !payload?.slugHu) {
+    const error = new Error('Add meg a magyar slugot');
     error.status = 400;
+    throw error;
+  }
+
+  if ((availability === 'en' || availability === 'both') && !payload?.slugEn) {
+    const error = new Error('Add meg az angol slugot');
+    error.status = 400;
+    throw error;
+  }
+
+  const needsHu = availability === 'hu' || availability === 'both';
+  const needsEn = availability === 'en' || availability === 'both';
+
+  if (needsHu && !payload?.translations?.hu?.title) {
+    const error = new Error('A magyar cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsEn && !payload?.translations?.en?.title) {
+    const error = new Error('Az angol cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsHu && !payload?.translations?.hu?.description) {
+    const error = new Error('A magyar leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsEn && !payload?.translations?.en?.description) {
+    const error = new Error('Az angol leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+}
+
+function normalizeProjectPayload(payload) {
+  const availability = ['hu', 'en', 'both'].includes(payload?.languageAvailability)
+    ? payload.languageAvailability
+    : 'both';
+
+  const slugHu = payload?.slugHu || slugifyText(payload?.translations?.hu?.title || '');
+  const slugEn = payload?.slugEn || slugifyText(payload?.translations?.en?.title || '');
+
+  return {
+    ...payload,
+    languageAvailability: availability,
+    slugHu,
+    slugEn,
+  };
+}
+
+async function validateProjectSlugs(client, payload, excludeId) {
+  const params = [];
+  const conditions = [];
+
+  if (payload.slugHu) {
+    params.push(payload.slugHu);
+    conditions.push(`slug_hu = $${params.length}`);
+  }
+
+  if (payload.slugEn) {
+    params.push(payload.slugEn);
+    conditions.push(`slug_en = $${params.length}`);
+  }
+
+  if (!conditions.length) {
+    return;
+  }
+
+  let query = `SELECT id, slug_hu, slug_en FROM projects WHERE ${conditions.join(' OR ')}`;
+
+  if (excludeId) {
+    params.push(excludeId);
+    query += ` AND id <> $${params.length}`;
+  }
+
+  const existing = await client.query(query, params);
+  if (existing.rows.length) {
+    const conflict = existing.rows[0];
+    const conflictSlug = conflict.slug_hu === payload.slugHu ? payload.slugHu : payload.slugEn;
+    const language = conflict.slug_hu === payload.slugHu ? 'magyar' : 'angol';
+    const message = `A(z) ${language} slug (${conflictSlug}) már létezik.`;
+    const error = new Error(message);
+    error.status = 409;
     throw error;
   }
 }
@@ -871,18 +1070,19 @@ function validateGalleryPayload(payload) {
 
 app.post('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
-  const payload = req.body || {};
+  const payload = normalizeProjectPayload(req.body || {});
 
   try {
     validateProjectPayload(payload);
+    await validateProjectSlugs(client, payload);
 
     const orderResult = await client.query('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM projects');
     const nextOrder = Number(orderResult.rows[0]?.next_order || 1);
 
     const result = await client.query(
       `INSERT INTO projects
-       (sort_order, hero_image_url, hero_image_alt, location, date_range, link_url, published, translations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (sort_order, hero_image_url, hero_image_alt, location, date_range, link_url, slug_hu, slug_en, language_availability, published, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         payload.sortOrder ?? nextOrder,
@@ -891,6 +1091,9 @@ app.post('/api/projects', authenticateRequest, async (req, res) => {
         payload.location || null,
         payload.dateRange || null,
         payload.linkUrl || null,
+        payload.slugHu || null,
+        payload.slugEn || null,
+        payload.languageAvailability || 'both',
         Boolean(payload.published),
         payload.translations,
       ],
@@ -908,11 +1111,12 @@ app.post('/api/projects', authenticateRequest, async (req, res) => {
 
 app.put('/api/projects/:id', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
-  const payload = req.body || {};
+  const payload = normalizeProjectPayload(req.body || {});
   const projectId = req.params.id;
 
   try {
     validateProjectPayload(payload);
+    await validateProjectSlugs(client, payload, projectId);
 
     const existing = await client.query('SELECT * FROM projects WHERE id = $1 LIMIT 1', [projectId]);
     if (!existing.rows.length) {
@@ -927,10 +1131,13 @@ app.put('/api/projects/:id', authenticateRequest, async (req, res) => {
            location = $4,
            date_range = $5,
            link_url = $6,
-           published = $7,
-           translations = $8,
+           slug_hu = $7,
+           slug_en = $8,
+           language_availability = $9,
+           published = $10,
+           translations = $11,
            updated_at = NOW()
-       WHERE id = $9
+       WHERE id = $12
        RETURNING *`,
       [
         payload.sortOrder ?? existing.rows[0].sort_order,
@@ -939,6 +1146,9 @@ app.put('/api/projects/:id', authenticateRequest, async (req, res) => {
         payload.location || null,
         payload.dateRange || null,
         payload.linkUrl || null,
+        payload.slugHu || null,
+        payload.slugEn || null,
+        payload.languageAvailability || existing.rows[0].language_availability || 'both',
         Boolean(payload.published),
         payload.translations,
         projectId,

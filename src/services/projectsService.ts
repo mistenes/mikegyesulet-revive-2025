@@ -36,11 +36,23 @@ export async function getAdminProjects(params: { search?: string; status?: "all"
   return data.items;
 }
 
-export async function getPublicProjects(): Promise<Project[]> {
+export async function getPublicProjects(language?: string): Promise<Project[]> {
   const url = new URL("/api/projects/public", defaultBase);
+  if (language) {
+    url.searchParams.set("lang", language);
+  }
   const response = await fetch(url.toString());
   const data = await handleResponse<{ items: Project[] }>(response);
   return data.items;
+}
+
+export async function getPublicProjectBySlug(slug: string, language?: string): Promise<Project> {
+  const url = new URL(`/api/projects/public/slug/${slug}`, defaultBase);
+  if (language) {
+    url.searchParams.set("lang", language);
+  }
+  const response = await fetch(url.toString());
+  return handleResponse<Project>(response);
 }
 
 export async function createProject(project: ProjectInput): Promise<Project> {

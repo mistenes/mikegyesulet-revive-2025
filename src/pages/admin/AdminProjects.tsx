@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Folder,
   GripVertical,
@@ -38,6 +39,9 @@ import type { Language } from "@/contexts/LanguageContext";
 
 const createEmptyProject = (sortOrder = 1): ProjectInput => ({
   sortOrder,
+  slugHu: "",
+  slugEn: "",
+  languageAvailability: "both",
   heroImageUrl: "",
   heroImageAlt: "",
   location: "",
@@ -68,6 +72,16 @@ export default function AdminProjects() {
   const [browserPath, setBrowserPath] = useState<string>("");
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const slugifyText = (value: string) =>
+    value
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
 
   useEffect(() => {
     if (!session) return;
@@ -104,6 +118,26 @@ export default function AdminProjects() {
           [field]: value,
         },
       },
+      ...(field === "title"
+        ? (() => {
+            const slugKey: "slugHu" | "slugEn" = activeLanguage === "hu" ? "slugHu" : "slugEn";
+            const currentSlug = prev[slugKey];
+            const previousGenerated = slugifyText(prev.translations[activeLanguage].title || "");
+            const generated = slugifyText(value);
+            if (!currentSlug || currentSlug === previousGenerated) {
+              return { [slugKey]: generated } as Pick<ProjectInput, "slugHu" | "slugEn">;
+            }
+            return {};
+          })()
+        : {}),
+    }));
+  };
+
+  const handleSlugChange = (lang: Language, value: string) => {
+    const slugKey: "slugHu" | "slugEn" = lang === "hu" ? "slugHu" : "slugEn";
+    setForm((prev) => ({
+      ...prev,
+      [slugKey]: slugifyText(value),
     }));
   };
 
@@ -118,6 +152,9 @@ export default function AdminProjects() {
     setEditingId(project.id);
     setForm({
       sortOrder: project.sortOrder,
+      slugHu: project.slugHu,
+      slugEn: project.slugEn,
+      languageAvailability: project.languageAvailability,
       heroImageUrl: project.heroImageUrl,
       heroImageAlt: project.heroImageAlt,
       location: project.location,
@@ -131,15 +168,15 @@ export default function AdminProjects() {
 
   const persistOrder = async (ordered: Project[]) => {
     setProjects(ordered);
-      try {
-        await reorderProjects(ordered.map((p) => p.id));
-        toast.success("Sorrend frissítve");
-      } catch (error: unknown) {
-        console.error(error);
-        const message = error instanceof Error ? error.message : "Nem sikerült frissíteni a sorrendet";
-        toast.error(message);
-      }
-    };
+    try {
+      await reorderProjects(ordered.map((p) => p.id));
+      toast.success("Sorrend frissítve");
+    } catch (error: unknown) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült frissíteni a sorrendet";
+      toast.error(message);
+    }
+  };
 
   const handleDragStart = (id: string) => setDraggingId(id);
 
@@ -168,8 +205,36 @@ export default function AdminProjects() {
   const handleSubmit = async () => {
     setSaving(true);
     try {
-      if (!form.translations.hu.title || !form.translations.en.title) {
-        toast.error("Add meg a magyar és angol címet");
+      const needsHu = form.languageAvailability === "hu" || form.languageAvailability === "both";
+      const needsEn = form.languageAvailability === "en" || form.languageAvailability === "both";
+
+      if (needsHu && !form.translations.hu.title) {
+        toast.error("Add meg a magyar címet");
+        return;
+      }
+
+      if (needsEn && !form.translations.en.title) {
+        toast.error("Add meg az angol címet");
+        return;
+      }
+
+      if (needsHu && !form.slugHu.trim()) {
+        toast.error("Add meg a magyar slugot");
+        return;
+      }
+
+      if (needsEn && !form.slugEn.trim()) {
+        toast.error("Add meg az angol slugot");
+        return;
+      }
+
+      if (needsHu && !form.translations.hu.description) {
+        toast.error("Add meg a magyar leírást");
+        return;
+      }
+
+      if (needsEn && !form.translations.en.description) {
+        toast.error("Add meg az angol leírást");
         return;
       }
 
@@ -191,6 +256,9 @@ export default function AdminProjects() {
       setEditingId(saved.id);
       setForm({
         sortOrder: saved.sortOrder,
+        slugHu: saved.slugHu,
+        slugEn: saved.slugEn,
+        languageAvailability: saved.languageAvailability,
         heroImageUrl: saved.heroImageUrl,
         heroImageAlt: saved.heroImageAlt,
         location: saved.location,
@@ -232,6 +300,12 @@ export default function AdminProjects() {
   const previewTitle = useMemo(() => form.translations[activeLanguage].title || "", [form, activeLanguage]);
 
   const currentBrowserPath = browserPath || browserBasePath || "";
+
+  const availabilityLabels: Record<Project["languageAvailability"], string> = {
+    hu: "HU",
+    en: "EN",
+    both: "HU & EN",
+  };
 
   const parentBrowserPath = useMemo(() => {
     const trimmed = currentBrowserPath.replace(/\/$/, "");
@@ -362,6 +436,37 @@ export default function AdminProjects() {
             <Badge variant="secondary">{editingId ? "Szerkesztés" : "Új projekt"}</Badge>
           </div>
 
+          <div className="space-y-3">
+            <Label>Projekt nyelve</Label>
+            <RadioGroup
+              value={form.languageAvailability}
+              onValueChange={(value) => handleFieldChange("languageAvailability", value)}
+              className="grid grid-cols-1 md:grid-cols-3 gap-3"
+            >
+              <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3" htmlFor="lang-hu">
+                <RadioGroupItem value="hu" id="lang-hu" />
+                <div>
+                  <p className="font-medium">Csak magyar</p>
+                  <p className="text-sm text-muted-foreground">Az oldal csak magyarul lesz elérhető.</p>
+                </div>
+              </Label>
+              <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3" htmlFor="lang-both">
+                <RadioGroupItem value="both" id="lang-both" />
+                <div>
+                  <p className="font-medium">Magyar és angol</p>
+                  <p className="text-sm text-muted-foreground">Mindkét nyelven publikálva.</p>
+                </div>
+              </Label>
+              <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3" htmlFor="lang-en">
+                <RadioGroupItem value="en" id="lang-en" />
+                <div>
+                  <p className="font-medium">Csak angol</p>
+                  <p className="text-sm text-muted-foreground">Az oldal kizárólag angolul érhető el.</p>
+                </div>
+              </Label>
+            </RadioGroup>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div className="space-y-2">
@@ -380,6 +485,17 @@ export default function AdminProjects() {
                   onChange={(e) => handleTranslationChange("description", e.target.value)}
                   placeholder="Rövid összefoglaló"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Slug ({activeLanguage.toUpperCase()})</Label>
+                <Input
+                  value={activeLanguage === "hu" ? form.slugHu : form.slugEn}
+                  onChange={(e) => handleSlugChange(activeLanguage, e.target.value)}
+                  placeholder="projekt-cim"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Az oldal URL-jében megjelenő azonosító. Csak a kijelölt nyelven lesz elérhető.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Helyszín</Label>
@@ -519,9 +635,12 @@ export default function AdminProjects() {
                       <GripVertical className="h-4 w-4" />
                       <span># {project.sortOrder}</span>
                     </div>
-                    <Badge variant={project.published ? "default" : "outline"}>
-                      {project.published ? "Publikus" : "Rejtett"}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">{availabilityLabels[project.languageAvailability]}</Badge>
+                      <Badge variant={project.published ? "default" : "outline"}>
+                        {project.published ? "Publikus" : "Rejtett"}
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="space-y-1">
