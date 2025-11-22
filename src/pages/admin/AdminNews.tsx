@@ -10,14 +10,13 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Calendar,
   Eye,
   Folder,
   GripVertical,
   Image as ImageIcon,
-  Languages,
   Loader2,
   Pencil,
   Plus,
@@ -36,12 +35,16 @@ import type { LanguageCode } from "@/types/language";
 
 const NEWS_FOLDER = "hirek";
 
+type LanguageAvailability = "hu" | "en" | "both";
+type NewsFormState = NewsInput & { languageAvailability: LanguageAvailability };
+
 const emptyTranslation: NewsTranslation = { title: "", slug: "", excerpt: "", content: "" };
 
-const createEmptyNews = (): NewsInput => ({
+const createEmptyNews = (): NewsFormState => ({
   category: "",
   imageUrl: "",
   imageAlt: "",
+  languageAvailability: "both",
   published: true,
   translations: {
     hu: { ...emptyTranslation },
@@ -52,7 +55,7 @@ const createEmptyNews = (): NewsInput => ({
 export default function AdminNews() {
   const { isLoading, session } = useAdminAuthGuard();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
-  const [form, setForm] = useState<NewsInput>(createEmptyNews());
+  const [form, setForm] = useState<NewsFormState>(createEmptyNews());
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,7 +69,6 @@ export default function AdminNews() {
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
   const [coverUploading, setCoverUploading] = useState(false);
   const [heroPreviewLoading, setHeroPreviewLoading] = useState(false);
-  const [activeLanguage, setActiveLanguage] = useState<LanguageCode>("hu");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const slugifyText = (value: string) =>
@@ -110,7 +112,6 @@ export default function AdminNews() {
   const resetForm = () => {
     setForm(createEmptyNews());
     setEditingId(null);
-    setActiveLanguage("hu");
   };
 
   const handleTranslationChange = (
@@ -143,7 +144,7 @@ export default function AdminNews() {
     });
   };
 
-  const handleFieldChange = (field: keyof NewsInput, value: string | boolean) => {
+  const handleFieldChange = (field: keyof NewsFormState, value: string | boolean) => {
     setForm((prev) => ({
       ...prev,
       [field]: value as never,
@@ -156,6 +157,7 @@ export default function AdminNews() {
       category: article.category,
       imageUrl: article.imageUrl || "",
       imageAlt: article.imageAlt || "",
+      languageAvailability: article.languageAvailability || "both",
       published: article.published,
       translations: {
         hu: { ...article.translations.hu },
@@ -186,10 +188,28 @@ export default function AdminNews() {
     }
   };
 
+  const languageSections = useMemo<LanguageCode[]>(() => {
+    if (form.languageAvailability === "hu") return ["hu"];
+    if (form.languageAvailability === "en") return ["en"];
+    return ["hu", "en"];
+  }, [form.languageAvailability]);
+
+  const languageLabels: Record<LanguageCode, string> = { hu: "Magyar", en: "Angol" };
+
+  const previewLanguage = languageSections[0] || "hu";
+
+  const availabilityLabels: Record<LanguageAvailability, string> = {
+    hu: "HU",
+    en: "EN",
+    both: "HU & EN",
+  };
+
   const handleSubmit = async () => {
     setSaving(true);
     const hu = form.translations.hu;
     const en = form.translations.en;
+    const needsHu = form.languageAvailability === "hu" || form.languageAvailability === "both";
+    const needsEn = form.languageAvailability === "en" || form.languageAvailability === "both";
 
     try {
       if (!form.category.trim()) {
@@ -197,12 +217,13 @@ export default function AdminNews() {
         return;
       }
 
-      const translations: [LanguageCode, NewsTranslation][] = [
-        ["hu", hu],
-        ["en", en],
+      const translations: [LanguageCode, NewsTranslation, boolean][] = [
+        ["hu", hu, needsHu],
+        ["en", en, needsEn],
       ];
 
-      for (const [lang, translation] of translations) {
+      for (const [lang, translation, required] of translations) {
+        if (!required) continue;
         const label = lang === "hu" ? "magyar" : "angol";
         if (!translation.title.trim()) {
           toast.error(`Add meg a ${label} címet`);
@@ -222,13 +243,22 @@ export default function AdminNews() {
         }
       }
 
+      const payload: NewsInput = {
+        category: form.category,
+        imageUrl: form.imageUrl || undefined,
+        imageAlt: form.imageAlt || undefined,
+        languageAvailability: form.languageAvailability,
+        published: form.published,
+        translations: form.translations,
+      };
+
       let saved: NewsArticle;
       if (editingId) {
-        saved = await updateNews(editingId, form);
+        saved = await updateNews(editingId, payload);
         setArticles((prev) => prev.map((item) => (item.id === editingId ? saved : item)));
         toast.success("Hír frissítve");
       } else {
-        saved = await createNews(form);
+        saved = await createNews(payload);
         setArticles((prev) => [saved, ...prev]);
         toast.success("Hír létrehozva");
       }
@@ -238,6 +268,7 @@ export default function AdminNews() {
         category: saved.category,
         imageUrl: saved.imageUrl || "",
         imageAlt: saved.imageAlt || "",
+        languageAvailability: saved.languageAvailability || form.languageAvailability,
         published: saved.published,
         translations: {
           hu: { ...saved.translations.hu },
@@ -396,7 +427,96 @@ export default function AdminNews() {
           </div>
 
           <Card className="p-6 space-y-6">
-            <div className="grid lg:grid-cols-2 gap-6">
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-medium text-muted-foreground">Nyelvi tartalom</p>
+              <Badge variant="secondary">{editingId ? "Szerkesztés" : "Új hír"}</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[1.6fr,1fr] gap-6">
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <Label>Hír nyelve</Label>
+                  <RadioGroup
+                    value={form.languageAvailability}
+                    onValueChange={(value) => handleFieldChange("languageAvailability", value)}
+                    className="grid grid-cols-1 md:grid-cols-3 gap-3"
+                  >
+                    <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3" htmlFor="news-lang-hu">
+                      <RadioGroupItem value="hu" id="news-lang-hu" />
+                      <div>
+                        <p className="font-medium">Csak magyar</p>
+                        <p className="text-sm text-muted-foreground">Az oldal csak magyarul lesz elérhető.</p>
+                      </div>
+                    </Label>
+                    <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3" htmlFor="news-lang-both">
+                      <RadioGroupItem value="both" id="news-lang-both" />
+                      <div>
+                        <p className="font-medium">Magyar és angol</p>
+                        <p className="text-sm text-muted-foreground">Mindkét nyelven publikálva.</p>
+                      </div>
+                    </Label>
+                    <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3" htmlFor="news-lang-en">
+                      <RadioGroupItem value="en" id="news-lang-en" />
+                      <div>
+                        <p className="font-medium">Csak angol</p>
+                        <p className="text-sm text-muted-foreground">Az oldal kizárólag angolul érhető el.</p>
+                      </div>
+                    </Label>
+                  </RadioGroup>
+                </div>
+
+                <div className="space-y-4">
+                  {languageSections.map((language) => {
+                    const translation = form.translations[language];
+                    return (
+                      <div key={language} className="space-y-3 rounded-lg border p-4 bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold">{languageLabels[language]}</p>
+                          <Badge variant="outline">{language.toUpperCase()}</Badge>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cím ({language.toUpperCase()})</Label>
+                          <Input
+                            value={translation.title}
+                            onChange={(e) => handleTranslationChange(language, "title", e.target.value)}
+                            placeholder="Add meg a címet"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Slug ({language.toUpperCase()})</Label>
+                          <Input
+                            value={translation.slug}
+                            onChange={(e) => handleTranslationChange(language, "slug", e.target.value)}
+                            placeholder="pelda-cikk"
+                          />
+                          <p className="text-xs text-muted-foreground">Az oldal URL-jében megjelenő azonosító.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label>Kivonat ({language.toUpperCase()})</Label>
+                            <span className="text-xs text-muted-foreground">{translation.excerpt.length}/500</span>
+                          </div>
+                          <Textarea
+                            value={translation.excerpt}
+                            onChange={(e) => handleTranslationChange(language, "excerpt", e.target.value)}
+                            rows={3}
+                            maxLength={500}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Tartalom ({language.toUpperCase()})</Label>
+                          <Textarea
+                            value={translation.content}
+                            onChange={(e) => handleTranslationChange(language, "content", e.target.value)}
+                            rows={10}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Kategória</Label>
@@ -470,87 +590,28 @@ export default function AdminNews() {
                   </div>
                   <Switch checked={form.published} onCheckedChange={(checked) => handleFieldChange("published", checked)} />
                 </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Languages className="h-4 w-4" />
-                    <span>Nyelvi változatok</span>
-                  </div>
-                  <Tabs value={activeLanguage} onValueChange={(val) => setActiveLanguage(val as LanguageCode)}>
-                    <TabsList className="grid grid-cols-2 w-full">
-                      <TabsTrigger value="hu">Magyar</TabsTrigger>
-                      <TabsTrigger value="en">English</TabsTrigger>
-                    </TabsList>
-                    {["hu", "en"].map((lang) => {
-                      const translation = form.translations[lang as LanguageCode];
-                      const label = lang === "hu" ? "magyar" : "angol";
-                      return (
-                        <TabsContent key={lang} value={lang} className="space-y-3 pt-4">
-                          <div className="space-y-2">
-                            <Label>Cím ({label})</Label>
-                            <Input
-                              value={translation.title}
-                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "title", e.target.value)}
-                              placeholder="Add meg a címet"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Slug ({label})</Label>
-                            <Input
-                              value={translation.slug}
-                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "slug", e.target.value)}
-                              placeholder="pelda-cikk"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <Label>Kivonat ({label})</Label>
-                              <span className="text-xs text-muted-foreground">{translation.excerpt.length}/500</span>
-                            </div>
-                            <Textarea
-                              value={translation.excerpt}
-                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "excerpt", e.target.value)}
-                              rows={3}
-                              maxLength={500}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Tartalom ({label})</Label>
-                            <Textarea
-                              value={translation.content}
-                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "content", e.target.value)}
-                              rows={10}
-                            />
-                          </div>
-                        </TabsContent>
-                      );
-                    })}
-                  </Tabs>
-                </div>
 
                 <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
                   <div className="flex items-center gap-2 text-muted-foreground text-sm">
                     <Eye className="h-4 w-4" />
-                    <span>Előnézet ({activeLanguage === "hu" ? "HU" : "EN"})</span>
+                    <span>Előnézet ({availabilityLabels[form.languageAvailability]})</span>
                   </div>
                   <div className="space-y-1">
                     <h3 className="text-xl font-semibold" style={{ fontFamily: "'Sora', sans-serif" }}>
-                      {form.translations[activeLanguage].title || "Cím"}
+                      {form.translations[previewLanguage].title || "Cím"}
                     </h3>
-                    <p className="text-muted-foreground">{form.translations[activeLanguage].excerpt || "Kivonat"}</p>
+                    <p className="text-muted-foreground">{form.translations[previewLanguage].excerpt || "Kivonat"}</p>
                   </div>
                   {form.imageUrl && (
                     <img
                       src={form.imageUrl}
-                      alt={form.imageAlt || form.translations[activeLanguage].title}
+                      alt={form.imageAlt || form.translations[previewLanguage].title}
                       className="rounded-lg w-full h-48 object-cover"
                     />
                   )}
                   <div
                     className="prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(form.translations[activeLanguage].content) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(form.translations[previewLanguage].content) }}
                   />
                 </div>
               </div>
@@ -582,68 +643,72 @@ export default function AdminNews() {
               <p className="text-muted-foreground">Még nincs hír. Adj hozzá egyet fent.</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {articles.map((article, index) => (
-                  <div
-                    key={article.id}
-                    draggable
-                    onDragStart={() => handleDragStart(article.id)}
-                    onDragOver={(event) => handleDragOver(event, article.id)}
-                    onDrop={handleDrop}
-                    className={`border rounded-lg p-4 space-y-3 bg-card shadow-sm transition-shadow ${
-                      draggingId === article.id ? "ring-2 ring-primary" : "hover:shadow-lg"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <GripVertical className="h-4 w-4" />
-                        <span># {index + 1}</span>
+                {articles.map((article, index) => {
+                  const availability = (article.languageAvailability as LanguageAvailability) || "both";
+                  return (
+                    <div
+                      key={article.id}
+                      draggable
+                      onDragStart={() => handleDragStart(article.id)}
+                      onDragOver={(event) => handleDragOver(event, article.id)}
+                      onDrop={handleDrop}
+                      className={`border rounded-lg p-4 space-y-3 bg-card shadow-sm transition-shadow ${
+                        draggingId === article.id ? "ring-2 ring-primary" : "hover:shadow-lg"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                          <GripVertical className="h-4 w-4" />
+                          <span># {index + 1}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">{availabilityLabels[availability]}</Badge>
+                          <Badge variant={article.published ? "default" : "outline"}>
+                            {article.published ? "Publikus" : "Rejtett"}
+                          </Badge>
+                        </div>
                       </div>
+
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase text-muted-foreground tracking-wide">{article.category}</p>
+                        <h3 className="text-lg font-semibold" style={{ fontFamily: "'Sora', sans-serif" }}>
+                          {article.translations.hu.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {article.translations.hu.excerpt || article.translations.hu.content}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="h-4 w-4" />
+                        {article.published
+                          ? new Date(article.publishedAt || article.createdAt).toLocaleDateString("hu-HU")
+                          : "Nincs publikálva"}
+                      </div>
+
                       <div className="flex items-center gap-2">
-                        <Badge variant={article.published ? "default" : "outline"}>
-                          {article.published ? "Publikus" : "Rejtett"}
-                        </Badge>
+                        <Button variant="ghost" size="sm" className="gap-2" onClick={() => handleEdit(article)}>
+                          <Pencil className="h-4 w-4" /> Szerkesztés
+                        </Button>
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="sm"
+                          className="gap-2"
+                          title="Nyilvános oldal megnyitása"
+                        >
+                          <a href={`/news/${article.translations.hu.slug}`} target="_blank" rel="noreferrer">
+                            <Eye className="h-4 w-4" />
+                            Megnyitás
+                          </a>
+                        </Button>
+                        <Button variant="ghost" size="sm" className="gap-2 text-destructive" onClick={() => handleDelete(article.id)}>
+                          <Trash className="h-4 w-4" /> Törlés
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase text-muted-foreground tracking-wide">{article.category}</p>
-                      <h3 className="text-lg font-semibold" style={{ fontFamily: "'Sora', sans-serif" }}>
-                        {article.translations.hu.title}
-                      </h3>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {article.translations.hu.excerpt || article.translations.hu.content}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="h-4 w-4" />
-                      {article.published
-                        ? new Date(article.publishedAt || article.createdAt).toLocaleDateString("hu-HU")
-                        : "Nincs publikálva"}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" className="gap-2" onClick={() => handleEdit(article)}>
-                        <Pencil className="h-4 w-4" /> Szerkesztés
-                      </Button>
-                      <Button
-                        asChild
-                        variant="ghost"
-                        size="sm"
-                        className="gap-2"
-                        title="Nyilvános oldal megnyitása"
-                      >
-                        <a href={`/news/${article.translations.hu.slug}`} target="_blank" rel="noreferrer">
-                          <Eye className="h-4 w-4" />
-                          Megnyitás
-                        </a>
-                      </Button>
-                      <Button variant="ghost" size="sm" className="gap-2 text-destructive" onClick={() => handleDelete(article.id)}>
-                        <Trash className="h-4 w-4" /> Törlés
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
