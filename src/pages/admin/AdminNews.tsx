@@ -30,9 +30,11 @@ import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
   createNews,
   createNewsCategory,
+  deleteNewsCategory,
   deleteNews,
   getAdminNews,
   getNewsCategories,
+  updateNewsCategory,
   updateNews,
 } from "@/services/newsService";
 import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
@@ -89,9 +91,11 @@ export default function AdminNews() {
     content: false,
   });
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [newCategoryHu, setNewCategoryHu] = useState("");
   const [newCategoryEn, setNewCategoryEn] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const slugifyText = (value: string) =>
@@ -238,7 +242,25 @@ export default function AdminNews() {
     }
   };
 
-  const handleCreateCategory = async () => {
+  const resetCategoryForm = () => {
+    setEditingCategoryId(null);
+    setNewCategoryHu("");
+    setNewCategoryEn("");
+  };
+
+  const openCategoryDialog = () => {
+    resetCategoryForm();
+    setCategoryDialogOpen(true);
+  };
+
+  const handleEditCategory = (category: NewsCategory) => {
+    setEditingCategoryId(category.id);
+    setNewCategoryHu(category.name.hu);
+    setNewCategoryEn(category.name.en);
+    setCategoryDialogOpen(true);
+  };
+
+  const handleSaveCategory = async () => {
     const nameHu = newCategoryHu.trim();
     const nameEn = newCategoryEn.trim() || newCategoryHu.trim();
 
@@ -254,24 +276,73 @@ export default function AdminNews() {
 
     setCreatingCategory(true);
     try {
-      const created = await createNewsCategory({ nameHu, nameEn });
-      setCategories((prev) => [...prev, created]);
-      setForm((prev) => ({
-        ...prev,
-        categoryId: created.id,
-        category: created.name.hu,
-        categoryTranslations: created.name,
-      }));
-      setNewCategoryHu("");
-      setNewCategoryEn("");
+      if (editingCategoryId) {
+        const updated = await updateNewsCategory(editingCategoryId, { nameHu, nameEn });
+        setCategories((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+        setForm((prev) =>
+          prev.categoryId === updated.id
+            ? {
+                ...prev,
+                categoryId: updated.id,
+                category: updated.name.hu,
+                categoryTranslations: updated.name,
+              }
+            : prev,
+        );
+        toast.success("Kategória frissítve");
+      } else {
+        const created = await createNewsCategory({ nameHu, nameEn });
+        setCategories((prev) => [...prev, created]);
+        setForm((prev) => ({
+          ...prev,
+          categoryId: created.id,
+          category: created.name.hu,
+          categoryTranslations: created.name,
+        }));
+        toast.success("Kategória létrehozva");
+      }
+
       setCategoryDialogOpen(false);
-      toast.success("Kategória létrehozva");
+      resetCategoryForm();
     } catch (error: unknown) {
       console.error(error);
-      const message = error instanceof Error ? error.message : "Nem sikerült létrehozni a kategóriát";
+      const message = error instanceof Error ? error.message : "Nem sikerült menteni a kategóriát";
       toast.error(message);
     } finally {
       setCreatingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    const category = categories.find((item) => item.id === id);
+    if (!category) return;
+
+    const confirmed = window.confirm(
+      `Biztosan törlöd a(z) "${category.name.hu}" kategóriát? A hozzárendelt hírek kategória nélkül maradnak.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingCategoryId(id);
+    try {
+      await deleteNewsCategory(id);
+      setCategories((prev) => prev.filter((item) => item.id !== id));
+      setForm((prev) =>
+        prev.categoryId === id
+          ? {
+              ...prev,
+              categoryId: "",
+              category: "",
+              categoryTranslations: { hu: "", en: "" },
+            }
+          : prev,
+      );
+      toast.success("Kategória törölve");
+    } catch (error: unknown) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült törölni a kategóriát";
+      toast.error(message);
+    } finally {
+      setDeletingCategoryId(null);
     }
   };
 
@@ -705,9 +776,9 @@ export default function AdminNews() {
                       variant="ghost"
                       size="sm"
                       className="gap-2"
-                      onClick={() => setCategoryDialogOpen(true)}
+                      onClick={openCategoryDialog}
                     >
-                      <Plus className="h-4 w-4" /> Új kategória
+                      <Plus className="h-4 w-4" /> Kategóriák kezelése
                     </Button>
                   </div>
                   <select
@@ -940,35 +1011,110 @@ export default function AdminNews() {
         </div>
       </AdminLayout>
 
-      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
-        <DialogContent>
+      <Dialog
+        open={categoryDialogOpen}
+        onOpenChange={(open) => {
+          setCategoryDialogOpen(open);
+          if (!open) {
+            resetCategoryForm();
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Új kategória</DialogTitle>
+            <DialogTitle>Kategóriák kezelése</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Magyar név</Label>
-              <Input
-                value={newCategoryHu}
-                onChange={(e) => setNewCategoryHu(e.target.value)}
-                placeholder="Pl. Közösség"
-              />
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="font-medium">Meglévő kategóriák</p>
+                <Button variant="ghost" size="sm" onClick={resetCategoryForm} disabled={creatingCategory}>
+                  Alapértelmezett
+                </Button>
+              </div>
+              <ScrollArea className="h-72 rounded-md border">
+                {categories.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground px-4">
+                    Nincs még kategória
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {categories.map((category) => (
+                      <div key={category.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                        <div>
+                          <p className="font-medium">{category.name.hu}</p>
+                          <p className="text-xs text-muted-foreground">{category.name.en}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleEditCategory(category)}
+                            title="Szerkesztés"
+                            disabled={deletingCategoryId === category.id}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-destructive"
+                            onClick={() => handleDeleteCategory(category.id)}
+                            disabled={deletingCategoryId === category.id}
+                            title="Törlés"
+                          >
+                            {deletingCategoryId === category.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
             </div>
-            <div className="space-y-2">
-              <Label>Angol név</Label>
-              <Input
-                value={newCategoryEn}
-                onChange={(e) => setNewCategoryEn(e.target.value)}
-                placeholder="Pl. Community"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setCategoryDialogOpen(false)} disabled={creatingCategory}>
-                Mégse
-              </Button>
-              <Button onClick={handleCreateCategory} disabled={creatingCategory} className="gap-2">
-                {creatingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Mentés
-              </Button>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <p className="font-medium">{editingCategoryId ? "Kategória szerkesztése" : "Új kategória"}</p>
+                <p className="text-sm text-muted-foreground">
+                  Add meg a kategória magyar és angol nevét a hírlistákhoz.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Magyar név</Label>
+                <Input
+                  value={newCategoryHu}
+                  onChange={(e) => setNewCategoryHu(e.target.value)}
+                  placeholder="Pl. Közösség"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Angol név</Label>
+                <Input
+                  value={newCategoryEn}
+                  onChange={(e) => setNewCategoryEn(e.target.value)}
+                  placeholder="Pl. Community"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setCategoryDialogOpen(false);
+                    resetCategoryForm();
+                  }}
+                  disabled={creatingCategory}
+                >
+                  Mégse
+                </Button>
+                <Button onClick={handleSaveCategory} disabled={creatingCategory} className="gap-2">
+                  {creatingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Mentés
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

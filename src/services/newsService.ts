@@ -112,6 +112,31 @@ export async function createNewsCategory(input: { nameHu: string; nameEn: string
   return handleResponse<NewsCategory>(response);
 }
 
+export async function updateNewsCategory(
+  id: string,
+  input: { nameHu: string; nameEn: string },
+): Promise<NewsCategory> {
+  const response = await fetch(`${API_BASE}/api/news/categories/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  return handleResponse<NewsCategory>(response);
+}
+
+export async function deleteNewsCategory(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/news/categories/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    await handleResponse(response);
+  }
+}
+
 export async function createNews(article: NewsInput): Promise<NewsArticle> {
   const response = await fetch(`${API_BASE}/api/news`, {
     method: "POST",

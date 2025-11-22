@@ -1873,6 +1873,72 @@ app.post('/api/news/categories', authenticateRequest, async (req, res) => {
   }
 });
 
+app.put('/api/news/categories/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const id = req.params.id;
+  const nameHu = (req.body?.nameHu || '').toString().trim();
+  const nameEn = (req.body?.nameEn || '').toString().trim() || nameHu;
+
+  if (!nameHu) {
+    client.release();
+    return res.status(400).json({ message: 'A magyar kategórianév megadása kötelező' });
+  }
+
+  try {
+    const existing = await client.query('SELECT * FROM news_categories WHERE id = $1 LIMIT 1', [id]);
+
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A kategória nem található' });
+    }
+
+    const duplicate = await client.query(
+      'SELECT * FROM news_categories WHERE (LOWER(name_hu) = LOWER($1) OR LOWER(name_en) = LOWER($2)) AND id <> $3 LIMIT 1',
+      [nameHu, nameEn, id],
+    );
+
+    if (duplicate.rows.length) {
+      return res.status(409).json({ message: 'Ez a kategória már létezik' });
+    }
+
+    const result = await client.query(
+      'UPDATE news_categories SET name_hu = $1, name_en = $2 WHERE id = $3 RETURNING *',
+      [nameHu, nameEn, id],
+    );
+
+    await client.query('UPDATE news_articles SET category = $1, updated_at = NOW() WHERE category_id = $2', [nameHu, id]);
+
+    return res.status(200).json(mapNewsCategory(result.rows[0]));
+  } catch (error) {
+    console.error('Update news category error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a kategóriát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/news/categories/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const id = req.params.id;
+
+  try {
+    const existing = await client.query('SELECT * FROM news_categories WHERE id = $1 LIMIT 1', [id]);
+
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A kategória nem található' });
+    }
+
+    await client.query('UPDATE news_articles SET category_id = NULL, updated_at = NOW() WHERE category_id = $1', [id]);
+    await client.query('DELETE FROM news_categories WHERE id = $1', [id]);
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete news category error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a kategóriát' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/news', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const payload = req.body || {};
