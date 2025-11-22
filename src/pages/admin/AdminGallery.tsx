@@ -7,9 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Folder, GripVertical, Image as ImageIcon, Loader2, Pencil, Plus, Save, Trash } from "lucide-react";
+import { Folder, GripVertical, Image as ImageIcon, Loader2, Pencil, Plus, Save, Trash, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
@@ -41,7 +40,6 @@ export default function AdminGallery() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [imagesInput, setImagesInput] = useState("");
   const [coverUploading, setCoverUploading] = useState(false);
   const [imagesUploading, setImagesUploading] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -92,7 +90,6 @@ export default function AdminGallery() {
 
   const resetForm = () => {
     setForm(createEmptyAlbum(albums.length + 1));
-    setImagesInput("");
     setEditingId(null);
   };
 
@@ -101,15 +98,6 @@ export default function AdminGallery() {
       ...prev,
       [field]: value as never,
     }));
-  };
-
-  const handleImagesChange = (value: string) => {
-    setImagesInput(value);
-    const urls = value
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    setForm((prev) => ({ ...prev, images: urls }));
   };
 
   const handleCoverUpload = async (file?: File | null) => {
@@ -133,11 +121,10 @@ export default function AdminGallery() {
     setImagesUploading(true);
     try {
       const uploads = await Promise.all([...files].map((file) => uploadToImageKit(file)));
-      setForm((prev) => {
-        const images = [...prev.images, ...uploads];
-        setImagesInput(images.join("\n"));
-        return { ...prev, images };
-      });
+      setForm((prev) => ({
+        ...prev,
+        images: [...prev.images, ...uploads],
+      }));
       toast.success("Képek feltöltve");
     } catch (error) {
       console.error(error);
@@ -187,11 +174,10 @@ export default function AdminGallery() {
         handleFieldChange("coverImageAlt", file.name);
       }
     } else {
-      setForm((prev) => {
-        const images = [...prev.images, file.url];
-        setImagesInput(images.join("\n"));
-        return { ...prev, images };
-      });
+      setForm((prev) => ({
+        ...prev,
+        images: [...prev.images, file.url],
+      }));
     }
 
     toast.success("Kép kiválasztva az ImageKitből");
@@ -222,7 +208,6 @@ export default function AdminGallery() {
       sortOrder: album.sortOrder,
       published: album.published,
     });
-    setImagesInput(album.images.join("\n"));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -275,7 +260,7 @@ export default function AdminGallery() {
     }
 
     if (!form.coverImageUrl.trim()) {
-      toast.error("Add meg a borítókép URL-jét");
+      toast.error("Válassz borítóképet az ImageKitből vagy tölts fel egyet");
       return;
     }
 
@@ -308,7 +293,6 @@ export default function AdminGallery() {
         sortOrder: saved.sortOrder,
         published: saved.published,
       });
-      setImagesInput(saved.images.join("\n"));
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : "Nem sikerült menteni a galériát";
@@ -339,6 +323,13 @@ export default function AdminGallery() {
   };
 
   const previewImage = useMemo(() => form.coverImageUrl, [form.coverImageUrl]);
+
+  const handleRemoveImage = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+    }));
+  };
 
   if (isLoading) {
     return (
@@ -416,12 +407,16 @@ export default function AdminGallery() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Borítókép URL</Label>
-                <Input
-                  value={form.coverImageUrl}
-                  onChange={(e) => handleFieldChange("coverImageUrl", e.target.value)}
-                  placeholder="https://..."
-                />
+                <Label>Borítókép</Label>
+                <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted border relative">
+                  {previewImage ? (
+                    <img src={previewImage} alt={form.coverImageAlt || form.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
+                      Válassz egy képet borítóként
+                    </div>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-3">
                   <Button
                     type="button"
@@ -454,6 +449,9 @@ export default function AdminGallery() {
                     }}
                   />
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Válassz vagy tölts fel egy képet, amit a galéria borítójaként használunk.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -466,14 +464,28 @@ export default function AdminGallery() {
               </div>
 
               <div className="space-y-2">
-                <Label>Képek (soronként egy URL)</Label>
-                <Textarea
-                  rows={6}
-                  value={imagesInput}
-                  onChange={(e) => handleImagesChange(e.target.value)}
-                  placeholder="https://...\nhttps://..."
-                  className="font-mono text-sm"
-                />
+                <Label>Galéria képei</Label>
+                {form.images.length ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {form.images.map((image, index) => (
+                      <div key={image + index} className="relative group border rounded-lg overflow-hidden bg-muted">
+                        <img src={image} alt={form.title || `Galéria kép ${index + 1}`} className="h-32 w-full object-cover" />
+                        <button
+                          type="button"
+                          className="absolute top-2 right-2 h-7 w-7 inline-flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
+                          onClick={() => handleRemoveImage(index)}
+                          aria-label="Kép eltávolítása"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border bg-muted/50 p-6 text-center text-muted-foreground text-sm">
+                    Még nincs kiválasztott kép. Adj hozzá képeket az ImageKitből vagy tölts fel újakat.
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-3">
                   <Button
                     type="button"
@@ -520,15 +532,6 @@ export default function AdminGallery() {
               </div>
             </div>
           </div>
-
-          {previewImage && (
-            <div className="rounded-xl border bg-muted/30 p-4">
-              <Label className="text-sm text-muted-foreground mb-2 block">Borítókép előnézet</Label>
-              <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted">
-                <img src={previewImage} alt={form.coverImageAlt || form.title} className="w-full h-full object-cover" />
-              </div>
-            </div>
-          )}
 
           <div className="flex flex-wrap gap-3 justify-end">
             <Button variant="outline" onClick={resetForm} type="button">
