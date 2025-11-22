@@ -3,7 +3,9 @@ import { NewsArticle } from "@/types/news";
 export const defaultNews: NewsArticle[] = [
   {
     id: "1",
+    categoryId: null,
     category: "Közösség",
+    categoryTranslations: { hu: "Közösség", en: "Community" },
     imageUrl: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800&auto=format&fit=crop",
     published: true,
     publishedAt: new Date().toISOString(),
@@ -25,7 +27,9 @@ export const defaultNews: NewsArticle[] = [
   },
   {
     id: "2",
+    categoryId: null,
     category: "Nemzetközi",
+    categoryTranslations: { hu: "Nemzetközi", en: "International" },
     imageUrl: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800&auto=format&fit=crop",
     published: true,
     publishedAt: new Date().toISOString(),
@@ -47,7 +51,9 @@ export const defaultNews: NewsArticle[] = [
   },
   {
     id: "3",
+    categoryId: null,
     category: "Program",
+    categoryTranslations: { hu: "Program", en: "Programme" },
     imageUrl: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop",
     published: true,
     publishedAt: new Date().toISOString(),

@@ -80,6 +80,7 @@ export default function NewsArticlePage() {
         day: "numeric",
       })
     : "";
+  const categoryLabel = article.categoryTranslations?.[language] || article.category;
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -100,7 +101,7 @@ export default function NewsArticlePage() {
           </div>
 
           <div className="space-y-4">
-            <p className="text-sm uppercase tracking-wider text-muted-foreground">{article.category}</p>
+            <p className="text-sm uppercase tracking-wider text-muted-foreground">{categoryLabel}</p>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
               {translation.title}
             </h1>

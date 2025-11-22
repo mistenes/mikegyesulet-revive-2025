@@ -208,9 +208,19 @@ async function ensureNewsTables() {
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS news_categories (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name_hu TEXT NOT NULL,
+        name_en TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS news_articles (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         category TEXT NOT NULL,
+        category_id UUID REFERENCES news_categories(id),
         image_url TEXT,
         image_alt TEXT,
         sticky BOOLEAN NOT NULL DEFAULT FALSE,
@@ -240,6 +250,29 @@ async function ensureNewsTables() {
     await client.query(
       'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS news_date DATE NOT NULL DEFAULT CURRENT_DATE;',
     );
+
+    const distinctCategories = await client.query(
+      'SELECT DISTINCT category FROM news_articles WHERE category IS NOT NULL',
+    );
+
+    const existingCategories = await client.query('SELECT id, name_hu FROM news_categories');
+    const categoryMap = new Map(existingCategories.rows.map((row) => [row.name_hu, row.id]));
+
+    for (const row of distinctCategories.rows) {
+      const name = row.category;
+      if (!name || categoryMap.has(name)) continue;
+
+      const inserted = await client.query(
+        'INSERT INTO news_categories (name_hu, name_en) VALUES ($1, $2) RETURNING id',
+        [name, name],
+      );
+
+      categoryMap.set(name, inserted.rows[0].id);
+    }
+
+    for (const [name, id] of categoryMap.entries()) {
+      await client.query('UPDATE news_articles SET category_id = $1 WHERE category = $2', [id, name]);
+    }
   } finally {
     client.release();
   }
@@ -393,9 +426,16 @@ async function ensurePageContentTable() {
 }
 
 function mapNewsRow(row) {
+  const categoryTranslations = {
+    hu: row.category_name_hu || row.category || '',
+    en: row.category_name_en || row.category || '',
+  };
+
   return {
     id: row.id,
-    category: row.category,
+    categoryId: row.category_id || null,
+    category: categoryTranslations.hu,
+    categoryTranslations,
     imageUrl: row.image_url || undefined,
     imageAlt: row.image_alt || '',
     sticky: Boolean(row.sticky),
@@ -406,6 +446,73 @@ function mapNewsRow(row) {
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
     translations: row.translations || { hu: {}, en: {} },
   };
+}
+
+function mapNewsCategory(row) {
+  return {
+    id: row.id,
+    name: {
+      hu: row.name_hu,
+      en: row.name_en,
+    },
+    createdAt: row.created_at ? row.created_at.toISOString() : '',
+  };
+}
+
+async function resolveNewsCategory(client, payload) {
+  const requestedId = payload.categoryId || null;
+  let categoryNameHu = (payload.categoryTranslations?.hu || payload.category || '').toString().trim();
+  let categoryNameEn = (payload.categoryTranslations?.en || payload.category || '').toString().trim();
+
+  if (requestedId) {
+    const existing = await client.query('SELECT * FROM news_categories WHERE id = $1 LIMIT 1', [requestedId]);
+    if (!existing.rows.length) {
+      const error = new Error('A megadott kategória nem található');
+      error.status = 400;
+      throw error;
+    }
+
+    const row = existing.rows[0];
+    return { categoryId: requestedId, categoryNameHu: row.name_hu, categoryNameEn: row.name_en };
+  }
+
+  if (!categoryNameHu) {
+    const error = new Error('A kategória megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!categoryNameEn) {
+    categoryNameEn = categoryNameHu;
+  }
+
+  const matched = await client.query('SELECT * FROM news_categories WHERE LOWER(name_hu) = LOWER($1) LIMIT 1', [categoryNameHu]);
+
+  if (matched.rows.length) {
+    const row = matched.rows[0];
+    return { categoryId: row.id, categoryNameHu: row.name_hu, categoryNameEn: row.name_en };
+  }
+
+  const created = await client.query(
+    'INSERT INTO news_categories (name_hu, name_en) VALUES ($1, $2) RETURNING *',
+    [categoryNameHu, categoryNameEn],
+  );
+
+  const row = created.rows[0];
+  return { categoryId: row.id, categoryNameHu: row.name_hu, categoryNameEn: row.name_en };
+}
+
+async function fetchNewsWithCategory(client, id) {
+  const result = await client.query(
+    `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+     FROM news_articles a
+     LEFT JOIN news_categories c ON a.category_id = c.id
+     WHERE a.id = $1
+     LIMIT 1`,
+    [id],
+  );
+
+  return result.rows[0];
 }
 
 function normalizeProjectTranslations(translations = { hu: {}, en: {} }) {
@@ -902,6 +1009,7 @@ app.get('/api/projects', authenticateRequest, async (req, res) => {
 
   const filters = [];
   const values = [];
+  const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
 
   if (status === 'published') {
     filters.push('published = TRUE');
@@ -1563,6 +1671,7 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
   const status = (req.query.status || 'all').toString();
   const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
   const pageSize = Number(req.query.pageSize) > 0 ? Number(req.query.pageSize) : PAGE_SIZE_DEFAULT;
+  const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
 
   const filters = [];
   const values = [];
@@ -1573,10 +1682,16 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
     filters.push('published = FALSE');
   }
 
+  if (categoryId) {
+    values.push(categoryId);
+    filters.push(`category_id = $${values.length}`);
+  }
+
   if (search) {
     values.push(`%${search}%`);
     filters.push(
-      `(LOWER(category) LIKE LOWER($${values.length})
+      `(LOWER(coalesce(c.name_hu, category)) LIKE LOWER($${values.length})
+        OR LOWER(coalesce(c.name_en, category)) LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'excerpt') LIKE LOWER($${values.length})
@@ -1585,15 +1700,16 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
   }
 
   const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const baseFrom = 'FROM news_articles a LEFT JOIN news_categories c ON a.category_id = c.id';
   const offset = (page - 1) * pageSize;
 
   try {
-    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const countResult = await client.query(`SELECT COUNT(*) ${baseFrom} ${whereClause}`, values);
     const total = Number(countResult.rows[0]?.count || 0);
 
     const listResult = await client.query(
-      `SELECT *
-       FROM news_articles
+      `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+       ${baseFrom}
        ${whereClause}
        ORDER BY sticky DESC, news_date DESC, published_at DESC NULLS LAST, created_at DESC
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
@@ -1617,14 +1733,21 @@ app.get('/api/news/public', async (req, res) => {
   const pageSizeParam = Number(req.query.pageSize);
   const limitParam = Number(req.query.limit);
   const pageSize = pageSizeParam > 0 ? pageSizeParam : limitParam > 0 ? limitParam : 6;
+  const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
 
   const filters = ['published = TRUE'];
   const values = [];
 
+  if (categoryId) {
+    values.push(categoryId);
+    filters.push(`category_id = $${values.length}`);
+  }
+
   if (search) {
     values.push(`%${search}%`);
     filters.push(
-      `(LOWER(category) LIKE LOWER($${values.length})
+      `(LOWER(coalesce(c.name_hu, category)) LIKE LOWER($${values.length})
+        OR LOWER(coalesce(c.name_en, category)) LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'excerpt') LIKE LOWER($${values.length})
@@ -1633,15 +1756,16 @@ app.get('/api/news/public', async (req, res) => {
   }
 
   const whereClause = `WHERE ${filters.join(' AND ')}`;
+  const baseFrom = 'FROM news_articles a LEFT JOIN news_categories c ON a.category_id = c.id';
   const offset = (page - 1) * pageSize;
 
   try {
-    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const countResult = await client.query(`SELECT COUNT(*) ${baseFrom} ${whereClause}`, values);
     const total = Number(countResult.rows[0]?.count || 0);
 
     const listResult = await client.query(
-      `SELECT *
-       FROM news_articles
+      `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+       ${baseFrom}
        ${whereClause}
        ORDER BY sticky DESC, news_date DESC, published_at DESC NULLS LAST, created_at DESC
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
@@ -1666,7 +1790,9 @@ app.get('/api/news/slug/:slug', async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(
-      `SELECT * FROM news_articles
+      `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+       FROM news_articles a
+       LEFT JOIN news_categories c ON a.category_id = c.id
        WHERE (slug_hu = $1 OR slug_en = $1) AND published = TRUE
        LIMIT 1`,
       [req.params.slug],
@@ -1680,6 +1806,65 @@ app.get('/api/news/slug/:slug', async (req, res) => {
   } catch (error) {
     console.error('Fetch news by slug error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni a hírt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/news/categories', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM news_categories ORDER BY LOWER(name_hu) ASC');
+    return res.status(200).json({ items: result.rows.map(mapNewsCategory) });
+  } catch (error) {
+    console.error('List news categories error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a kategóriákat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/news/categories/public', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM news_categories ORDER BY LOWER(name_hu) ASC');
+    return res.status(200).json({ items: result.rows.map(mapNewsCategory) });
+  } catch (error) {
+    console.error('List public news categories error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a kategóriákat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/news/categories', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const nameHu = (req.body?.nameHu || '').toString().trim();
+  const nameEn = (req.body?.nameEn || '').toString().trim() || nameHu;
+
+  if (!nameHu) {
+    return res.status(400).json({ message: 'A magyar kategórianév megadása kötelező' });
+  }
+
+  try {
+    const existing = await client.query(
+      'SELECT * FROM news_categories WHERE LOWER(name_hu) = LOWER($1) OR LOWER(name_en) = LOWER($2) LIMIT 1',
+      [nameHu, nameEn],
+    );
+
+    if (existing.rows.length) {
+      return res.status(409).json({ message: 'Ez a kategória már létezik' });
+    }
+
+    const result = await client.query(
+      'INSERT INTO news_categories (name_hu, name_en) VALUES ($1, $2) RETURNING *',
+      [nameHu, nameEn],
+    );
+
+    return res.status(201).json(mapNewsCategory(result.rows[0]));
+  } catch (error) {
+    console.error('Create news category error', error);
+    return res.status(500).json({ message: 'Nem sikerült létrehozni a kategóriát' });
   } finally {
     client.release();
   }
@@ -1699,16 +1884,22 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
       slugEn: payload.translations.en.slug,
     });
 
+    const { categoryId: resolvedCategoryId, categoryNameHu, categoryNameEn } = await resolveNewsCategory(
+      client,
+      payload,
+    );
+
     const publishedAt = payload.published ? new Date().toISOString() : null;
     const newsDate = payload.date || new Date().toISOString().slice(0, 10);
 
-    const result = await client.query(
+    const insertResult = await client.query(
       `INSERT INTO news_articles
-       (category, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, translations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`,
+       (category, category_id, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id`,
       [
-        payload.category,
+        categoryNameHu,
+        resolvedCategoryId,
         payload.imageUrl || null,
         payload.imageAlt || null,
         Boolean(payload.sticky),
@@ -1721,7 +1912,9 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
       ],
     );
 
-    return res.status(201).json(mapNewsRow(result.rows[0]));
+    const saved = await fetchNewsWithCategory(client, insertResult.rows[0].id);
+    const response = mapNewsRow({ ...saved, category_name_en: categoryNameEn, category_name_hu: categoryNameHu });
+    return res.status(201).json(response);
   } catch (error) {
     console.error('Create news error', error);
     const status = error.status || 500;
@@ -1753,6 +1946,10 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
     }
 
     const current = existing.rows[0];
+    const { categoryId: resolvedCategoryId, categoryNameHu, categoryNameEn } = await resolveNewsCategory(
+      client,
+      { ...payload, categoryId: payload.categoryId || current.category_id },
+    );
     const publishedAt = payload.published
       ? current.published_at || new Date().toISOString()
       : null;
@@ -1761,20 +1958,22 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
     const result = await client.query(
       `UPDATE news_articles
        SET category = $1,
-           image_url = $2,
-           image_alt = $3,
-           sticky = $4,
-           news_date = $5,
-           published = $6,
-           published_at = $7,
-           slug_hu = $8,
-           slug_en = $9,
-           translations = $10,
+           category_id = $2,
+           image_url = $3,
+           image_alt = $4,
+           sticky = $5,
+           news_date = $6,
+           published = $7,
+           published_at = $8,
+           slug_hu = $9,
+           slug_en = $10,
+           translations = $11,
            updated_at = NOW()
-       WHERE id = $11
-       RETURNING *`,
+       WHERE id = $12
+       RETURNING id`,
       [
-        payload.category,
+        categoryNameHu,
+        resolvedCategoryId,
         payload.imageUrl || null,
         payload.imageAlt || null,
         Boolean(payload.sticky),
@@ -1788,7 +1987,9 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
       ],
     );
 
-    return res.status(200).json(mapNewsRow(result.rows[0]));
+    const saved = await fetchNewsWithCategory(client, result.rows[0].id);
+    const response = mapNewsRow({ ...saved, category_name_en: categoryNameEn, category_name_hu: categoryNameHu });
+    return res.status(200).json(response);
   } catch (error) {
     console.error('Update news error', error);
     const status = error.status || 500;

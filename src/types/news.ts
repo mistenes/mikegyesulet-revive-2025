@@ -7,9 +7,22 @@ export interface NewsTranslation {
   content: string;
 }
 
+export interface NewsCategoryTranslations {
+  hu: string;
+  en: string;
+}
+
+export interface NewsCategory {
+  id: string;
+  name: NewsCategoryTranslations;
+  createdAt: string;
+}
+
 export interface NewsArticle {
   id: string;
+  categoryId: string | null;
   category: string;
+  categoryTranslations?: NewsCategoryTranslations;
   imageUrl?: string;
   imageAlt?: string;
   sticky?: boolean;
@@ -23,7 +36,9 @@ export interface NewsArticle {
 }
 
 export interface NewsInput {
-  category: string;
+  categoryId?: string | null;
+  category?: string;
+  categoryTranslations?: NewsCategoryTranslations;
   imageUrl?: string;
   imageAlt?: string;
   sticky?: boolean;

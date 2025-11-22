@@ -159,7 +159,8 @@ export const NewsSection = () => {
                 <div className="p-8 space-y-4">
                   <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     <Calendar className="h-3 w-3" />
-                    {news[0].category} – {formatDate(news[0].date || news[0].publishedAt)}
+                    {(news[0].categoryTranslations?.[language] || news[0].category) ?? ""} – {" "}
+                    {formatDate(news[0].date || news[0].publishedAt)}
                   </div>
                   <h3 className="text-2xl font-bold text-foreground leading-snug group-hover:text-primary transition-colors">
                     {renderArticle(news[0]).title}
@@ -201,7 +202,8 @@ export const NewsSection = () => {
                         <div className="p-6 space-y-3 flex-1">
                           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             <Calendar className="h-3 w-3" />
-                            {item.category} – {formatDate(item.date || item.publishedAt)}
+                            {(item.categoryTranslations?.[language] || item.category) ?? ""} – {" "}
+                            {formatDate(item.date || item.publishedAt)}
                           </div>
                           <h3 className="text-lg font-bold text-foreground leading-snug group-hover:text-primary transition-colors line-clamp-2">
                             {translation.title}

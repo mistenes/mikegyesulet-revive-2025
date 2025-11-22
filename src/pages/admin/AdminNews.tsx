@@ -27,24 +27,33 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
-import { createNews, deleteNews, getAdminNews, updateNews } from "@/services/newsService";
+import {
+  createNews,
+  createNewsCategory,
+  deleteNews,
+  getAdminNews,
+  getNewsCategories,
+  updateNews,
+} from "@/services/newsService";
 import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
 import { renderMarkdown } from "@/utils/markdown";
 import { translateNewsToEnglish } from "@/services/translationService";
-import type { NewsArticle, NewsInput, NewsTranslation } from "@/types/news";
+import type { NewsArticle, NewsCategory, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
 
 const NEWS_FOLDER = "hirek";
 
 type LanguageAvailability = "hu" | "en" | "both";
-type NewsFormState = NewsInput & { languageAvailability: LanguageAvailability };
+type NewsFormState = NewsInput & { languageAvailability: LanguageAvailability; categoryTranslations: { hu: string; en: string } };
 
 const emptyTranslation: NewsTranslation = { title: "", slug: "", excerpt: "", content: "" };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const createEmptyNews = (): NewsFormState => ({
+  categoryId: "",
   category: "",
+  categoryTranslations: { hu: "", en: "" },
   imageUrl: "",
   imageAlt: "",
   sticky: false,
@@ -60,6 +69,7 @@ const createEmptyNews = (): NewsFormState => ({
 export default function AdminNews() {
   const { isLoading, session } = useAdminAuthGuard();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [categories, setCategories] = useState<NewsCategory[]>([]);
   const [form, setForm] = useState<NewsFormState>(createEmptyNews());
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -78,6 +88,10 @@ export default function AdminNews() {
     excerpt: false,
     content: false,
   });
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [newCategoryHu, setNewCategoryHu] = useState("");
+  const [newCategoryEn, setNewCategoryEn] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const slugifyText = (value: string) =>
@@ -93,6 +107,17 @@ export default function AdminNews() {
   useEffect(() => {
     if (!session) return;
 
+    async function loadCategories() {
+      try {
+        const items = await getNewsCategories();
+        setCategories(items);
+      } catch (error: unknown) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "Nem sikerült betölteni a kategóriákat";
+        toast.error(message);
+      }
+    }
+
     async function loadNews() {
       try {
         setLoading(true);
@@ -107,6 +132,7 @@ export default function AdminNews() {
       }
     }
 
+    void loadCategories();
     void loadNews();
   }, [session]);
 
@@ -160,6 +186,16 @@ export default function AdminNews() {
     }));
   };
 
+  const handleCategorySelect = (categoryId: string) => {
+    const selected = categories.find((item) => item.id === categoryId);
+    setForm((prev) => ({
+      ...prev,
+      categoryId,
+      category: selected?.name.hu || prev.category || "",
+      categoryTranslations: selected?.name || prev.categoryTranslations,
+    }));
+  };
+
   const handleTranslateToEnglish = async (field: "excerpt" | "content") => {
     const sourceExcerpt = form.translations.hu.excerpt.trim();
     const sourceContent = form.translations.hu.content.trim();
@@ -202,10 +238,49 @@ export default function AdminNews() {
     }
   };
 
+  const handleCreateCategory = async () => {
+    const nameHu = newCategoryHu.trim();
+    const nameEn = newCategoryEn.trim() || newCategoryHu.trim();
+
+    if (!nameHu) {
+      toast.error("Add meg a magyar kategórianevet");
+      return;
+    }
+
+    if (!nameEn) {
+      toast.error("Add meg az angol kategórianevet");
+      return;
+    }
+
+    setCreatingCategory(true);
+    try {
+      const created = await createNewsCategory({ nameHu, nameEn });
+      setCategories((prev) => [...prev, created]);
+      setForm((prev) => ({
+        ...prev,
+        categoryId: created.id,
+        category: created.name.hu,
+        categoryTranslations: created.name,
+      }));
+      setNewCategoryHu("");
+      setNewCategoryEn("");
+      setCategoryDialogOpen(false);
+      toast.success("Kategória létrehozva");
+    } catch (error: unknown) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült létrehozni a kategóriát";
+      toast.error(message);
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
   const handleEdit = (article: NewsArticle) => {
     setEditingId(article.id);
     setForm({
-      category: article.category,
+      categoryId: article.categoryId || "",
+      category: article.categoryTranslations?.hu || article.category || "",
+      categoryTranslations: article.categoryTranslations || { hu: article.category || "", en: article.category || "" },
       imageUrl: article.imageUrl || "",
       imageAlt: article.imageAlt || "",
       sticky: Boolean(article.sticky),
@@ -261,12 +336,19 @@ export default function AdminNews() {
     setSaving(true);
     const hu = form.translations.hu;
     const en = form.translations.en;
-      const needsHu = form.languageAvailability === "hu" || form.languageAvailability === "both";
-      const needsEn = form.languageAvailability === "en" || form.languageAvailability === "both";
+    const needsHu = form.languageAvailability === "hu" || form.languageAvailability === "both";
+    const needsEn = form.languageAvailability === "en" || form.languageAvailability === "both";
+    const selectedCategory = categories.find((item) => item.id === form.categoryId);
+    const categoryTranslations = selectedCategory?.name || form.categoryTranslations;
 
     try {
-      if (!form.category.trim()) {
-        toast.error("Add meg a kategóriát");
+      if (!categoryTranslations.hu.trim()) {
+        toast.error("Add meg a kategóriát magyarul");
+        return;
+      }
+
+      if (!categoryTranslations.en.trim()) {
+        toast.error("Add meg a kategóriát angolul");
         return;
       }
 
@@ -302,7 +384,9 @@ export default function AdminNews() {
       }
 
       const payload: NewsInput = {
-        category: form.category,
+        categoryId: selectedCategory?.id || form.categoryId || null,
+        category: categoryTranslations.hu,
+        categoryTranslations,
         imageUrl: form.imageUrl || undefined,
         imageAlt: form.imageAlt || undefined,
         sticky: form.sticky,
@@ -325,7 +409,12 @@ export default function AdminNews() {
 
       setEditingId(saved.id);
       setForm({
-        category: saved.category,
+        categoryId: saved.categoryId || "",
+        category: saved.categoryTranslations?.hu || saved.category || "",
+        categoryTranslations: saved.categoryTranslations || {
+          hu: saved.category || "",
+          en: saved.category || "",
+        },
         imageUrl: saved.imageUrl || "",
         imageAlt: saved.imageAlt || "",
         sticky: Boolean(saved.sticky),
@@ -609,12 +698,35 @@ export default function AdminNews() {
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Kategória</Label>
-                  <Input
-                    value={form.category}
-                    onChange={(e) => handleFieldChange("category", e.target.value)}
-                    placeholder="Pl. Közösség"
-                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Kategória</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setCategoryDialogOpen(true)}
+                    >
+                      <Plus className="h-4 w-4" /> Új kategória
+                    </Button>
+                  </div>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={form.categoryId || ""}
+                    onChange={(e) => handleCategorySelect(e.target.value)}
+                  >
+                    <option value="">Válassz kategóriát</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name.hu} / {category.name.en}
+                      </option>
+                    ))}
+                  </select>
+                  {form.categoryTranslations.hu && (
+                    <p className="text-xs text-muted-foreground">
+                      {`HU: ${form.categoryTranslations.hu} • EN: ${form.categoryTranslations.en || form.categoryTranslations.hu}`}
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
@@ -779,7 +891,9 @@ export default function AdminNews() {
                     </div>
 
                       <div className="space-y-1">
-                        <p className="text-xs uppercase text-muted-foreground tracking-wide">{article.category}</p>
+                        <p className="text-xs uppercase text-muted-foreground tracking-wide">
+                          {article.categoryTranslations?.hu || article.category}
+                        </p>
                         <h3 className="text-lg font-semibold" style={{ fontFamily: "'Sora', sans-serif" }}>
                           {article.translations.hu.title}
                         </h3>
@@ -825,6 +939,40 @@ export default function AdminNews() {
           </Card>
         </div>
       </AdminLayout>
+
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Új kategória</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Magyar név</Label>
+              <Input
+                value={newCategoryHu}
+                onChange={(e) => setNewCategoryHu(e.target.value)}
+                placeholder="Pl. Közösség"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Angol név</Label>
+              <Input
+                value={newCategoryEn}
+                onChange={(e) => setNewCategoryEn(e.target.value)}
+                placeholder="Pl. Community"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setCategoryDialogOpen(false)} disabled={creatingCategory}>
+                Mégse
+              </Button>
+              <Button onClick={handleCreateCategory} disabled={creatingCategory} className="gap-2">
+                {creatingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Mentés
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={browserOpen} onOpenChange={setBrowserOpen}>
         <DialogContent className="max-w-4xl">
