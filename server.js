@@ -245,6 +245,9 @@ async function ensureNewsTables() {
       'CREATE INDEX IF NOT EXISTS news_published_idx ON news_articles(published, published_at DESC, created_at DESC);',
     );
     await client.query(
+      'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES news_categories(id);',
+    );
+    await client.query(
       'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS sticky BOOLEAN NOT NULL DEFAULT FALSE;',
     );
     await client.query(
