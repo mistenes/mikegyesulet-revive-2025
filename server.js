@@ -1092,7 +1092,6 @@ async function translateProjectToEnglish({ shortDescriptionHu, descriptionHu }) 
     },
     body: JSON.stringify({
       model: 'gpt-5-mini-2025-08-07',
-      temperature: 0.3,
       response_format: { type: 'json_object' },
       messages: [
         {
