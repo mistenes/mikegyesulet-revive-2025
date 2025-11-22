@@ -33,3 +33,19 @@ export async function translateProjectToEnglish(payload: {
 
   return handleResponse(response);
 }
+
+export async function translateNewsToEnglish(payload: {
+  excerptHu?: string;
+  contentHu?: string;
+}): Promise<{ excerpt?: string; content?: string }> {
+  const url = new URL("/api/news/translate", defaultBase);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  return handleResponse(response);
+}

@@ -871,6 +871,20 @@ app.post('/api/projects/translate', authenticateRequest, async (req, res) => {
   }
 });
 
+app.post('/api/news/translate', authenticateRequest, async (req, res) => {
+  const { excerptHu, contentHu } = req.body || {};
+
+  try {
+    const result = await translateNewsToEnglish({ excerptHu, contentHu });
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('News translation error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült lefordítani a hírt';
+    return res.status(status).json({ message });
+  }
+});
+
 app.get('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
@@ -1133,6 +1147,72 @@ async function translateProjectToEnglish({ shortDescriptionHu, descriptionHu }) 
   const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
 
   return { shortDescription, description };
+}
+
+async function translateNewsToEnglish({ excerptHu, contentHu }) {
+  if (!OPENAI_API_KEY) {
+    const error = new Error('Az OpenAI API kulcs nincs konfigurálva');
+    error.status = 500;
+    throw error;
+  }
+
+  if (!excerptHu && !contentHu) {
+    const error = new Error('Nincs fordítandó szöveg');
+    error.status = 400;
+    throw error;
+  }
+
+  const parts = [];
+  if (excerptHu) {
+    parts.push(`Excerpt (Hungarian): ${excerptHu}`);
+  }
+  if (contentHu) {
+    parts.push(`Content (Hungarian): ${contentHu}`);
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-5-mini-2025-08-07',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'You translate Hungarian news copy into concise, natural English and return only a JSON object.',
+        },
+        {
+          role: 'user',
+          content: `${parts.join('\n')}\nReturn JSON with keys "excerpt" and "content" using English values. Use empty strings for missing inputs.`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(`Fordítási hiba: ${errorText || response.statusText}`);
+    error.status = response.status || 500;
+    throw error;
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content || '{}';
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    parsed = {};
+  }
+
+  const excerpt = typeof parsed.excerpt === 'string' ? parsed.excerpt.trim() : '';
+  const englishContent = typeof parsed.content === 'string' ? parsed.content.trim() : '';
+
+  return { excerpt, content: englishContent };
 }
 
 async function validateProjectSlugs(client, payload, excludeId) {

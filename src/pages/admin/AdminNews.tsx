@@ -30,6 +30,7 @@ import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { createNews, deleteNews, getAdminNews, updateNews } from "@/services/newsService";
 import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
 import { renderMarkdown } from "@/utils/markdown";
+import { translateNewsToEnglish } from "@/services/translationService";
 import type { NewsArticle, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
 
@@ -69,6 +70,10 @@ export default function AdminNews() {
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
   const [coverUploading, setCoverUploading] = useState(false);
   const [heroPreviewLoading, setHeroPreviewLoading] = useState(false);
+  const [translating, setTranslating] = useState<{ excerpt: boolean; content: boolean }>({
+    excerpt: false,
+    content: false,
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const slugifyText = (value: string) =>
@@ -149,6 +154,48 @@ export default function AdminNews() {
       ...prev,
       [field]: value as never,
     }));
+  };
+
+  const handleTranslateToEnglish = async (field: "excerpt" | "content") => {
+    const sourceExcerpt = form.translations.hu.excerpt.trim();
+    const sourceContent = form.translations.hu.content.trim();
+
+    if (field === "excerpt" && !sourceExcerpt) {
+      toast.error("Előbb add meg a magyar kivonatot");
+      return;
+    }
+
+    if (field === "content" && !sourceContent) {
+      toast.error("Előbb add meg a magyar tartalmat");
+      return;
+    }
+
+    setTranslating((prev) => ({ ...prev, [field]: true }));
+    try {
+      const result = await translateNewsToEnglish({
+        excerptHu: field === "excerpt" ? sourceExcerpt : undefined,
+        contentHu: field === "content" ? sourceContent : undefined,
+      });
+
+      setForm((prev) => ({
+        ...prev,
+        translations: {
+          ...prev.translations,
+          en: {
+            ...prev.translations.en,
+            excerpt: result.excerpt ?? prev.translations.en.excerpt,
+            content: result.content ?? prev.translations.en.content,
+          },
+        },
+      }));
+      toast.success("Fordítás kész");
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült lefordítani";
+      toast.error(message);
+    } finally {
+      setTranslating((prev) => ({ ...prev, [field]: false }));
+    }
   };
 
   const handleEdit = (article: NewsArticle) => {
@@ -492,9 +539,23 @@ export default function AdminNews() {
                           <p className="text-xs text-muted-foreground">Az oldal URL-jében megjelenő azonosító.</p>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <Label>Kivonat ({language.toUpperCase()})</Label>
-                            <span className="text-xs text-muted-foreground">{translation.excerpt.length}/500</span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{translation.excerpt.length}/500</span>
+                              {language === "en" && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-2"
+                                  onClick={() => handleTranslateToEnglish("excerpt")}
+                                  disabled={translating.excerpt}
+                                >
+                                  {translating.excerpt ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>Fordítás</span>}
+                                </Button>
+                              )}
+                            </div>
                           </div>
                           <Textarea
                             value={translation.excerpt}
@@ -504,7 +565,21 @@ export default function AdminNews() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Tartalom ({language.toUpperCase()})</Label>
+                          <div className="flex items-center justify-between gap-2">
+                            <Label>Tartalom ({language.toUpperCase()})</Label>
+                            {language === "en" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="gap-2"
+                                onClick={() => handleTranslateToEnglish("content")}
+                                disabled={translating.content}
+                              >
+                                {translating.content ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>Fordítás</span>}
+                              </Button>
+                            )}
+                          </div>
                           <Textarea
                             value={translation.content}
                             onChange={(e) => handleTranslationChange(language, "content", e.target.value)}
