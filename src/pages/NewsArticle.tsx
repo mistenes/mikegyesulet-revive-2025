@@ -73,8 +73,8 @@ export default function NewsArticlePage() {
   }
 
   const translation = article.translations[language] || article.translations.hu;
-  const formattedDate = article.publishedAt
-    ? new Date(article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
+  const formattedDate = (article.date || article.publishedAt)
+    ? new Date(article.date || article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",

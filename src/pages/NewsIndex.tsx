@@ -43,8 +43,8 @@ export default function NewsIndex() {
 
   const renderArticle = (article: NewsArticle) => {
     const translation = article.translations[language] || article.translations.hu;
-    const formattedDate = article.publishedAt
-      ? new Date(article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
+    const formattedDate = (article.date || article.publishedAt)
+      ? new Date(article.date || article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
           year: "numeric",
           month: "short",
           day: "numeric",

@@ -41,10 +41,14 @@ type NewsFormState = NewsInput & { languageAvailability: LanguageAvailability };
 
 const emptyTranslation: NewsTranslation = { title: "", slug: "", excerpt: "", content: "" };
 
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
 const createEmptyNews = (): NewsFormState => ({
   category: "",
   imageUrl: "",
   imageAlt: "",
+  sticky: false,
+  date: todayIso(),
   languageAvailability: "both",
   published: true,
   translations: {
@@ -204,6 +208,8 @@ export default function AdminNews() {
       category: article.category,
       imageUrl: article.imageUrl || "",
       imageAlt: article.imageAlt || "",
+      sticky: Boolean(article.sticky),
+      date: article.date || todayIso(),
       languageAvailability: article.languageAvailability || "both",
       published: article.published,
       translations: {
@@ -255,12 +261,17 @@ export default function AdminNews() {
     setSaving(true);
     const hu = form.translations.hu;
     const en = form.translations.en;
-    const needsHu = form.languageAvailability === "hu" || form.languageAvailability === "both";
-    const needsEn = form.languageAvailability === "en" || form.languageAvailability === "both";
+      const needsHu = form.languageAvailability === "hu" || form.languageAvailability === "both";
+      const needsEn = form.languageAvailability === "en" || form.languageAvailability === "both";
 
     try {
       if (!form.category.trim()) {
         toast.error("Add meg a kategóriát");
+        return;
+      }
+
+      if (!form.date) {
+        toast.error("Add meg a dátumot");
         return;
       }
 
@@ -294,6 +305,8 @@ export default function AdminNews() {
         category: form.category,
         imageUrl: form.imageUrl || undefined,
         imageAlt: form.imageAlt || undefined,
+        sticky: form.sticky,
+        date: form.date,
         languageAvailability: form.languageAvailability,
         published: form.published,
         translations: form.translations,
@@ -315,6 +328,8 @@ export default function AdminNews() {
         category: saved.category,
         imageUrl: saved.imageUrl || "",
         imageAlt: saved.imageAlt || "",
+        sticky: Boolean(saved.sticky),
+        date: saved.date || form.date,
         languageAvailability: saved.languageAvailability || form.languageAvailability,
         published: saved.published,
         translations: {
@@ -602,6 +617,24 @@ export default function AdminNews() {
                   />
                 </div>
 
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Dátum</Label>
+                    <Input
+                      type="date"
+                      value={form.date || todayIso()}
+                      onChange={(e) => handleFieldChange("date", e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">Rögzített hír</p>
+                      <p className="text-sm text-muted-foreground">A rögzített hír elsőként jelenik meg.</p>
+                    </div>
+                    <Switch checked={Boolean(form.sticky)} onCheckedChange={(checked) => handleFieldChange("sticky", checked)} />
+                  </div>
+                </div>
+
                 <div className="rounded-lg border p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
@@ -736,13 +769,14 @@ export default function AdminNews() {
                           <GripVertical className="h-4 w-4" />
                           <span># {index + 1}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{availabilityLabels[availability]}</Badge>
-                          <Badge variant={article.published ? "default" : "outline"}>
-                            {article.published ? "Publikus" : "Rejtett"}
-                          </Badge>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{availabilityLabels[availability]}</Badge>
+                        {article.sticky && <Badge variant="outline">Rögzített</Badge>}
+                        <Badge variant={article.published ? "default" : "outline"}>
+                          {article.published ? "Publikus" : "Rejtett"}
+                        </Badge>
                       </div>
+                    </div>
 
                       <div className="space-y-1">
                         <p className="text-xs uppercase text-muted-foreground tracking-wide">{article.category}</p>
@@ -756,9 +790,11 @@ export default function AdminNews() {
 
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Calendar className="h-4 w-4" />
-                        {article.published
-                          ? new Date(article.publishedAt || article.createdAt).toLocaleDateString("hu-HU")
-                          : "Nincs publikálva"}
+                        {article.date
+                          ? new Date(article.date).toLocaleDateString("hu-HU")
+                          : article.published
+                            ? new Date(article.publishedAt || article.createdAt).toLocaleDateString("hu-HU")
+                            : "Nincs publikálva"}
                       </div>
 
                       <div className="flex items-center gap-2">

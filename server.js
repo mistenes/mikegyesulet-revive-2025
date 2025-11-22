@@ -213,6 +213,8 @@ async function ensureNewsTables() {
         category TEXT NOT NULL,
         image_url TEXT,
         image_alt TEXT,
+        sticky BOOLEAN NOT NULL DEFAULT FALSE,
+        news_date DATE NOT NULL DEFAULT CURRENT_DATE,
         published BOOLEAN NOT NULL DEFAULT FALSE,
         published_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -231,6 +233,12 @@ async function ensureNewsTables() {
     );
     await client.query(
       'CREATE INDEX IF NOT EXISTS news_published_idx ON news_articles(published, published_at DESC, created_at DESC);',
+    );
+    await client.query(
+      'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS sticky BOOLEAN NOT NULL DEFAULT FALSE;',
+    );
+    await client.query(
+      'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS news_date DATE NOT NULL DEFAULT CURRENT_DATE;',
     );
   } finally {
     client.release();
@@ -390,6 +398,8 @@ function mapNewsRow(row) {
     category: row.category,
     imageUrl: row.image_url || undefined,
     imageAlt: row.image_alt || '',
+    sticky: Boolean(row.sticky),
+    date: row.news_date ? row.news_date.toISOString().slice(0, 10) : undefined,
     published: row.published,
     publishedAt: row.published_at ? row.published_at.toISOString() : null,
     createdAt: row.created_at ? row.created_at.toISOString() : '',
@@ -1585,7 +1595,7 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
       `SELECT *
        FROM news_articles
        ${whereClause}
-       ORDER BY published_at DESC NULLS LAST, created_at DESC
+       ORDER BY sticky DESC, news_date DESC, published_at DESC NULLS LAST, created_at DESC
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, pageSize, offset],
     );
@@ -1633,7 +1643,7 @@ app.get('/api/news/public', async (req, res) => {
       `SELECT *
        FROM news_articles
        ${whereClause}
-       ORDER BY published_at DESC NULLS LAST, created_at DESC
+       ORDER BY sticky DESC, news_date DESC, published_at DESC NULLS LAST, created_at DESC
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, pageSize, offset],
     );
@@ -1690,16 +1700,19 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
     });
 
     const publishedAt = payload.published ? new Date().toISOString() : null;
+    const newsDate = payload.date || new Date().toISOString().slice(0, 10);
 
     const result = await client.query(
       `INSERT INTO news_articles
-       (category, image_url, image_alt, published, published_at, slug_hu, slug_en, translations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (category, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         payload.category,
         payload.imageUrl || null,
         payload.imageAlt || null,
+        Boolean(payload.sticky),
+        newsDate,
         Boolean(payload.published),
         publishedAt,
         payload.translations.hu.slug,
@@ -1743,24 +1756,29 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
     const publishedAt = payload.published
       ? current.published_at || new Date().toISOString()
       : null;
+    const newsDate = payload.date || current.news_date || new Date().toISOString().slice(0, 10);
 
     const result = await client.query(
       `UPDATE news_articles
        SET category = $1,
            image_url = $2,
            image_alt = $3,
-           published = $4,
-           published_at = $5,
-           slug_hu = $6,
-           slug_en = $7,
-           translations = $8,
+           sticky = $4,
+           news_date = $5,
+           published = $6,
+           published_at = $7,
+           slug_hu = $8,
+           slug_en = $9,
+           translations = $10,
            updated_at = NOW()
-       WHERE id = $9
+       WHERE id = $11
        RETURNING *`,
       [
         payload.category,
         payload.imageUrl || null,
         payload.imageAlt || null,
+        Boolean(payload.sticky),
+        newsDate,
         Boolean(payload.published),
         publishedAt,
         payload.translations.hu.slug,

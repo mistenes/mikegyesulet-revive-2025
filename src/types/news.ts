@@ -12,6 +12,8 @@ export interface NewsArticle {
   category: string;
   imageUrl?: string;
   imageAlt?: string;
+  sticky?: boolean;
+  date?: string;
   languageAvailability?: "hu" | "en" | "both";
   published: boolean;
   publishedAt: string | null;
@@ -24,6 +26,8 @@ export interface NewsInput {
   category: string;
   imageUrl?: string;
   imageAlt?: string;
+  sticky?: boolean;
+  date?: string;
   languageAvailability?: "hu" | "en" | "both";
   published: boolean;
   translations: Record<LanguageCode, NewsTranslation>;
