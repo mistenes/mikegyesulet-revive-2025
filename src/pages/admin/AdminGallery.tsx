@@ -50,6 +50,7 @@ export default function AdminGallery() {
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [browserPath, setBrowserPath] = useState<string>("");
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
+  const [browserSelected, setBrowserSelected] = useState<Set<string>>(new Set());
 
   const currentBrowserPath = browserPath || browserBasePath || "";
   const parentBrowserPath = useMemo(() => {
@@ -143,6 +144,10 @@ export default function AdminGallery() {
       setBrowserItems(items);
       setBrowserPath(folder || baseFolder);
       setBrowserBasePath(baseFolder);
+      setBrowserSelected((prev) => {
+        const validIds = new Set(items.map((item) => item.id));
+        return new Set([...prev].filter((id) => validIds.has(id)));
+      });
       if (!items.length) {
         toast.info("Nincs találat az ImageKitben");
       }
@@ -158,6 +163,7 @@ export default function AdminGallery() {
 
   const handleBrowserOpen = (target: "cover" | "gallery") => {
     setBrowserTarget(target);
+    setBrowserSelected(new Set());
     setBrowserOpen(true);
     void loadImageKitFiles(browserSearch, browserPath);
   };
@@ -181,6 +187,46 @@ export default function AdminGallery() {
     }
 
     toast.success("Kép kiválasztva az ImageKitből");
+    setBrowserOpen(false);
+  };
+
+  const handleToggleSelection = (item: ImageKitItem) => {
+    if (item.isFolder || !item.url) return;
+
+    setBrowserSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) {
+        next.delete(item.id);
+      } else {
+        next.add(item.id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const selectableIds = browserItems.filter((item) => !item.isFolder && item.url).map((item) => item.id);
+    setBrowserSelected(new Set(selectableIds));
+  };
+
+  const handleClearSelection = () => setBrowserSelected(new Set());
+
+  const handleAddSelected = () => {
+    const selectedItems = browserItems.filter((item) => browserSelected.has(item.id) && !item.isFolder && item.url);
+    const newUrls = selectedItems.map((item) => item.url!).filter(Boolean);
+
+    if (!newUrls.length) {
+      toast.error("Nincs kiválasztott kép");
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      images: [...prev.images, ...newUrls.filter((url) => !prev.images.includes(url))],
+    }));
+
+    toast.success(`${newUrls.length} kép hozzáadva`);
+    setBrowserSelected(new Set());
     setBrowserOpen(false);
   };
 
@@ -644,6 +690,25 @@ export default function AdminGallery() {
 
               {browserError && <p className="text-sm text-destructive">{browserError}</p>}
 
+              {browserTarget === "gallery" && (
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {browserSelected.size ? `${browserSelected.size} kép kiválasztva` : "Nincs kiválasztott kép"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={handleSelectAll} disabled={!browserItems.length}>
+                      Összes kijelölése
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleClearSelection} disabled={!browserSelected.size}>
+                      Kijelölések törlése
+                    </Button>
+                    <Button size="sm" onClick={handleAddSelected} disabled={!browserSelected.size}>
+                      Kiválasztott képek hozzáadása
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {browserLoading ? (
                 <div className="py-10 text-center text-muted-foreground">Fájlok betöltése az ImageKitből...</div>
               ) : !browserItems.length ? (
@@ -673,7 +738,18 @@ export default function AdminGallery() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {browserItems.map((item) => (
                         <div key={item.id} className="border rounded-lg p-3 space-y-2 bg-card shadow-sm">
-                          <div className="aspect-video overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                          <div className="relative aspect-video overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                            {browserTarget === "gallery" && !item.isFolder && item.url && (
+                              <label className="absolute left-2 top-2 flex items-center gap-2 rounded bg-background/90 px-2 py-1 text-xs shadow">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4"
+                                  checked={browserSelected.has(item.id)}
+                                  onChange={() => handleToggleSelection(item)}
+                                />
+                                Kijelölés
+                              </label>
+                            )}
                             {item.isFolder ? (
                               <Folder className="h-10 w-10 text-muted-foreground" />
                             ) : item.thumbnailUrl ? (
@@ -711,8 +787,13 @@ export default function AdminGallery() {
                                 Megnyitás
                               </Button>
                             ) : (
-                              <Button size="sm" onClick={() => handlePickImage(item)}>
-                                {browserTarget === "cover" ? "Borító beállítása" : "Hozzáadás"}
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  browserTarget === "gallery" ? handleToggleSelection(item) : handlePickImage(item)
+                                }
+                              >
+                                {browserTarget === "cover" ? "Borító beállítása" : browserSelected.has(item.id) ? "Kijelölve" : "Kijelölés"}
                               </Button>
                             )}
                           </div>
