@@ -1,5 +1,6 @@
 export interface ProjectTranslation {
   title: string;
+  shortDescription: string;
   description: string;
 }
 

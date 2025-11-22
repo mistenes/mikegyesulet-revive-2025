@@ -94,7 +94,7 @@ const Projektek = () => {
                       </h3>
 
                       <p className="text-muted-foreground mb-6 line-clamp-3">
-                        {translation.description}
+                        {translation.shortDescription || translation.description}
                       </p>
 
                       {/* Project Meta Info */}

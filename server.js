@@ -290,8 +290,9 @@ async function ensureProjectsTables() {
 
     for (const row of existingProjects.rows) {
       const translations = row.translations || { hu: {}, en: {} };
-      let slugHu = row.slug_hu || slugifyText(translations.hu?.title || '');
-      let slugEn = row.slug_en || slugifyText(translations.en?.title || '');
+      const normalizedTranslations = normalizeProjectTranslations(translations);
+      let slugHu = row.slug_hu || slugifyText(normalizedTranslations.hu?.title || '');
+      let slugEn = row.slug_en || slugifyText(normalizedTranslations.en?.title || '');
 
       if (!slugHu) {
         slugHu = slugifyText(`projekt-${row.id}`);
@@ -305,11 +306,17 @@ async function ensureProjectsTables() {
       slugEn = ensureUniqueSlug(slugEn, usedEn);
 
       const languageAvailability = row.language_availability || 'both';
+      const translationsChanged = JSON.stringify(normalizedTranslations) !== JSON.stringify(translations);
 
-      if (slugHu !== row.slug_hu || slugEn !== row.slug_en || languageAvailability !== row.language_availability) {
+      if (
+        slugHu !== row.slug_hu ||
+        slugEn !== row.slug_en ||
+        languageAvailability !== row.language_availability ||
+        translationsChanged
+      ) {
         await client.query(
-          'UPDATE projects SET slug_hu = $1, slug_en = $2, language_availability = $3 WHERE id = $4',
-          [slugHu, slugEn, languageAvailability, row.id],
+          'UPDATE projects SET slug_hu = $1, slug_en = $2, language_availability = $3, translations = $4 WHERE id = $5',
+          [slugHu, slugEn, languageAvailability, normalizedTranslations, row.id],
         );
       }
     }
@@ -390,7 +397,25 @@ function mapNewsRow(row) {
   };
 }
 
+function normalizeProjectTranslations(translations = { hu: {}, en: {} }) {
+  return {
+    hu: {
+      title: translations.hu?.title || '',
+      shortDescription:
+        translations.hu?.shortDescription || translations.hu?.description || translations.hu?.title || '',
+      description: translations.hu?.description || '',
+    },
+    en: {
+      title: translations.en?.title || '',
+      shortDescription:
+        translations.en?.shortDescription || translations.en?.description || translations.en?.title || '',
+      description: translations.en?.description || '',
+    },
+  };
+}
+
 function mapProjectRow(row) {
+  const translations = normalizeProjectTranslations(row.translations || { hu: {}, en: {} });
   return {
     id: row.id,
     sortOrder: row.sort_order ?? 0,
@@ -403,7 +428,7 @@ function mapProjectRow(row) {
     dateRange: row.date_range || '',
     linkUrl: row.link_url || '',
     published: row.published,
-    translations: row.translations || { hu: {}, en: {} },
+    translations,
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
   };
@@ -845,6 +870,8 @@ app.get('/api/projects', authenticateRequest, async (req, res) => {
     filters.push(
       `(LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'hu' ->> 'shortDescription') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'shortDescription') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'description') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'description') LIKE LOWER($${values.length})
         OR LOWER(location) LIKE LOWER($${values.length}))`,
@@ -978,6 +1005,18 @@ function validateProjectPayload(payload) {
     throw error;
   }
 
+  if (needsHu && !payload?.translations?.hu?.shortDescription) {
+    const error = new Error('A magyar rövid leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsEn && !payload?.translations?.en?.shortDescription) {
+    const error = new Error('Az angol rövid leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
   if (needsHu && !payload?.translations?.hu?.description) {
     const error = new Error('A magyar leírás megadása kötelező');
     error.status = 400;
@@ -996,6 +1035,7 @@ function normalizeProjectPayload(payload) {
     ? payload.languageAvailability
     : 'both';
 
+  const translations = normalizeProjectTranslations(payload?.translations || { hu: {}, en: {} });
   const slugHu = payload?.slugHu || slugifyText(payload?.translations?.hu?.title || '');
   const slugEn = payload?.slugEn || slugifyText(payload?.translations?.en?.title || '');
 
@@ -1004,6 +1044,7 @@ function normalizeProjectPayload(payload) {
     languageAvailability: availability,
     slugHu,
     slugEn,
+    translations,
   };
 }
 

@@ -49,8 +49,8 @@ const createEmptyProject = (sortOrder = 1): ProjectInput => ({
   linkUrl: "",
   published: true,
   translations: {
-    hu: { title: "", description: "" },
-    en: { title: "", description: "" },
+    hu: { title: "", shortDescription: "", description: "" },
+    en: { title: "", shortDescription: "", description: "" },
   },
 });
 
@@ -108,7 +108,7 @@ export default function AdminProjects() {
     setEditingId(null);
   };
 
-  const handleTranslationChange = (field: "title" | "description", value: string) => {
+  const handleTranslationChange = (field: "title" | "shortDescription" | "description", value: string) => {
     setForm((prev) => ({
       ...prev,
       translations: {
@@ -150,6 +150,18 @@ export default function AdminProjects() {
 
   const handleEdit = (project: Project) => {
     setEditingId(project.id);
+    const normalizedTranslations: Project["translations"] = {
+      hu: {
+        title: project.translations.hu.title,
+        shortDescription: project.translations.hu.shortDescription || project.translations.hu.description || "",
+        description: project.translations.hu.description,
+      },
+      en: {
+        title: project.translations.en.title,
+        shortDescription: project.translations.en.shortDescription || project.translations.en.description || "",
+        description: project.translations.en.description,
+      },
+    };
     setForm({
       sortOrder: project.sortOrder,
       slugHu: project.slugHu,
@@ -161,7 +173,7 @@ export default function AdminProjects() {
       dateRange: project.dateRange,
       linkUrl: project.linkUrl,
       published: project.published,
-      translations: project.translations,
+      translations: normalizedTranslations,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -215,6 +227,16 @@ export default function AdminProjects() {
 
       if (needsEn && !form.translations.en.title) {
         toast.error("Add meg az angol címet");
+        return;
+      }
+
+      if (needsHu && !form.translations.hu.shortDescription) {
+        toast.error("Add meg a magyar rövid leírást");
+        return;
+      }
+
+      if (needsEn && !form.translations.en.shortDescription) {
+        toast.error("Add meg az angol rövid leírást");
         return;
       }
 
@@ -478,12 +500,21 @@ export default function AdminProjects() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Leírás ({activeLanguage.toUpperCase()})</Label>
+                <Label>Rövid leírás ({activeLanguage.toUpperCase()})</Label>
                 <Textarea
-                  rows={5}
+                  rows={3}
+                  value={form.translations[activeLanguage].shortDescription}
+                  onChange={(e) => handleTranslationChange("shortDescription", e.target.value)}
+                  placeholder="Kártyán megjelenő összefoglaló"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Részletes leírás ({activeLanguage.toUpperCase()})</Label>
+                <Textarea
+                  rows={6}
                   value={form.translations[activeLanguage].description}
                   onChange={(e) => handleTranslationChange("description", e.target.value)}
-                  placeholder="Rövid összefoglaló"
+                  placeholder="Projekt oldal tartalma"
                 />
               </div>
               <div className="space-y-2">
@@ -582,10 +613,13 @@ export default function AdminProjects() {
                 />
               </div>
 
-              <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+                  <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
                 <p className="text-sm font-semibold text-muted-foreground">Előnézet</p>
                 <div className="space-y-1">
                   <p className="text-lg font-bold">{previewTitle || "Névtelen projekt"}</p>
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {form.translations[activeLanguage].shortDescription || "Rövid leírás"}
+                  </p>
                   <p className="text-sm text-muted-foreground">{form.location || "Helyszín"}</p>
                   <p className="text-sm text-muted-foreground">{form.dateRange || "Időszak"}</p>
                 </div>
@@ -648,7 +682,7 @@ export default function AdminProjects() {
                       {project.translations.hu.title}
                     </h3>
                     <p className="text-sm text-muted-foreground line-clamp-2">
-                      {project.translations.hu.description}
+                      {project.translations.hu.shortDescription || project.translations.hu.description}
                     </p>
                   </div>
 
