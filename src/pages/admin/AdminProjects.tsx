@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, Loader2, Pencil, Plus, Save, Trash } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Folder,
+  GripVertical,
+  Image as ImageIcon,
+  Loader2,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  Trash,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
@@ -19,6 +32,7 @@ import {
   reorderProjects,
   updateProject,
 } from "@/services/projectsService";
+import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
 import type { Project, ProjectInput } from "@/types/project";
 import type { Language } from "@/contexts/LanguageContext";
 
@@ -45,6 +59,15 @@ export default function AdminProjects() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserItems, setBrowserItems] = useState<ImageKitItem[]>([]);
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
+  const [browserSearch, setBrowserSearch] = useState("");
+  const [browserPath, setBrowserPath] = useState<string>("");
+  const [browserBasePath, setBrowserBasePath] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!session) return;
@@ -208,6 +231,97 @@ export default function AdminProjects() {
 
   const previewTitle = useMemo(() => form.translations[activeLanguage].title || "", [form, activeLanguage]);
 
+  const currentBrowserPath = browserPath || browserBasePath || "";
+
+  const parentBrowserPath = useMemo(() => {
+    const trimmed = currentBrowserPath.replace(/\/$/, "");
+    const segments = trimmed.split("/").filter(Boolean);
+    if (!segments.length) return browserBasePath || currentBrowserPath;
+    segments.pop();
+    const value = segments.join("/");
+    return value || browserBasePath || currentBrowserPath;
+  }, [browserBasePath, currentBrowserPath]);
+
+  const loadImageKitFiles = async (term?: string, path?: string) => {
+    setBrowserLoading(true);
+    setBrowserError(null);
+    try {
+      const { items, folder, baseFolder } = await listImageKitFiles(term, path || browserPath || undefined);
+      setBrowserItems(items);
+      setBrowserPath(folder || path || "");
+      setBrowserBasePath(baseFolder || browserBasePath);
+      if (!items.length) {
+        toast.info("Nem található fájl vagy mappa ebben a könyvtárban");
+      }
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült lekérni az ImageKit fájlokat";
+      setBrowserError(message);
+      toast.error(message);
+    } finally {
+      setBrowserLoading(false);
+    }
+  };
+
+  const handleBrowserOpen = () => {
+    setBrowserOpen(true);
+    void loadImageKitFiles(browserSearch, browserPath);
+  };
+
+  const handlePickImage = (file: ImageKitItem) => {
+    if (file.isFolder) return;
+    if (!file.url) {
+      toast.error("A kijelölt kép URL-je nem elérhető");
+      return;
+    }
+
+    handleFieldChange("heroImageUrl", file.url);
+    if (!form.heroImageAlt.trim()) {
+      handleFieldChange("heroImageAlt", file.name);
+    }
+
+    toast.success("Borítókép kiválasztva");
+    setBrowserOpen(false);
+  };
+
+  const handleOpenFolder = (item: ImageKitItem) => {
+    if (!item.isFolder) return;
+    setBrowserSearch("");
+    void loadImageKitFiles(undefined, item.path);
+  };
+
+  const handleOpenParent = () => {
+    if (!parentBrowserPath || parentBrowserPath === currentBrowserPath) return;
+    setBrowserSearch("");
+    void loadImageKitFiles(undefined, parentBrowserPath);
+  };
+
+  const handleCoverUpload = async (files?: FileList | null) => {
+    if (!files || !files.length) return;
+    setCoverUploading(true);
+    try {
+      const uploadedUrl = await uploadToImageKit(files[0]);
+      handleFieldChange("heroImageUrl", uploadedUrl);
+      if (!form.heroImageAlt.trim()) {
+        handleFieldChange("heroImageAlt", files[0].name);
+      }
+      toast.success("Borítókép feltöltve az ImageKitre");
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült feltölteni a borítóképet";
+      toast.error(message);
+    } finally {
+      setCoverUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleOpenUpload = () => {
+    fileInputRef.current?.click();
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
@@ -222,8 +336,9 @@ export default function AdminProjects() {
   if (!session) return null;
 
   return (
-    <AdminLayout>
-      <div className="space-y-8">
+    <>
+      <AdminLayout>
+        <div className="space-y-8">
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="space-y-1">
             <h1 className="text-3xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
@@ -293,13 +408,44 @@ export default function AdminProjects() {
             </div>
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Borítókép URL</Label>
-                <Input
-                  value={form.heroImageUrl}
-                  onChange={(e) => handleFieldChange("heroImageUrl", e.target.value)}
-                  placeholder="https://...jpg"
-                />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="mb-0">Borítókép</Label>
+                  {form.heroImageUrl && (
+                    <span className="text-xs text-muted-foreground break-all">{form.heroImageUrl}</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+                  <div className="flex-1 rounded-lg border bg-muted/40 p-3 flex items-center justify-center min-h-[180px]">
+                    {form.heroImageUrl ? (
+                      <img
+                        src={form.heroImageUrl}
+                        alt={form.heroImageAlt || "Borítókép"}
+                        className="h-full max-h-64 w-full rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <ImageIcon className="h-10 w-10" />
+                        <p className="text-sm">Nincs kiválasztott borítókép</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 lg:w-64">
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleCoverUpload(e.target.files)}
+                    />
+                    <Button type="button" variant="outline" className="gap-2" onClick={handleOpenUpload} disabled={coverUploading}>
+                      {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Kép feltöltése
+                    </Button>
+                    <Button type="button" variant="secondary" className="gap-2" onClick={handleBrowserOpen}>
+                      <Search className="h-4 w-4" /> Kiválasztás az ImageKitből
+                    </Button>
+                  </div>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Borítókép alt szöveg</Label>
@@ -408,5 +554,100 @@ export default function AdminProjects() {
         </Card>
       </div>
     </AdminLayout>
+
+    <Dialog open={browserOpen} onOpenChange={setBrowserOpen}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>ImageKit böngészése</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenParent}
+                disabled={browserLoading || !parentBrowserPath || parentBrowserPath === currentBrowserPath}
+              >
+                Vissza
+              </Button>
+              <p className="text-sm text-muted-foreground break-all">
+                {currentBrowserPath ? `/${currentBrowserPath}` : "Alap mappa"}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Keresés az ImageKitben"
+                value={browserSearch}
+                onChange={(e) => setBrowserSearch(e.target.value)}
+                className="w-48 sm:w-64"
+              />
+              <Button onClick={() => loadImageKitFiles(browserSearch)} disabled={browserLoading} className="gap-2">
+                {browserLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Keresés
+              </Button>
+            </div>
+          </div>
+
+          {browserError && <p className="text-sm text-destructive">{browserError}</p>}
+
+          <ScrollArea className="h-[420px] rounded-md border p-3">
+            {browserLoading ? (
+              <div className="flex h-full items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>Fájlok betöltése...</span>
+              </div>
+            ) : browserItems.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                Nincs megjeleníthető fájl vagy mappa
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {browserItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => (item.isFolder ? handleOpenFolder(item) : handlePickImage(item))}
+                    className="flex flex-col gap-2 rounded-lg border bg-card p-3 text-left hover:border-primary/60 hover:shadow-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-md bg-muted p-2">
+                        {item.isFolder ? (
+                          <Folder className="h-5 w-5 text-primary" />
+                        ) : item.thumbnailUrl ? (
+                          <img
+                            src={item.thumbnailUrl}
+                            alt={item.name}
+                            className="h-10 w-10 rounded object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium truncate" title={item.name}>
+                          {item.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground break-all" title={item.path}>
+                          {item.path}
+                        </p>
+                      </div>
+                    </div>
+                    {!item.isFolder && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {item.width && item.height ? `${item.width}×${item.height}` : "Kép"}
+                      </p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>
   );
 }
