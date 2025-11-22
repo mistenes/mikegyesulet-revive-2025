@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -58,7 +57,6 @@ export default function AdminProjects() {
   const { isLoading, session } = useAdminAuthGuard();
   const [projects, setProjects] = useState<Project[]>([]);
   const [form, setForm] = useState<ProjectInput>(createEmptyProject());
-  const [activeLanguage, setActiveLanguage] = useState<Language>("hu");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,21 +106,25 @@ export default function AdminProjects() {
     setEditingId(null);
   };
 
-  const handleTranslationChange = (field: "title" | "shortDescription" | "description", value: string) => {
+  const handleTranslationChange = (
+    language: Language,
+    field: "title" | "shortDescription" | "description",
+    value: string,
+  ) => {
     setForm((prev) => ({
       ...prev,
       translations: {
         ...prev.translations,
-        [activeLanguage]: {
-          ...prev.translations[activeLanguage],
+        [language]: {
+          ...prev.translations[language],
           [field]: value,
         },
       },
       ...(field === "title"
         ? (() => {
-            const slugKey: "slugHu" | "slugEn" = activeLanguage === "hu" ? "slugHu" : "slugEn";
+            const slugKey: "slugHu" | "slugEn" = language === "hu" ? "slugHu" : "slugEn";
             const currentSlug = prev[slugKey];
-            const previousGenerated = slugifyText(prev.translations[activeLanguage].title || "");
+            const previousGenerated = slugifyText(prev.translations[language].title || "");
             const generated = slugifyText(value);
             if (!currentSlug || currentSlug === previousGenerated) {
               return { [slugKey]: generated } as Pick<ProjectInput, "slugHu" | "slugEn">;
@@ -133,8 +135,8 @@ export default function AdminProjects() {
     }));
   };
 
-  const handleSlugChange = (lang: Language, value: string) => {
-    const slugKey: "slugHu" | "slugEn" = lang === "hu" ? "slugHu" : "slugEn";
+  const handleSlugChange = (language: Language, value: string) => {
+    const slugKey: "slugHu" | "slugEn" = language === "hu" ? "slugHu" : "slugEn";
     setForm((prev) => ({
       ...prev,
       [slugKey]: slugifyText(value),
@@ -319,7 +321,20 @@ export default function AdminProjects() {
     }
   };
 
-  const previewTitle = useMemo(() => form.translations[activeLanguage].title || "", [form, activeLanguage]);
+  const languageSections = useMemo<Language[]>(() => {
+    if (form.languageAvailability === "hu") return ["hu"];
+    if (form.languageAvailability === "en") return ["en"];
+    return ["hu", "en"];
+  }, [form.languageAvailability]);
+
+  const languageLabels: Record<Language, string> = { hu: "Magyar", en: "Angol" };
+
+  const previewLanguage = languageSections[0] || "hu";
+
+  const previewTitle = useMemo(
+    () => form.translations[previewLanguage].title || "",
+    [form, previewLanguage],
+  );
 
   const currentBrowserPath = browserPath || browserBasePath || "";
 
@@ -449,12 +464,7 @@ export default function AdminProjects() {
 
         <Card className="p-6 space-y-6">
           <div className="flex items-center gap-3">
-            <Tabs value={activeLanguage} onValueChange={(val) => setActiveLanguage(val as Language)}>
-              <TabsList>
-                <TabsTrigger value="hu">Magyar</TabsTrigger>
-                <TabsTrigger value="en">English</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <p className="text-sm font-medium text-muted-foreground">Nyelvi tartalom</p>
             <Badge variant="secondary">{editingId ? "Szerkesztés" : "Új projekt"}</Badge>
           </div>
 
@@ -491,43 +501,51 @@ export default function AdminProjects() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Cím ({activeLanguage.toUpperCase()})</Label>
-                <Input
-                  value={form.translations[activeLanguage].title}
-                  onChange={(e) => handleTranslationChange("title", e.target.value)}
-                  placeholder="Projekt cím"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Rövid leírás ({activeLanguage.toUpperCase()})</Label>
-                <Textarea
-                  rows={3}
-                  value={form.translations[activeLanguage].shortDescription}
-                  onChange={(e) => handleTranslationChange("shortDescription", e.target.value)}
-                  placeholder="Kártyán megjelenő összefoglaló"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Részletes leírás ({activeLanguage.toUpperCase()})</Label>
-                <Textarea
-                  rows={6}
-                  value={form.translations[activeLanguage].description}
-                  onChange={(e) => handleTranslationChange("description", e.target.value)}
-                  placeholder="Projekt oldal tartalma"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Slug ({activeLanguage.toUpperCase()})</Label>
-                <Input
-                  value={activeLanguage === "hu" ? form.slugHu : form.slugEn}
-                  onChange={(e) => handleSlugChange(activeLanguage, e.target.value)}
-                  placeholder="projekt-cim"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Az oldal URL-jében megjelenő azonosító. Csak a kijelölt nyelven lesz elérhető.
-                </p>
-              </div>
+              {languageSections.map((language) => (
+                <div key={language} className="space-y-3 rounded-lg border p-4 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">{languageLabels[language]}</p>
+                    <Badge variant="outline">{language.toUpperCase()}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cím ({language.toUpperCase()})</Label>
+                    <Input
+                      value={form.translations[language].title}
+                      onChange={(e) => handleTranslationChange(language, "title", e.target.value)}
+                      placeholder="Projekt cím"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Rövid leírás ({language.toUpperCase()})</Label>
+                    <Textarea
+                      rows={3}
+                      value={form.translations[language].shortDescription}
+                      onChange={(e) => handleTranslationChange(language, "shortDescription", e.target.value)}
+                      placeholder="Kártyán megjelenő összefoglaló"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Részletes leírás ({language.toUpperCase()})</Label>
+                    <Textarea
+                      rows={6}
+                      value={form.translations[language].description}
+                      onChange={(e) => handleTranslationChange(language, "description", e.target.value)}
+                      placeholder="Projekt oldal tartalma"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Slug ({language.toUpperCase()})</Label>
+                    <Input
+                      value={language === "hu" ? form.slugHu : form.slugEn}
+                      onChange={(e) => handleSlugChange(language, e.target.value)}
+                      placeholder="projekt-cim"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Az oldal URL-jében megjelenő azonosító. Csak a kijelölt nyelven lesz elérhető.
+                    </p>
+                  </div>
+                </div>
+              ))}
               <div className="space-y-2">
                 <Label>Helyszín</Label>
                 <Input
@@ -612,13 +630,12 @@ export default function AdminProjects() {
                   onCheckedChange={(checked) => handleFieldChange("published", checked)}
                 />
               </div>
-
-                  <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
                 <p className="text-sm font-semibold text-muted-foreground">Előnézet</p>
                 <div className="space-y-1">
                   <p className="text-lg font-bold">{previewTitle || "Névtelen projekt"}</p>
                   <p className="text-sm text-muted-foreground line-clamp-2">
-                    {form.translations[activeLanguage].shortDescription || "Rövid leírás"}
+                    {form.translations[previewLanguage].shortDescription || "Rövid leírás"}
                   </p>
                   <p className="text-sm text-muted-foreground">{form.location || "Helyszín"}</p>
                   <p className="text-sm text-muted-foreground">{form.dateRange || "Időszak"}</p>
