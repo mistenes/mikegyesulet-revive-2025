@@ -1148,7 +1148,8 @@ async function validateProjectSlugs(client, payload, excludeId) {
     return;
   }
 
-  let query = `SELECT id, slug_hu, slug_en FROM projects WHERE ${conditions.join(' OR ')}`;
+  const slugWhere = conditions.length > 1 ? `(${conditions.join(' OR ')})` : conditions[0];
+  let query = `SELECT id, slug_hu, slug_en FROM projects WHERE ${slugWhere}`;
 
   if (excludeId) {
     params.push(excludeId);
