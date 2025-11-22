@@ -3,6 +3,7 @@ import type { Project, ProjectInput } from "@/types/project";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "projects-updated";
 const isBrowser = typeof window !== "undefined";
+const defaultBase = API_BASE || (isBrowser ? window.location.origin : "http://localhost");
 
 async function handleResponse<T>(response: Response): Promise<T> {
   let payload: unknown = null;
@@ -26,7 +27,7 @@ function broadcastUpdate() {
 }
 
 export async function getAdminProjects(params: { search?: string; status?: "all" | "published" | "draft" } = {}) {
-  const url = new URL(`${API_BASE}/api/projects`);
+  const url = new URL("/api/projects", defaultBase);
   if (params.search) url.searchParams.set("search", params.search);
   if (params.status) url.searchParams.set("status", params.status);
 
@@ -36,13 +37,15 @@ export async function getAdminProjects(params: { search?: string; status?: "all"
 }
 
 export async function getPublicProjects(): Promise<Project[]> {
-  const response = await fetch(`${API_BASE}/api/projects/public`);
+  const url = new URL("/api/projects/public", defaultBase);
+  const response = await fetch(url.toString());
   const data = await handleResponse<{ items: Project[] }>(response);
   return data.items;
 }
 
 export async function createProject(project: ProjectInput): Promise<Project> {
-  const response = await fetch(`${API_BASE}/api/projects`, {
+  const url = new URL("/api/projects", defaultBase);
+  const response = await fetch(url.toString(), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -55,7 +58,8 @@ export async function createProject(project: ProjectInput): Promise<Project> {
 }
 
 export async function updateProject(id: string, project: ProjectInput): Promise<Project> {
-  const response = await fetch(`${API_BASE}/api/projects/${id}`, {
+  const url = new URL(`/api/projects/${id}`, defaultBase);
+  const response = await fetch(url.toString(), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -68,7 +72,8 @@ export async function updateProject(id: string, project: ProjectInput): Promise<
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/projects/${id}`, {
+  const url = new URL(`/api/projects/${id}`, defaultBase);
+  const response = await fetch(url.toString(), {
     method: "DELETE",
     credentials: "include",
   });
@@ -81,7 +86,8 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 export async function reorderProjects(order: string[]): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/projects/reorder`, {
+  const url = new URL("/api/projects/reorder", defaultBase);
+  const response = await fetch(url.toString(), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
