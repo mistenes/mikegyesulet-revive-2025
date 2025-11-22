@@ -590,6 +590,11 @@ function normalizeFolderPath(baseFolder, requestedFolder) {
     return requested;
   }
 
+  const appended = ensureFolderPath(`${base}/${requested.replace(/^\//, '')}`);
+  if (appended.startsWith(`${base}/`)) {
+    return appended;
+  }
+
   return base;
 }
 

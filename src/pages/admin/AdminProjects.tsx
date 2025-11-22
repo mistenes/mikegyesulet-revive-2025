@@ -37,6 +37,8 @@ import { translateProjectToEnglish } from "@/services/translationService";
 import type { Project, ProjectInput } from "@/types/project";
 import type { Language } from "@/contexts/LanguageContext";
 
+const PROJECTS_FOLDER = "projektek";
+
 const createEmptyProject = (sortOrder = 1): ProjectInput => ({
   sortOrder,
   slugHu: "",
@@ -72,7 +74,7 @@ export default function AdminProjects() {
   const [browserLoading, setBrowserLoading] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [browserSearch, setBrowserSearch] = useState("");
-  const [browserPath, setBrowserPath] = useState<string>("");
+  const [browserPath, setBrowserPath] = useState<string>(PROJECTS_FOLDER);
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
   const [heroPreviewLoading, setHeroPreviewLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -467,7 +469,7 @@ export default function AdminProjects() {
     if (!files || !files.length) return;
     setCoverUploading(true);
     try {
-      const uploadedUrl = await uploadToImageKit(files[0]);
+      const uploadedUrl = await uploadToImageKit(files[0], PROJECTS_FOLDER);
       handleFieldChange("heroImageUrl", uploadedUrl);
       if (!form.heroImageAlt.trim()) {
         handleFieldChange("heroImageAlt", files[0].name);
