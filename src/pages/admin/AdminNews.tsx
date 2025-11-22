@@ -1,118 +1,368 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { DragEvent } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, Trash2, Eye, Calendar, Languages, Search, Bold, Italic, Link2, Image, Quote } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Calendar,
+  Eye,
+  Folder,
+  GripVertical,
+  Image as ImageIcon,
+  Languages,
+  Loader2,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  Trash,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
+import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { createNews, deleteNews, getAdminNews, updateNews } from "@/services/newsService";
+import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
+import { renderMarkdown } from "@/utils/markdown";
 import type { NewsArticle, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
-import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
-import { renderMarkdown } from "@/utils/markdown";
 
-const translationSchema = z.object({
-  title: z.string().min(1, "A cím kötelező").max(200),
-  slug: z.string().min(1, "A slug kötelező").max(200),
-  excerpt: z.string().min(1, "A kivonat kötelező").max(500),
-  content: z.string().min(1, "A tartalom kötelező"),
+const NEWS_FOLDER = "hirek";
+
+const emptyTranslation: NewsTranslation = { title: "", slug: "", excerpt: "", content: "" };
+
+const createEmptyNews = (): NewsInput => ({
+  category: "",
+  imageUrl: "",
+  imageAlt: "",
+  published: true,
+  translations: {
+    hu: { ...emptyTranslation },
+    en: { ...emptyTranslation },
+  },
 });
-
-const newsSchema = z.object({
-  category: z.string().min(1, "A kategória kötelező"),
-  imageUrl: z.string().url("Érvényes URL-t adj meg").optional().or(z.literal("")),
-  imageAlt: z.string().optional(),
-  published: z.boolean(),
-  translations: z.object({
-    hu: translationSchema,
-    en: translationSchema,
-  }),
-});
-
-const emptyTranslation: NewsTranslation = {
-  title: "",
-  slug: "",
-  excerpt: "",
-  content: "",
-};
-
-const createEmptyTranslations = () => ({
-  hu: { ...emptyTranslation },
-  en: { ...emptyTranslation },
-});
-
-const PAGE_SIZE = 6;
 
 export default function AdminNews() {
-  const { isLoading, session, error } = useAdminAuthGuard();
+  const { isLoading, session } = useAdminAuthGuard();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft">("all");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingArticle, setEditingArticle] = useState<NewsArticle | null>(null);
-  const [formData, setFormData] = useState<NewsInput>({
-    category: "",
-    imageUrl: "",
-    imageAlt: "",
-    published: false,
-    translations: createEmptyTranslations(),
-  });
+  const [form, setForm] = useState<NewsInput>(createEmptyNews());
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserItems, setBrowserItems] = useState<ImageKitItem[]>([]);
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
+  const [browserSearch, setBrowserSearch] = useState("");
+  const [browserPath, setBrowserPath] = useState<string>(NEWS_FOLDER);
+  const [browserBasePath, setBrowserBasePath] = useState<string>("");
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [heroPreviewLoading, setHeroPreviewLoading] = useState(false);
   const [activeLanguage, setActiveLanguage] = useState<LanguageCode>("hu");
-  const [isSaving, setIsSaving] = useState(false);
-  const [isListLoading, setIsListLoading] = useState(false);
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const contentRefs = useRef<Record<LanguageCode, HTMLTextAreaElement | null>>({ hu: null, en: null });
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  const loadArticles = useCallback(async () => {
-    setIsListLoading(true);
-    try {
-      const { items, total: count } = await getAdminNews({
-        page,
-        pageSize: PAGE_SIZE,
-        search: debouncedSearch,
-        status: statusFilter,
-      });
-      setArticles(items);
-      setTotal(count);
-    } catch (error) {
-      toast.error((error as Error).message);
-    } finally {
-      setIsListLoading(false);
-    }
-  }, [debouncedSearch, page, statusFilter]);
+  const slugifyText = (value: string) =>
+    value
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
 
   useEffect(() => {
     if (!session) return;
-    loadArticles();
-  }, [loadArticles, session]);
+
+    async function loadNews() {
+      try {
+        setLoading(true);
+        const { items } = await getAdminNews({ pageSize: 100 });
+        setArticles(items);
+      } catch (error: unknown) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "Nem sikerült betölteni a híreket";
+        toast.error(message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadNews();
+  }, [session]);
 
   useEffect(() => {
-    if (error) {
-      toast.error(error);
+    if (form.imageUrl) {
+      setHeroPreviewLoading(true);
+    } else {
+      setHeroPreviewLoading(false);
     }
-  }, [error]);
+  }, [form.imageUrl]);
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+  const resetForm = () => {
+    setForm(createEmptyNews());
+    setEditingId(null);
+    setActiveLanguage("hu");
+  };
+
+  const handleTranslationChange = (
+    language: LanguageCode,
+    field: keyof NewsTranslation,
+    value: string,
+  ) => {
+    setForm((prev) => {
+      const currentTranslation = prev.translations[language];
+      const next: NewsTranslation = {
+        ...currentTranslation,
+        [field]: field === "slug" ? slugifyText(value) : value,
+      };
+
+      if (field === "title") {
+        const generated = slugifyText(value);
+        const prevGenerated = slugifyText(currentTranslation.title);
+        if (!currentTranslation.slug || currentTranslation.slug === prevGenerated) {
+          next.slug = generated;
+        }
+      }
+
+      return {
+        ...prev,
+        translations: {
+          ...prev.translations,
+          [language]: next,
+        },
+      };
+    });
+  };
+
+  const handleFieldChange = (field: keyof NewsInput, value: string | boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      [field]: value as never,
+    }));
+  };
+
+  const handleEdit = (article: NewsArticle) => {
+    setEditingId(article.id);
+    setForm({
+      category: article.category,
+      imageUrl: article.imageUrl || "",
+      imageAlt: article.imageAlt || "",
+      published: article.published,
+      translations: {
+        hu: { ...article.translations.hu },
+        en: { ...article.translations.en },
+      },
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDelete = async (id: string) => {
+    const article = articles.find((item) => item.id === id);
+    if (!article) return;
+
+    const confirmed = window.confirm(`Biztosan törlöd a(z) "${article.translations.hu.title}" hírt?`);
+    if (!confirmed) return;
+
+    try {
+      await deleteNews(id);
+      setArticles((prev) => prev.filter((item) => item.id !== id));
+      if (editingId === id) {
+        resetForm();
+      }
+      toast.success("Hír törölve");
+    } catch (error: unknown) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült törölni a hírt";
+      toast.error(message);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    const hu = form.translations.hu;
+    const en = form.translations.en;
+
+    try {
+      if (!form.category.trim()) {
+        toast.error("Add meg a kategóriát");
+        return;
+      }
+
+      const translations: [LanguageCode, NewsTranslation][] = [
+        ["hu", hu],
+        ["en", en],
+      ];
+
+      for (const [lang, translation] of translations) {
+        const label = lang === "hu" ? "magyar" : "angol";
+        if (!translation.title.trim()) {
+          toast.error(`Add meg a ${label} címet`);
+          return;
+        }
+        if (!translation.slug.trim()) {
+          toast.error(`Add meg a ${label} slugot`);
+          return;
+        }
+        if (!translation.excerpt.trim()) {
+          toast.error(`Add meg a ${label} kivonatot`);
+          return;
+        }
+        if (!translation.content.trim()) {
+          toast.error(`Add meg a ${label} tartalmat`);
+          return;
+        }
+      }
+
+      let saved: NewsArticle;
+      if (editingId) {
+        saved = await updateNews(editingId, form);
+        setArticles((prev) => prev.map((item) => (item.id === editingId ? saved : item)));
+        toast.success("Hír frissítve");
+      } else {
+        saved = await createNews(form);
+        setArticles((prev) => [saved, ...prev]);
+        toast.success("Hír létrehozva");
+      }
+
+      setEditingId(saved.id);
+      setForm({
+        category: saved.category,
+        imageUrl: saved.imageUrl || "",
+        imageAlt: saved.imageAlt || "",
+        published: saved.published,
+        translations: {
+          hu: { ...saved.translations.hu },
+          en: { ...saved.translations.en },
+        },
+      });
+    } catch (error: unknown) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült menteni a hírt";
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDragStart = (id: string) => setDraggingId(id);
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, targetId: string) => {
+    event.preventDefault();
+    if (!draggingId || draggingId === targetId) return;
+
+    setArticles((prev) => {
+      const currentIndex = prev.findIndex((item) => item.id === draggingId);
+      const targetIndex = prev.findIndex((item) => item.id === targetId);
+      if (currentIndex === -1 || targetIndex === -1) return prev;
+
+      const updated = [...prev];
+      const [moved] = updated.splice(currentIndex, 1);
+      updated.splice(targetIndex, 0, moved);
+      return updated;
+    });
+  };
+
+  const handleDrop = () => {
+    setDraggingId(null);
+  };
+
+  const parentBrowserPath = useMemo(() => {
+    const trimmed = (browserPath || "").replace(/\/$/, "");
+    const segments = trimmed.split("/").filter(Boolean);
+    if (!segments.length) return browserBasePath || browserPath;
+    segments.pop();
+    const value = segments.join("/");
+    return value || browserBasePath || browserPath;
+  }, [browserBasePath, browserPath]);
+
+  const loadImageKitFiles = async (term?: string, path?: string) => {
+    setBrowserLoading(true);
+    setBrowserError(null);
+    try {
+      const { items, folder, baseFolder } = await listImageKitFiles(term, path || browserPath || undefined);
+      setBrowserItems(items);
+      setBrowserPath(folder || path || "");
+      setBrowserBasePath(baseFolder || browserBasePath);
+      if (!items.length) {
+        toast.info("Nem található fájl vagy mappa ebben a könyvtárban");
+      }
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült lekérni az ImageKit fájlokat";
+      setBrowserError(message);
+      toast.error(message);
+    } finally {
+      setBrowserLoading(false);
+    }
+  };
+
+  const handleBrowserOpen = () => {
+    setBrowserOpen(true);
+    void loadImageKitFiles(browserSearch, browserPath);
+  };
+
+  const handlePickImage = (file: ImageKitItem) => {
+    if (file.isFolder) return;
+    if (!file.url) {
+      toast.error("A kijelölt kép URL-je nem elérhető");
+      return;
+    }
+
+    handleFieldChange("imageUrl", file.url);
+    if (!form.imageAlt?.trim()) {
+      handleFieldChange("imageAlt", file.name);
+    }
+
+    toast.success("Borítókép kiválasztva");
+    setBrowserOpen(false);
+  };
+
+  const handleOpenFolder = (item: ImageKitItem) => {
+    if (!item.isFolder) return;
+    setBrowserSearch("");
+    void loadImageKitFiles(undefined, item.path);
+  };
+
+  const handleOpenParent = () => {
+    if (!parentBrowserPath || parentBrowserPath === browserPath) return;
+    setBrowserSearch("");
+    void loadImageKitFiles(undefined, parentBrowserPath);
+  };
+
+  const handleCoverUpload = async (files?: FileList | null) => {
+    if (!files || !files.length) return;
+    setCoverUploading(true);
+    try {
+      const uploadedUrl = await uploadToImageKit(files[0], NEWS_FOLDER);
+      handleFieldChange("imageUrl", uploadedUrl);
+      if (!form.imageAlt?.trim()) {
+        handleFieldChange("imageAlt", files[0].name);
+      }
+      toast.success("Borítókép feltöltve az ImageKitre");
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült feltölteni a borítóképet";
+      toast.error(message);
+    } finally {
+      setCoverUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleOpenUpload = () => {
+    fileInputRef.current?.click();
+  };
 
   if (isLoading) {
     return (
@@ -127,541 +377,372 @@ export default function AdminNews() {
 
   if (!session) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-
-    try {
-      newsSchema.parse(formData);
-
-      if (editingArticle) {
-        await updateNews(editingArticle.id, formData);
-        toast.success("Hír frissítve!");
-      } else {
-        await createNews(formData);
-        toast.success("Hír létrehozva!");
-      }
-
-      setIsDialogOpen(false);
-      resetForm();
-      loadArticles();
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        toast.error(error.errors[0].message);
-      } else {
-        toast.error((error as Error).message || "Hiba történt a mentés során");
-        console.error(error);
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleEdit = (article: NewsArticle) => {
-    setEditingArticle(article);
-    setFormData({
-      category: article.category,
-      imageUrl: article.imageUrl || "",
-      imageAlt: article.imageAlt || "",
-      published: article.published,
-      translations: {
-        hu: { ...article.translations.hu },
-        en: { ...article.translations.en },
-      },
-    });
-    setActiveLanguage("hu");
-    setIsDialogOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Biztosan törölni szeretnéd ezt a hírt?")) return;
-
-    try {
-      await deleteNews(id);
-      toast.success("Hír törölve!");
-      loadArticles();
-    } catch (error) {
-      toast.error((error as Error).message || "Nem sikerült törölni a hírt");
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      category: "",
-      imageUrl: "",
-      imageAlt: "",
-      published: false,
-      translations: createEmptyTranslations(),
-    });
-    setEditingArticle(null);
-  };
-
-  const generateSlug = (title: string) => {
-    return title
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
-  };
-
-  const updateTranslationField = (lang: LanguageCode, field: keyof NewsTranslation, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      translations: {
-        ...prev.translations,
-        [lang]: {
-          ...prev.translations[lang],
-          [field]: field === "slug" ? value : value,
-        },
-      },
-    }));
-  };
-
-  const setSlugFromTitle = (lang: LanguageCode, title: string) => {
-    const slug = generateSlug(title);
-    updateTranslationField(lang, "title", title);
-    updateTranslationField(lang, "slug", slug);
-  };
-
-  const applyFormatting = (
-    lang: LanguageCode,
-    wrapperStart: string,
-    wrapperEnd: string,
-    placeholder: string,
-  ) => {
-    const ref = contentRefs.current[lang];
-    if (!ref) return;
-
-    const { selectionStart, selectionEnd, value } = ref;
-    const selected = value.substring(selectionStart, selectionEnd) || placeholder;
-    const newValue =
-      value.substring(0, selectionStart) +
-      `${wrapperStart}${selected}${wrapperEnd}` +
-      value.substring(selectionEnd);
-
-    updateTranslationField(lang, "content", newValue);
-
-    requestAnimationFrame(() => {
-      const cursorPosition = selectionStart + wrapperStart.length + selected.length + wrapperEnd.length;
-      ref.focus();
-      ref.setSelectionRange(cursorPosition, cursorPosition);
-    });
-  };
-
-  const insertLink = (lang: LanguageCode) => {
-    const url = prompt("Add meg a hivatkozás URL-jét:");
-    if (!url) return;
-    applyFormatting(lang, "[", `](${url})`, "link szöveg");
-  };
-
-  const insertImage = (lang: LanguageCode) => {
-    const url = prompt("Add meg a kép URL-jét vagy hagyd üresen a feltöltéshez:");
-    if (url) {
-      applyFormatting(lang, "![", `](${url})`, "alternatív szöveg");
-      return;
-    }
-
-    const fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = "image/*";
-    fileInput.onchange = (event) => {
-      const file = (event.target as HTMLInputElement)?.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        applyFormatting(lang, "![", `](${dataUrl})`, file.name || "feltöltött kép");
-      };
-      reader.readAsDataURL(file);
-    };
-
-    fileInput.click();
-  };
-
-  const handleFeatureImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormData((prev) => ({ ...prev, imageUrl: reader.result as string, imageAlt: file.name }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const renderTranslationTab = (lang: LanguageCode) => {
-    const translation = formData.translations[lang];
-    const isHu = lang === "hu";
-
-    return (
-      <TabsContent value={lang} className="space-y-4 mt-4">
-        <div className="space-y-2">
-          <Label>Cím ({isHu ? "magyar" : "angol"})</Label>
-          <Input
-            value={translation.title}
-            onChange={(e) => setSlugFromTitle(lang, e.target.value)}
-            placeholder="Add meg a címet"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Slug ({isHu ? "magyar" : "angol"})</Label>
-          <Input
-            value={translation.slug}
-            onChange={(e) => updateTranslationField(lang, "slug", generateSlug(e.target.value))}
-            placeholder="pelda-cikk"
-          />
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Kivonat ({isHu ? "magyar" : "angol"})</Label>
-            <span className="text-xs text-muted-foreground">{translation.excerpt.length}/500</span>
-          </div>
-          <Textarea
-            value={translation.excerpt}
-            onChange={(e) => updateTranslationField(lang, "excerpt", e.target.value)}
-            rows={3}
-            maxLength={500}
-          />
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Tartalom ({isHu ? "magyar" : "angol"})</Label>
-            <div className="flex items-center gap-2 text-muted-foreground text-xs">
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => applyFormatting(lang, "**", "**", "félkövér")}
-              >
-                <Bold className="h-3 w-3" />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => applyFormatting(lang, "*", "*", "dőlt")}
-              >
-                <Italic className="h-3 w-3" />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => applyFormatting(lang, "- ", "", "listaelem")}
-              >
-                •
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => applyFormatting(lang, "> ", "", "idézet")}
-              >
-                <Quote className="h-3 w-3" />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => insertLink(lang)}
-              >
-                <Link2 className="h-3 w-3" />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => insertImage(lang)}
-              >
-                <Image className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-          <Textarea
-            ref={(node) => (contentRefs.current[lang] = node)}
-            value={translation.content}
-            onChange={(e) => updateTranslationField(lang, "content", e.target.value)}
-            rows={10}
-          />
-        </div>
-        <div>
-          <Label>Élő előnézet</Label>
-          <Card className="p-4 mt-2 prose prose-neutral max-w-none">
-            {translation.content ? (
-              <div dangerouslySetInnerHTML={{ __html: renderMarkdown(translation.content) }} />
-            ) : (
-              <p className="text-muted-foreground text-sm">Add meg a tartalmat a bal oldali szerkesztőben.</p>
-            )}
-          </Card>
-        </div>
-      </TabsContent>
-    );
-  };
-
   return (
-    <AdminLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Hírek kezelése
-            </h1>
-            <p className="text-muted-foreground">
-              Készíts egyszerre magyar és angol tartalmat, élő előnézettel és borítóképpel.
-            </p>
+    <>
+      <AdminLayout>
+        <div className="space-y-8">
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
+                Hírek kezelése
+              </h1>
+              <p className="text-muted-foreground">
+                Hozz létre és szerkessz híreket magyarul és angolul, borítóképpel és élő előnézettel.
+              </p>
+            </div>
+            <Button onClick={resetForm} variant="outline" className="gap-2">
+              <Plus className="h-4 w-4" /> Új hír
+            </Button>
           </div>
-          <Dialog
-            open={isDialogOpen}
-            onOpenChange={(open) => {
-              setIsDialogOpen(open);
-              if (!open) resetForm();
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Új hír
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingArticle ? "Hír szerkesztése" : "Új hír létrehozása"}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Kategória</Label>
-                    <Input
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      placeholder="Pl. Közösség"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Borítókép</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={formData.imageUrl}
-                        onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                        placeholder="https://..."
-                      />
-                      <Button type="button" variant="outline" className="whitespace-nowrap" onClick={() => document.getElementById("feature-upload")?.click()}>
-                        Feltöltés
-                      </Button>
-                      <input id="feature-upload" type="file" accept="image/*" className="hidden" onChange={handleFeatureImageUpload} />
-                    </div>
-                    <Input
-                      value={formData.imageAlt || ""}
-                      onChange={(e) => setFormData({ ...formData, imageAlt: e.target.value })}
-                      placeholder="Alternatív szöveg"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Megadhatsz URL-t vagy tölthetsz fel képet (base64) a Render API hiányában.
-                    </p>
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between border rounded-lg p-3">
-                  <div>
-                    <p className="font-medium">Publikálás</p>
-                    <p className="text-sm text-muted-foreground">Csak a publikált hírek jelennek meg a főoldalon</p>
-                  </div>
-                  <Switch
-                    checked={formData.published}
-                    onCheckedChange={(checked) => setFormData({ ...formData, published: checked })}
+          <Card className="p-6 space-y-6">
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Kategória</Label>
+                  <Input
+                    value={form.category}
+                    onChange={(e) => handleFieldChange("category", e.target.value)}
+                    placeholder="Pl. Közösség"
                   />
                 </div>
 
-                <div className="space-y-3">
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="font-medium">Borítókép</p>
+                      <p className="text-sm text-muted-foreground">Válassz vagy tölts fel képet</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="secondary" className="gap-2" onClick={handleBrowserOpen} type="button">
+                        <Search className="h-4 w-4" /> Kiválasztás az ImageKitből
+                      </Button>
+                      <Button variant="outline" className="gap-2" onClick={handleOpenUpload} type="button" disabled={coverUploading}>
+                        {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Kép feltöltése
+                      </Button>
+                      <Input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleCoverUpload(e.target.files)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-[2fr,1fr]">
+                    <div className="relative rounded-lg border bg-muted/40 p-4 min-h-[200px] flex items-center justify-center overflow-hidden">
+                      {form.imageUrl ? (
+                        <img
+                          src={form.imageUrl}
+                          alt={form.imageAlt || "Borítókép"}
+                          className="h-full max-h-72 w-full rounded-lg object-cover"
+                          onLoad={() => setHeroPreviewLoading(false)}
+                          onError={() => setHeroPreviewLoading(false)}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                          <ImageIcon className="h-10 w-10" />
+                          <p className="text-sm">Nincs kiválasztott borítókép</p>
+                        </div>
+                      )}
+                      {heroPreviewLoading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-lg">
+                          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Borítókép alt szöveg</Label>
+                      <Input
+                        value={form.imageAlt || ""}
+                        onChange={(e) => handleFieldChange("imageAlt", e.target.value)}
+                        placeholder="Kép leírása"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div>
+                    <p className="font-medium">Publikus megjelenés</p>
+                    <p className="text-sm text-muted-foreground">Csak a publikált hírek jelennek meg a főoldalon</p>
+                  </div>
+                  <Switch checked={form.published} onCheckedChange={(checked) => handleFieldChange("published", checked)} />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Languages className="h-4 w-4" />
                     <span>Nyelvi változatok</span>
                   </div>
                   <Tabs value={activeLanguage} onValueChange={(val) => setActiveLanguage(val as LanguageCode)}>
-                    <TabsList className="grid w-full grid-cols-2">
+                    <TabsList className="grid grid-cols-2 w-full">
                       <TabsTrigger value="hu">Magyar</TabsTrigger>
                       <TabsTrigger value="en">English</TabsTrigger>
                     </TabsList>
-                    {renderTranslationTab("hu")}
-                    {renderTranslationTab("en")}
+                    {["hu", "en"].map((lang) => {
+                      const translation = form.translations[lang as LanguageCode];
+                      const label = lang === "hu" ? "magyar" : "angol";
+                      return (
+                        <TabsContent key={lang} value={lang} className="space-y-3 pt-4">
+                          <div className="space-y-2">
+                            <Label>Cím ({label})</Label>
+                            <Input
+                              value={translation.title}
+                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "title", e.target.value)}
+                              placeholder="Add meg a címet"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Slug ({label})</Label>
+                            <Input
+                              value={translation.slug}
+                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "slug", e.target.value)}
+                              placeholder="pelda-cikk"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label>Kivonat ({label})</Label>
+                              <span className="text-xs text-muted-foreground">{translation.excerpt.length}/500</span>
+                            </div>
+                            <Textarea
+                              value={translation.excerpt}
+                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "excerpt", e.target.value)}
+                              rows={3}
+                              maxLength={500}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Tartalom ({label})</Label>
+                            <Textarea
+                              value={translation.content}
+                              onChange={(e) => handleTranslationChange(lang as LanguageCode, "content", e.target.value)}
+                              rows={10}
+                            />
+                          </div>
+                        </TabsContent>
+                      );
+                    })}
                   </Tabs>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                      <Eye className="h-4 w-4" />
-                      <span>Élő előnézet (HU)</span>
-                    </div>
-                    <h3 className="text-xl font-semibold">{formData.translations.hu.title || "Cím"}</h3>
-                    <p className="text-muted-foreground">{formData.translations.hu.excerpt || "Kivonat"}</p>
-                    {formData.imageUrl && (
-                      <img
-                        src={formData.imageUrl}
-                        alt={formData.imageAlt || formData.translations.hu.title}
-                        className="rounded-lg w-full h-48 object-cover"
-                      />
-                    )}
-                    <div
-                      className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(formData.translations.hu.content) }}
+                <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <Eye className="h-4 w-4" />
+                    <span>Előnézet ({activeLanguage === "hu" ? "HU" : "EN"})</span>
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-semibold" style={{ fontFamily: "'Sora', sans-serif" }}>
+                      {form.translations[activeLanguage].title || "Cím"}
+                    </h3>
+                    <p className="text-muted-foreground">{form.translations[activeLanguage].excerpt || "Kivonat"}</p>
+                  </div>
+                  {form.imageUrl && (
+                    <img
+                      src={form.imageUrl}
+                      alt={form.imageAlt || form.translations[activeLanguage].title}
+                      className="rounded-lg w-full h-48 object-cover"
                     />
-                  </Card>
-                  <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                      <Eye className="h-4 w-4" />
-                      <span>Live preview (EN)</span>
-                    </div>
-                    <h3 className="text-xl font-semibold">{formData.translations.en.title || "Title"}</h3>
-                    <p className="text-muted-foreground">{formData.translations.en.excerpt || "Excerpt"}</p>
-                    {formData.imageUrl && (
-                      <img
-                        src={formData.imageUrl}
-                        alt={formData.imageAlt || formData.translations.en.title}
-                        className="rounded-lg w-full h-48 object-cover"
-                      />
-                    )}
-                    <div
-                      className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(formData.translations.en.content) }}
-                    />
-                  </Card>
+                  )}
+                  <div
+                    className="prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(form.translations[activeLanguage].content) }}
+                  />
                 </div>
-
-                <Button type="submit" className="w-full" disabled={isSaving}>
-                  {isSaving ? "Mentés..." : editingArticle ? "Hír frissítése" : "Hír létrehozása"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <Card className="p-4 border-dashed border-border">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="relative w-full md:w-64">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Keresés cím vagy kivonat alapján"
-                  className="pl-8"
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setPage(1);
-                    setSearchTerm(e.target.value);
-                  }}
-                />
               </div>
-              <select
-                className="border rounded-md px-3 py-2 text-sm"
-                value={statusFilter}
-                onChange={(e) => {
-                  setPage(1);
-                  setStatusFilter(e.target.value as typeof statusFilter);
-                }}
-              >
-                <option value="all">Összes</option>
-                <option value="published">Publikált</option>
-                <option value="draft">Piszkozat</option>
-              </select>
             </div>
-            <div className="text-sm text-muted-foreground">
-              {total} hír • {totalPages} oldal
+
+            <div className="flex gap-3 justify-end">
+              {editingId && (
+                <Button variant="outline" onClick={resetForm} type="button">
+                  Új hír
+                </Button>
+              )}
+              <Button onClick={handleSubmit} disabled={saving} className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Mentés
+              </Button>
             </div>
-          </div>
-        </Card>
+          </Card>
 
-        {isListLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(PAGE_SIZE)].map((_, idx) => (
-              <Card key={idx} className="p-6 animate-pulse space-y-3">
-                <div className="h-4 bg-muted rounded w-1/2" />
-                <div className="h-6 bg-muted rounded" />
-                <div className="h-4 bg-muted rounded w-1/3" />
-              </Card>
-            ))}
-          </div>
-        ) : articles.length ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {articles.map((article) => {
-              const hu = article.translations.hu;
-              return (
-                <Card key={article.id} className="p-6 space-y-4">
-                  <div className="space-y-2">
-                    <p className="text-xs uppercase text-muted-foreground tracking-wider">{article.category}</p>
-                    <h3 className="text-xl font-semibold text-foreground">{hu.title}</h3>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{hu.excerpt}</p>
+          <Card className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Hír lista</h2>
+              <p className="text-sm text-muted-foreground">Fogd és vidd a kártyákat a kézi rendezéshez.</p>
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : articles.length === 0 ? (
+              <p className="text-muted-foreground">Még nincs hír. Adj hozzá egyet fent.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {articles.map((article, index) => (
+                  <div
+                    key={article.id}
+                    draggable
+                    onDragStart={() => handleDragStart(article.id)}
+                    onDragOver={(event) => handleDragOver(event, article.id)}
+                    onDrop={handleDrop}
+                    className={`border rounded-lg p-4 space-y-3 bg-card shadow-sm transition-shadow ${
+                      draggingId === article.id ? "ring-2 ring-primary" : "hover:shadow-lg"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                        <GripVertical className="h-4 w-4" />
+                        <span># {index + 1}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={article.published ? "default" : "outline"}>
+                          {article.published ? "Publikus" : "Rejtett"}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase text-muted-foreground tracking-wide">{article.category}</p>
+                      <h3 className="text-lg font-semibold" style={{ fontFamily: "'Sora', sans-serif" }}>
+                        {article.translations.hu.title}
+                      </h3>
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {article.translations.hu.excerpt || article.translations.hu.content}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      {article.published
+                        ? new Date(article.publishedAt || article.createdAt).toLocaleDateString("hu-HU")
+                        : "Nincs publikálva"}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" className="gap-2" onClick={() => handleEdit(article)}>
+                        <Pencil className="h-4 w-4" /> Szerkesztés
+                      </Button>
+                      <Button
+                        asChild
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2"
+                        title="Nyilvános oldal megnyitása"
+                      >
+                        <a href={`/news/${article.translations.hu.slug}`} target="_blank" rel="noreferrer">
+                          <Eye className="h-4 w-4" />
+                          Megnyitás
+                        </a>
+                      </Button>
+                      <Button variant="ghost" size="sm" className="gap-2 text-destructive" onClick={() => handleDelete(article.id)}>
+                        <Trash className="h-4 w-4" /> Törlés
+                      </Button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </AdminLayout>
 
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    {article.published
-                      ? new Date(article.publishedAt || article.createdAt).toLocaleDateString("hu-HU")
-                      : "Nincs publikálva"}
-                  </div>
+      <Dialog open={browserOpen} onOpenChange={setBrowserOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>ImageKit böngészése</DialogTitle>
+          </DialogHeader>
 
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant={article.published ? "default" : "secondary"}>
-                      {article.published ? "Publikálva" : "Piszkozat"}
-                    </Badge>
-                  </div>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenParent}
+                  disabled={browserLoading || !parentBrowserPath || parentBrowserPath === browserPath}
+                >
+                  Vissza
+                </Button>
+                <p className="text-sm text-muted-foreground break-all">
+                  {browserPath ? `/${browserPath}` : "Alap mappa"}
+                </p>
+              </div>
 
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(article)}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Szerkesztés
-                    </Button>
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      title="Nyilvános oldal megnyitása"
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Keresés az ImageKitben"
+                  value={browserSearch}
+                  onChange={(e) => setBrowserSearch(e.target.value)}
+                  className="w-48 sm:w-64"
+                />
+                <Button onClick={() => loadImageKitFiles(browserSearch)} disabled={browserLoading} className="gap-2">
+                  {browserLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Keresés
+                </Button>
+              </div>
+            </div>
+
+            {browserError && <p className="text-sm text-destructive">{browserError}</p>}
+
+            <ScrollArea className="h-[420px] rounded-md border p-3">
+              {browserLoading ? (
+                <div className="flex h-full items-center justify-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Fájlok betöltése...</span>
+                </div>
+              ) : browserItems.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  Nincs megjeleníthető fájl vagy mappa
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {browserItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => (item.isFolder ? handleOpenFolder(item) : handlePickImage(item))}
+                      className="flex flex-col gap-2 rounded-lg border bg-card p-3 text-left hover:border-primary/60 hover:shadow-sm"
                     >
-                      <a href={`/news/${hu.slug}`} target="_blank" rel="noreferrer">
-                        <Eye className="h-4 w-4" />
-                        Megnyitás
-                      </a>
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(article.id)}>
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Törlés
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })}
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-md bg-muted p-2">
+                          {item.isFolder ? (
+                            <Folder className="h-5 w-5 text-primary" />
+                          ) : item.thumbnailUrl ? (
+                            <img
+                              src={item.thumbnailUrl}
+                              alt={item.name}
+                              className="h-10 w-10 rounded object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate" title={item.name}>
+                            {item.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground break-all" title={item.path}>
+                            {item.path}
+                          </p>
+                        </div>
+                      </div>
+                      {!item.isFolder && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {item.width && item.height ? `${item.width}×${item.height}` : "Kép"}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
           </div>
-        ) : (
-          <p className="text-center text-muted-foreground">Nincs megjeleníthető hír.</p>
-        )}
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-4">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              Előző
-            </Button>
-            <div className="text-sm text-muted-foreground">
-              {page} / {totalPages}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Következő
-            </Button>
-          </div>
-        )}
-      </div>
-    </AdminLayout>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
