@@ -28,6 +28,8 @@ services:
         value: ""
       - key: IMAGEKIT_GALLERY_FOLDER
         value: ""
+      - key: OPENAI_API_KEY
+        value: ""
     autoDeploy: true
 
 databases:

@@ -38,6 +38,7 @@ Create a `.env` file based on `.env.example`.
 | `IMAGEKIT_PRIVATE_KEY` | Private key used to sign ImageKit upload requests |
 | `IMAGEKIT_URL_ENDPOINT` | Base URL endpoint for hosted ImageKit images |
 | `IMAGEKIT_GALLERY_FOLDER` | Optional ImageKit folder path for gallery uploads (e.g., `hyca/gallery`) |
+| `OPENAI_API_KEY` | Secret key for GPT-5 powered translations in the admin project editor |
 | `LOCAL_DEV_ORIGIN` | Override the allowed local origin for cookies; defaults to `http://localhost:5173` |
 
 For `IMAGEKIT_GALLERY_FOLDER`, use a subfolder path (for example `hyca/gallery`) to keep gallery images organized under your ImageKit account. ImageKit will create the folder automatically on first upload if it does not already exist.

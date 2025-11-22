@@ -25,6 +25,7 @@ const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY || '';
 const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
 const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
 const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 
@@ -851,6 +852,20 @@ app.get('/api/gallery', authenticateRequest, async (_req, res) => {
   }
 });
 
+app.post('/api/projects/translate', authenticateRequest, async (req, res) => {
+  const { shortDescriptionHu, descriptionHu } = req.body || {};
+
+  try {
+    const result = await translateProjectToEnglish({ shortDescriptionHu, descriptionHu });
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Project translation error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült lefordítani a projektet';
+    return res.status(status).json({ message });
+  }
+});
+
 app.get('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
@@ -1046,6 +1061,74 @@ function normalizeProjectPayload(payload) {
     slugEn,
     translations,
   };
+}
+
+async function translateProjectToEnglish({ shortDescriptionHu, descriptionHu }) {
+  if (!OPENAI_API_KEY) {
+    const error = new Error('Az OpenAI API kulcs nincs konfigurálva');
+    error.status = 500;
+    throw error;
+  }
+
+  if (!shortDescriptionHu && !descriptionHu) {
+    const error = new Error('Nincs fordítandó szöveg');
+    error.status = 400;
+    throw error;
+  }
+
+  const parts = [];
+  if (shortDescriptionHu) {
+    parts.push(`Short description (Hungarian): ${shortDescriptionHu}`);
+  }
+  if (descriptionHu) {
+    parts.push(`Detailed description (Hungarian): ${descriptionHu}`);
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-5-mini-2025-08-07',
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You translate Hungarian project descriptions into natural, clear English and return only a JSON object.',
+        },
+        {
+          role: 'user',
+          content: `${parts.join('\n')}\nReturn JSON with keys "shortDescription" and "description" using English values. Use empty strings for missing inputs.`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(`Fordítási hiba: ${errorText || response.statusText}`);
+    error.status = response.status || 500;
+    throw error;
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content || '{}';
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    parsed = {};
+  }
+
+  const shortDescription = typeof parsed.shortDescription === 'string' ? parsed.shortDescription.trim() : '';
+  const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
+
+  return { shortDescription, description };
 }
 
 async function validateProjectSlugs(client, payload, excludeId) {

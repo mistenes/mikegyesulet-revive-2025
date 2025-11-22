@@ -33,6 +33,7 @@ import {
   updateProject,
 } from "@/services/projectsService";
 import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
+import { translateProjectToEnglish } from "@/services/translationService";
 import type { Project, ProjectInput } from "@/types/project";
 import type { Language } from "@/contexts/LanguageContext";
 
@@ -62,6 +63,10 @@ export default function AdminProjects() {
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [coverUploading, setCoverUploading] = useState(false);
+  const [translating, setTranslating] = useState<{ shortDescription: boolean; description: boolean }>({
+    shortDescription: false,
+    description: false,
+  });
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserItems, setBrowserItems] = useState<ImageKitItem[]>([]);
   const [browserLoading, setBrowserLoading] = useState(false);
@@ -148,6 +153,48 @@ export default function AdminProjects() {
       ...prev,
       [field]: value as never,
     }));
+  };
+
+  const handleTranslateToEnglish = async (field: "shortDescription" | "description") => {
+    const sourceShort = form.translations.hu.shortDescription.trim();
+    const sourceDescription = form.translations.hu.description.trim();
+
+    if (field === "shortDescription" && !sourceShort) {
+      toast.error("Előbb add meg a magyar rövid leírást");
+      return;
+    }
+
+    if (field === "description" && !sourceDescription) {
+      toast.error("Előbb add meg a magyar leírást");
+      return;
+    }
+
+    setTranslating((prev) => ({ ...prev, [field]: true }));
+    try {
+      const result = await translateProjectToEnglish({
+        shortDescriptionHu: field === "shortDescription" ? sourceShort : undefined,
+        descriptionHu: field === "description" ? sourceDescription : undefined,
+      });
+
+      setForm((prev) => ({
+        ...prev,
+        translations: {
+          ...prev.translations,
+          en: {
+            ...prev.translations.en,
+            shortDescription: result.shortDescription ?? prev.translations.en.shortDescription,
+            description: result.description ?? prev.translations.en.description,
+          },
+        },
+      }));
+      toast.success("Fordítás kész");
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült lefordítani";
+      toast.error(message);
+    } finally {
+      setTranslating((prev) => ({ ...prev, [field]: false }));
+    }
   };
 
   const handleEdit = (project: Project) => {
@@ -516,7 +563,25 @@ export default function AdminProjects() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Rövid leírás ({language.toUpperCase()})</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Rövid leírás ({language.toUpperCase()})</Label>
+                      {language === "en" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="gap-2"
+                          onClick={() => handleTranslateToEnglish("shortDescription")}
+                          disabled={translating.shortDescription}
+                        >
+                          {translating.shortDescription ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <span>Fordítás</span>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                     <Textarea
                       rows={3}
                       value={form.translations[language].shortDescription}
@@ -525,7 +590,25 @@ export default function AdminProjects() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Részletes leírás ({language.toUpperCase()})</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Részletes leírás ({language.toUpperCase()})</Label>
+                      {language === "en" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="gap-2"
+                          onClick={() => handleTranslateToEnglish("description")}
+                          disabled={translating.description}
+                        >
+                          {translating.description ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <span>Fordítás</span>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                     <Textarea
                       rows={6}
                       value={form.translations[language].description}
