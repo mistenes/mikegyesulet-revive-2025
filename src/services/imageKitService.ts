@@ -59,8 +59,9 @@ export async function getImageKitAuth(folder?: string): Promise<ImageKitAuth> {
   return handleResponse<ImageKitAuth>(response);
 }
 
-function buildUploadUrl(urlEndpoint: string) {
-  return `${urlEndpoint.replace(/\/$/, "")}/api/v1/files/upload`;
+function buildUploadUrl() {
+  // ImageKit direct uploads must go through the dedicated upload endpoint rather than the CDN URL endpoint
+  return "https://upload.imagekit.io/api/v1/files/upload";
 }
 
 export async function uploadToImageKit(file: File, folder?: string): Promise<string> {
@@ -77,7 +78,7 @@ export async function uploadToImageKit(file: File, folder?: string): Promise<str
     formData.append("folder", auth.folder);
   }
 
-  const response = await fetch(buildUploadUrl(auth.urlEndpoint), {
+  const response = await fetch(buildUploadUrl(), {
     method: "POST",
     body: formData,
   });
