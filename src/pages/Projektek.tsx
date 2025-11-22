@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { getPublicProjects } from "@/services/projectsService";
 import type { Project } from "@/types/project";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Link } from "react-router-dom";
 
 const Projektek = () => {
   const sectionRef = useRef<HTMLElement>(null);
@@ -17,8 +18,9 @@ const Projektek = () => {
 
   useEffect(() => {
     async function loadProjects() {
+      setLoading(true);
       try {
-        const items = await getPublicProjects();
+        const items = await getPublicProjects(language);
         setProjects(items);
       } catch (error) {
         console.error(error);
@@ -28,7 +30,7 @@ const Projektek = () => {
     }
 
     loadProjects();
-  }, []);
+  }, [language]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -63,6 +65,10 @@ const Projektek = () => {
               {projects.map((project, index) => {
                 const translation = project.translations[language] || project.translations.hu;
 
+                const slugForLanguage = language === "en" ? project.slugEn : project.slugHu;
+                const fallbackSlug = project.slugHu || project.slugEn;
+                const projectSlug = slugForLanguage || fallbackSlug;
+
                 return (
                   <Card
                     key={project.id}
@@ -88,7 +94,7 @@ const Projektek = () => {
                       </h3>
 
                       <p className="text-muted-foreground mb-6 line-clamp-3">
-                        {translation.description}
+                        {translation.shortDescription || translation.description}
                       </p>
 
                       {/* Project Meta Info */}
@@ -104,17 +110,28 @@ const Projektek = () => {
                       </div>
 
                       {/* Read More Link */}
-                      {project.linkUrl && (
-                        <a
-                          href={project.linkUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-primary font-semibold hover:gap-3 transition-all duration-300"
-                        >
-                          Bővebben
-                          <ArrowRight className="h-4 w-4" />
-                        </a>
-                      )}
+                      <div className="flex flex-wrap gap-3">
+                        {projectSlug && (
+                          <Link
+                            to={`/projektek/${projectSlug}`}
+                            className="inline-flex items-center gap-2 text-primary font-semibold hover:gap-3 transition-all duration-300"
+                          >
+                            Részletek
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        )}
+                        {project.linkUrl && (
+                          <a
+                            href={project.linkUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary font-semibold transition-all duration-300"
+                          >
+                            Külső link
+                            <ArrowRight className="h-4 w-4" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </Card>
                 );

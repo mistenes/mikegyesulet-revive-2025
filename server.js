@@ -21,6 +21,11 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN || process.env.VITE_MAPBOX_TOKEN || '';
+const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY || '';
+const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
+const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
+const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 
@@ -247,6 +252,9 @@ async function ensureProjectsTables() {
         location TEXT,
         date_range TEXT,
         link_url TEXT,
+        slug_hu TEXT,
+        slug_en TEXT,
+        language_availability TEXT NOT NULL DEFAULT 'both',
         published BOOLEAN NOT NULL DEFAULT TRUE,
         translations JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -254,11 +262,97 @@ async function ensureProjectsTables() {
       );
     `);
 
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug_hu TEXT;");
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug_en TEXT;");
+    await client.query(
+      "ALTER TABLE projects ADD COLUMN IF NOT EXISTS language_availability TEXT NOT NULL DEFAULT 'both';",
+    );
+
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS projects_slug_hu_idx ON projects(slug_hu) WHERE slug_hu IS NOT NULL;',
+    );
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS projects_slug_en_idx ON projects(slug_en) WHERE slug_en IS NOT NULL;',
+    );
+
     await client.query(
       'CREATE INDEX IF NOT EXISTS projects_sort_order_idx ON projects(sort_order, created_at DESC);',
     );
     await client.query(
       'CREATE INDEX IF NOT EXISTS projects_published_idx ON projects(published, sort_order);',
+    );
+
+    const existingProjects = await client.query(
+      'SELECT id, translations, slug_hu, slug_en, language_availability FROM projects',
+    );
+
+    const usedHu = new Set(existingProjects.rows.map((row) => row.slug_hu).filter(Boolean));
+    const usedEn = new Set(existingProjects.rows.map((row) => row.slug_en).filter(Boolean));
+
+    for (const row of existingProjects.rows) {
+      const translations = row.translations || { hu: {}, en: {} };
+      const normalizedTranslations = normalizeProjectTranslations(translations);
+      let slugHu = row.slug_hu || slugifyText(normalizedTranslations.hu?.title || '');
+      let slugEn = row.slug_en || slugifyText(normalizedTranslations.en?.title || '');
+
+      if (!slugHu) {
+        slugHu = slugifyText(`projekt-${row.id}`);
+      }
+
+      if (!slugEn) {
+        slugEn = slugifyText(`project-${row.id}`);
+      }
+
+      slugHu = ensureUniqueSlug(slugHu, usedHu);
+      slugEn = ensureUniqueSlug(slugEn, usedEn);
+
+      const languageAvailability = row.language_availability || 'both';
+      const translationsChanged = JSON.stringify(normalizedTranslations) !== JSON.stringify(translations);
+
+      if (
+        slugHu !== row.slug_hu ||
+        slugEn !== row.slug_en ||
+        languageAvailability !== row.language_availability ||
+        translationsChanged
+      ) {
+        await client.query(
+          'UPDATE projects SET slug_hu = $1, slug_en = $2, language_availability = $3, translations = $4 WHERE id = $5',
+          [slugHu, slugEn, languageAvailability, normalizedTranslations, row.id],
+        );
+      }
+    }
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureGalleryTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS gallery_albums (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        subtitle TEXT DEFAULT '',
+        event_date DATE,
+        cover_image_url TEXT NOT NULL,
+        cover_image_alt TEXT DEFAULT '',
+        images JSONB NOT NULL DEFAULT '[]',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        published BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS gallery_sort_idx ON gallery_albums(sort_order, created_at DESC);',
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS gallery_published_idx ON gallery_albums(published, sort_order);',
     );
   } finally {
     client.release();
@@ -304,17 +398,81 @@ function mapNewsRow(row) {
   };
 }
 
+function normalizeProjectTranslations(translations = { hu: {}, en: {} }) {
+  return {
+    hu: {
+      title: translations.hu?.title || '',
+      shortDescription:
+        translations.hu?.shortDescription || translations.hu?.description || translations.hu?.title || '',
+      description: translations.hu?.description || '',
+    },
+    en: {
+      title: translations.en?.title || '',
+      shortDescription:
+        translations.en?.shortDescription || translations.en?.description || translations.en?.title || '',
+      description: translations.en?.description || '',
+    },
+  };
+}
+
 function mapProjectRow(row) {
+  const translations = normalizeProjectTranslations(row.translations || { hu: {}, en: {} });
   return {
     id: row.id,
     sortOrder: row.sort_order ?? 0,
+    slugHu: row.slug_hu || '',
+    slugEn: row.slug_en || '',
+    languageAvailability: row.language_availability || 'both',
     heroImageUrl: row.hero_image_url || '',
     heroImageAlt: row.hero_image_alt || '',
     location: row.location || '',
     dateRange: row.date_range || '',
     linkUrl: row.link_url || '',
     published: row.published,
-    translations: row.translations || { hu: {}, en: {} },
+    translations,
+    createdAt: row.created_at ? row.created_at.toISOString() : '',
+    updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
+  };
+}
+
+function slugifyText(text) {
+  return (text || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+function ensureUniqueSlug(base, usedSet) {
+  const safeBase = base || 'projekt';
+  let candidate = safeBase;
+  let suffix = 1;
+
+  while (usedSet.has(candidate)) {
+    candidate = `${safeBase}-${suffix}`;
+    suffix += 1;
+  }
+
+  usedSet.add(candidate);
+  return candidate;
+}
+
+function mapGalleryRow(row) {
+  const eventDate = row.event_date instanceof Date ? row.event_date.toISOString().split('T')[0] : null;
+
+  return {
+    id: row.id,
+    title: row.title || '',
+    subtitle: row.subtitle || '',
+    eventDate,
+    coverImageUrl: row.cover_image_url || '',
+    coverImageAlt: row.cover_image_alt || '',
+    images: Array.isArray(row.images) ? row.images : [],
+    sortOrder: row.sort_order ?? 0,
+    published: row.published,
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
   };
@@ -408,6 +566,210 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+function ensureFolderPath(path) {
+  const normalized = (path || '').toString().trim().replace(/\\+/g, '/').replace(/\/$/, '');
+  if (!normalized) {
+    return '/';
+  }
+
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
+function normalizeFolderPath(baseFolder, requestedFolder) {
+  const base = ensureFolderPath(baseFolder || '/');
+  if (!requestedFolder) {
+    return base;
+  }
+
+  const requested = ensureFolderPath(requestedFolder);
+  if (base === '/') {
+    return requested;
+  }
+
+  if (requested === base || requested.startsWith(`${base}/`)) {
+    return requested;
+  }
+
+  const appended = ensureFolderPath(`${base}/${requested.replace(/^\//, '')}`);
+  if (appended.startsWith(`${base}/`)) {
+    return appended;
+  }
+
+  return base;
+}
+
+async function ensureFolderHierarchy(authHeader, fullPath) {
+  const normalized = ensureFolderPath(fullPath);
+  if (normalized === '/') {
+    return '/';
+  }
+
+  const segments = normalized.replace(/^\//, '').split('/').filter(Boolean);
+  let parent = '/';
+
+  for (const segment of segments) {
+    const response = await fetch('https://api.imagekit.io/v1/folder', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        folderName: segment,
+        parentFolderPath: parent,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      if (response.status === 400 && /already exists/i.test(text)) {
+        parent = ensureFolderPath(`${parent}/${segment}`);
+        continue;
+      }
+
+      console.error('ImageKit ensure folder hiba', response.status, text);
+      throw new Error('Nem sikerült előkészíteni az ImageKit mappát');
+    }
+
+    parent = ensureFolderPath(`${parent}/${segment}`);
+  }
+
+  return parent;
+}
+
+app.get('/api/gallery/imagekit-auth', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PUBLIC_KEY || !IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const baseFolder = IMAGEKIT_GALLERY_FOLDER || '';
+  const requestedFolder = (req.query.folder || '').toString();
+  const folder = normalizeFolderPath(baseFolder, requestedFolder);
+
+  const token = crypto.randomBytes(16).toString('hex');
+  const expire = Math.floor(Date.now() / 1000) + 10 * 60; // 10 minutes
+  const signature = crypto
+    .createHmac('sha1', IMAGEKIT_PRIVATE_KEY)
+    .update(token + expire)
+    .digest('hex');
+
+  return res.status(200).json({
+    token,
+    expire,
+    signature,
+    publicKey: IMAGEKIT_PUBLIC_KEY,
+    urlEndpoint: IMAGEKIT_URL_ENDPOINT.replace(/\/$/, ''),
+    folder,
+  });
+});
+
+app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
+  const search = (req.query.search || '').toString().trim();
+  const requestedPath = (req.query.path || '').toString().trim();
+  const baseFolder = IMAGEKIT_GALLERY_FOLDER || '/';
+  const path = normalizeFolderPath(baseFolder, requestedPath) || baseFolder;
+
+  const params = new URLSearchParams({
+    path,
+    sort: 'ASC_NAME',
+    limit: limit.toString(),
+    includeFolder: 'true',
+    includeFiles: 'true',
+  });
+
+  if (search) {
+    params.set('searchQuery', `name:"${search}"`);
+  }
+
+  const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
+
+  try {
+    const response = await fetch(`https://api.imagekit.io/v1/files?${params.toString()}`, {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const message = `ImageKit list hiba: ${response.status}`;
+      console.error(message, await response.text());
+      return res.status(502).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });
+    }
+
+    const payload = (await response.json()) || [];
+    const files = Array.isArray(payload)
+      ? payload.map((item) => ({
+          id: item.fileId || item.folderId || `${item.type}:${item.name}`,
+          name: item.name,
+          url: item.url,
+          thumbnailUrl: item.thumbnail,
+          width: item.width,
+          height: item.height,
+          createdAt: item.createdAt,
+          isFolder: item.type === 'folder',
+          path: item.filePath || item.folderPath || `${path.replace(/\/$/, '')}/${item.name}`,
+        }))
+      : [];
+
+    return res.status(200).json({ files, folder: path, baseFolder });
+  } catch (error) {
+    console.error('ImageKit list error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni az ImageKit fájlokat' });
+  }
+});
+
+app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const name = (req.body?.name || '').toString().trim();
+  const requestedParent = (req.body?.parentPath || '').toString().trim();
+  const baseFolder = IMAGEKIT_GALLERY_FOLDER || '/';
+  const parentFolderPath = normalizeFolderPath(baseFolder, requestedParent) || baseFolder;
+
+  if (!name || /[\\/]/.test(name)) {
+    return res.status(400).json({ message: 'Érvénytelen mappanév' });
+  }
+
+  const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
+
+  try {
+    await ensureFolderHierarchy(authHeader, parentFolderPath);
+
+    const response = await fetch('https://api.imagekit.io/v1/folder', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        folderName: name,
+        parentFolderPath,
+      }),
+    });
+
+    if (!response.ok) {
+      const message = `ImageKit folder hiba: ${response.status}`;
+      console.error(message, await response.text());
+      return res.status(502).json({ message: 'Nem sikerült létrehozni a mappát az ImageKitben' });
+    }
+
+    return res.status(201).json({ success: true });
+  } catch (error) {
+    console.error('ImageKit folder error', error);
+    return res.status(500).json({ message: 'Nem sikerült létrehozni a mappát az ImageKitben' });
+  }
+});
+
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
   return res.status(200).json({ user: { email: req.user.email } });
 });
@@ -480,6 +842,35 @@ app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) =
   }
 });
 
+app.get('/api/gallery', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      'SELECT * FROM gallery_albums ORDER BY sort_order ASC, event_date DESC NULLS LAST, created_at DESC',
+    );
+    return res.json({ items: result.rows.map(mapGalleryRow) });
+  } catch (error) {
+    console.error('Get gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a galériákat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/projects/translate', authenticateRequest, async (req, res) => {
+  const { shortDescriptionHu, descriptionHu } = req.body || {};
+
+  try {
+    const result = await translateProjectToEnglish({ shortDescriptionHu, descriptionHu });
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Project translation error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült lefordítani a projektet';
+    return res.status(status).json({ message });
+  }
+});
+
 app.get('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
@@ -499,6 +890,8 @@ app.get('/api/projects', authenticateRequest, async (req, res) => {
     filters.push(
       `(LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'hu' ->> 'shortDescription') LIKE LOWER($${values.length})
+        OR LOWER(translations -> 'en' ->> 'shortDescription') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'description') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'description') LIKE LOWER($${values.length})
         OR LOWER(location) LIKE LOWER($${values.length}))`,
@@ -526,13 +919,16 @@ app.get('/api/projects', authenticateRequest, async (req, res) => {
   }
 });
 
-app.get('/api/projects/public', async (_req, res) => {
+app.get('/api/projects/public', async (req, res) => {
   const client = await pool.connect();
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const availabilityCondition =
+    lang === 'en' ? "language_availability IN ('en', 'both')" : "language_availability IN ('hu', 'both')";
   try {
     const result = await client.query(
       `SELECT *
        FROM projects
-       WHERE published = TRUE
+       WHERE published = TRUE AND ${availabilityCondition}
        ORDER BY sort_order ASC, created_at DESC`,
     );
 
@@ -545,15 +941,257 @@ app.get('/api/projects/public', async (_req, res) => {
   }
 });
 
+app.get('/api/projects/public/slug/:slug', async (req, res) => {
+  const client = await pool.connect();
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const slug = req.params.slug;
+  const availabilityCondition =
+    lang === 'en' ? "language_availability IN ('en', 'both')" : "language_availability IN ('hu', 'both')";
+
+  try {
+    const result = await client.query(
+      `SELECT *
+       FROM projects
+       WHERE published = TRUE
+         AND ${availabilityCondition}
+         AND (slug_hu = $1 OR slug_en = $1)
+       LIMIT 1`,
+      [slug],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'A projekt nem található' });
+    }
+
+    return res.status(200).json(mapProjectRow(result.rows[0]));
+  } catch (error) {
+    console.error('Public project error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a projektet' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/gallery/public', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT * FROM gallery_albums
+       WHERE published = true
+       ORDER BY sort_order ASC, event_date DESC NULLS LAST, created_at DESC`,
+    );
+    return res.json({ items: result.rows.map(mapGalleryRow) });
+  } catch (error) {
+    console.error('Get public gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
 function validateProjectPayload(payload) {
-  if (!payload?.translations?.hu?.title || !payload?.translations?.en?.title) {
-    const error = new Error('A magyar és angol cím megadása kötelező');
+  const availability = payload?.languageAvailability || 'both';
+  const allowedLanguages = ['hu', 'en', 'both'];
+  if (!allowedLanguages.includes(availability)) {
+    const error = new Error('Érvénytelen nyelvi elérhetőség');
     error.status = 400;
     throw error;
   }
 
-  if (!payload?.translations?.hu?.description || !payload?.translations?.en?.description) {
-    const error = new Error('A magyar és angol leírás megadása kötelező');
+  if ((availability === 'hu' || availability === 'both') && !payload?.slugHu) {
+    const error = new Error('Add meg a magyar slugot');
+    error.status = 400;
+    throw error;
+  }
+
+  if ((availability === 'en' || availability === 'both') && !payload?.slugEn) {
+    const error = new Error('Add meg az angol slugot');
+    error.status = 400;
+    throw error;
+  }
+
+  const needsHu = availability === 'hu' || availability === 'both';
+  const needsEn = availability === 'en' || availability === 'both';
+
+  if (needsHu && !payload?.translations?.hu?.title) {
+    const error = new Error('A magyar cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsEn && !payload?.translations?.en?.title) {
+    const error = new Error('Az angol cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsHu && !payload?.translations?.hu?.shortDescription) {
+    const error = new Error('A magyar rövid leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsEn && !payload?.translations?.en?.shortDescription) {
+    const error = new Error('Az angol rövid leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsHu && !payload?.translations?.hu?.description) {
+    const error = new Error('A magyar leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (needsEn && !payload?.translations?.en?.description) {
+    const error = new Error('Az angol leírás megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+}
+
+function normalizeProjectPayload(payload) {
+  const availability = ['hu', 'en', 'both'].includes(payload?.languageAvailability)
+    ? payload.languageAvailability
+    : 'both';
+
+  const translations = normalizeProjectTranslations(payload?.translations || { hu: {}, en: {} });
+  const slugHu = payload?.slugHu || slugifyText(payload?.translations?.hu?.title || '');
+  const slugEn = payload?.slugEn || slugifyText(payload?.translations?.en?.title || '');
+
+  return {
+    ...payload,
+    languageAvailability: availability,
+    slugHu,
+    slugEn,
+    translations,
+  };
+}
+
+async function translateProjectToEnglish({ shortDescriptionHu, descriptionHu }) {
+  if (!OPENAI_API_KEY) {
+    const error = new Error('Az OpenAI API kulcs nincs konfigurálva');
+    error.status = 500;
+    throw error;
+  }
+
+  if (!shortDescriptionHu && !descriptionHu) {
+    const error = new Error('Nincs fordítandó szöveg');
+    error.status = 400;
+    throw error;
+  }
+
+  const parts = [];
+  if (shortDescriptionHu) {
+    parts.push(`Short description (Hungarian): ${shortDescriptionHu}`);
+  }
+  if (descriptionHu) {
+    parts.push(`Detailed description (Hungarian): ${descriptionHu}`);
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-5-mini-2025-08-07',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You translate Hungarian project descriptions into natural, clear English and return only a JSON object.',
+        },
+        {
+          role: 'user',
+          content: `${parts.join('\n')}\nReturn JSON with keys "shortDescription" and "description" using English values. Use empty strings for missing inputs.`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(`Fordítási hiba: ${errorText || response.statusText}`);
+    error.status = response.status || 500;
+    throw error;
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content || '{}';
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    parsed = {};
+  }
+
+  const shortDescription = typeof parsed.shortDescription === 'string' ? parsed.shortDescription.trim() : '';
+  const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
+
+  return { shortDescription, description };
+}
+
+async function validateProjectSlugs(client, payload, excludeId) {
+  const params = [];
+  const conditions = [];
+
+  if (payload.slugHu) {
+    params.push(payload.slugHu);
+    conditions.push(`slug_hu = $${params.length}`);
+  }
+
+  if (payload.slugEn) {
+    params.push(payload.slugEn);
+    conditions.push(`slug_en = $${params.length}`);
+  }
+
+  if (!conditions.length) {
+    return;
+  }
+
+  const slugWhere = conditions.length > 1 ? `(${conditions.join(' OR ')})` : conditions[0];
+  let query = `SELECT id, slug_hu, slug_en FROM projects WHERE ${slugWhere}`;
+
+  if (excludeId) {
+    params.push(excludeId);
+    query += ` AND id <> $${params.length}`;
+  }
+
+  const existing = await client.query(query, params);
+  if (existing.rows.length) {
+    const conflict = existing.rows[0];
+    const conflictSlug = conflict.slug_hu === payload.slugHu ? payload.slugHu : payload.slugEn;
+    const language = conflict.slug_hu === payload.slugHu ? 'magyar' : 'angol';
+    const message = `A(z) ${language} slug (${conflictSlug}) már létezik.`;
+    const error = new Error(message);
+    error.status = 409;
+    throw error;
+  }
+}
+
+function validateGalleryPayload(payload) {
+  if (!payload?.title) {
+    const error = new Error('A galéria cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!payload?.coverImageUrl) {
+    const error = new Error('Add meg a borítókép URL-jét');
+    error.status = 400;
+    throw error;
+  }
+
+  const images = Array.isArray(payload?.images)
+    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
+    : [];
+
+  if (!images.length) {
+    const error = new Error('Legalább egy kép megadása kötelező');
     error.status = 400;
     throw error;
   }
@@ -561,18 +1199,19 @@ function validateProjectPayload(payload) {
 
 app.post('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
-  const payload = req.body || {};
+  const payload = normalizeProjectPayload(req.body || {});
 
   try {
     validateProjectPayload(payload);
+    await validateProjectSlugs(client, payload);
 
     const orderResult = await client.query('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM projects');
     const nextOrder = Number(orderResult.rows[0]?.next_order || 1);
 
     const result = await client.query(
       `INSERT INTO projects
-       (sort_order, hero_image_url, hero_image_alt, location, date_range, link_url, published, translations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (sort_order, hero_image_url, hero_image_alt, location, date_range, link_url, slug_hu, slug_en, language_availability, published, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         payload.sortOrder ?? nextOrder,
@@ -581,6 +1220,9 @@ app.post('/api/projects', authenticateRequest, async (req, res) => {
         payload.location || null,
         payload.dateRange || null,
         payload.linkUrl || null,
+        payload.slugHu || null,
+        payload.slugEn || null,
+        payload.languageAvailability || 'both',
         Boolean(payload.published),
         payload.translations,
       ],
@@ -598,11 +1240,12 @@ app.post('/api/projects', authenticateRequest, async (req, res) => {
 
 app.put('/api/projects/:id', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
-  const payload = req.body || {};
+  const payload = normalizeProjectPayload(req.body || {});
   const projectId = req.params.id;
 
   try {
     validateProjectPayload(payload);
+    await validateProjectSlugs(client, payload, projectId);
 
     const existing = await client.query('SELECT * FROM projects WHERE id = $1 LIMIT 1', [projectId]);
     if (!existing.rows.length) {
@@ -617,10 +1260,13 @@ app.put('/api/projects/:id', authenticateRequest, async (req, res) => {
            location = $4,
            date_range = $5,
            link_url = $6,
-           published = $7,
-           translations = $8,
+           slug_hu = $7,
+           slug_en = $8,
+           language_availability = $9,
+           published = $10,
+           translations = $11,
            updated_at = NOW()
-       WHERE id = $9
+       WHERE id = $12
        RETURNING *`,
       [
         payload.sortOrder ?? existing.rows[0].sort_order,
@@ -629,6 +1275,9 @@ app.put('/api/projects/:id', authenticateRequest, async (req, res) => {
         payload.location || null,
         payload.dateRange || null,
         payload.linkUrl || null,
+        payload.slugHu || null,
+        payload.slugEn || null,
+        payload.languageAvailability || existing.rows[0].language_availability || 'both',
         Boolean(payload.published),
         payload.translations,
         projectId,
@@ -678,6 +1327,141 @@ app.delete('/api/projects/:id', authenticateRequest, async (req, res) => {
   } catch (error) {
     console.error('Delete project error', error);
     return res.status(500).json({ message: 'Nem sikerült törölni a projektet' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/gallery', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+  const images = Array.isArray(payload.images)
+    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
+    : [];
+
+  try {
+    validateGalleryPayload({ ...payload, images });
+
+    const orderResult = await client.query(
+      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM gallery_albums',
+    );
+    const nextOrder = Number(orderResult.rows[0]?.next_order || 1);
+
+    const result = await client.query(
+      `INSERT INTO gallery_albums
+       (title, subtitle, event_date, cover_image_url, cover_image_alt, images, sort_order, published)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        payload.title,
+        payload.subtitle || '',
+        payload.eventDate || null,
+        payload.coverImageUrl,
+        payload.coverImageAlt || '',
+        JSON.stringify(images),
+        payload.sortOrder ?? nextOrder,
+        Boolean(payload.published),
+      ],
+    );
+
+    return res.status(201).json(mapGalleryRow(result.rows[0]));
+  } catch (error) {
+    console.error('Create gallery error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült létrehozni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+  const albumId = req.params.id;
+  const images = Array.isArray(payload.images)
+    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
+    : [];
+
+  try {
+    validateGalleryPayload({ ...payload, images });
+
+    const existing = await client.query('SELECT * FROM gallery_albums WHERE id = $1 LIMIT 1', [albumId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A galéria nem található' });
+    }
+
+    const result = await client.query(
+      `UPDATE gallery_albums
+       SET title = $1,
+           subtitle = $2,
+           event_date = $3,
+           cover_image_url = $4,
+           cover_image_alt = $5,
+           images = $6,
+           sort_order = $7,
+           published = $8,
+           updated_at = NOW()
+       WHERE id = $9
+       RETURNING *`,
+      [
+        payload.title,
+        payload.subtitle || '',
+        payload.eventDate || null,
+        payload.coverImageUrl,
+        payload.coverImageAlt || '',
+        JSON.stringify(images),
+        payload.sortOrder ?? existing.rows[0].sort_order,
+        Boolean(payload.published),
+        albumId,
+      ],
+    );
+
+    return res.status(200).json(mapGalleryRow(result.rows[0]));
+  } catch (error) {
+    console.error('Update gallery error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/gallery/reorder', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const order = Array.isArray(req.body?.order) ? req.body.order : [];
+
+  if (!order.length) {
+    return res.status(400).json({ message: 'Érvénytelen rendezési sorrend' });
+  }
+
+  try {
+    await client.query('BEGIN');
+    for (let index = 0; index < order.length; index += 1) {
+      const id = order[index];
+      await client.query(
+        'UPDATE gallery_albums SET sort_order = $1, updated_at = NOW() WHERE id = $2',
+        [index + 1, id],
+      );
+    }
+    await client.query('COMMIT');
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Reorder gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a sorrendet' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/gallery/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('DELETE FROM gallery_albums WHERE id = $1', [req.params.id]);
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a galériát' });
   } finally {
     client.release();
   }
@@ -739,7 +1523,10 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
 app.get('/api/news/public', async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
-  const limit = Number(req.query.limit) > 0 ? Number(req.query.limit) : 6;
+  const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
+  const pageSizeParam = Number(req.query.pageSize);
+  const limitParam = Number(req.query.limit);
+  const pageSize = pageSizeParam > 0 ? pageSizeParam : limitParam > 0 ? limitParam : 6;
 
   const filters = ['published = TRUE'];
   const values = [];
@@ -756,18 +1543,27 @@ app.get('/api/news/public', async (req, res) => {
   }
 
   const whereClause = `WHERE ${filters.join(' AND ')}`;
+  const offset = (page - 1) * pageSize;
 
   try {
-    const result = await client.query(
+    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const total = Number(countResult.rows[0]?.count || 0);
+
+    const listResult = await client.query(
       `SELECT *
        FROM news_articles
        ${whereClause}
        ORDER BY published_at DESC NULLS LAST, created_at DESC
-       LIMIT $${values.length + 1}`,
-      [...values, limit],
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, pageSize, offset],
     );
 
-    return res.status(200).json({ items: result.rows.map(mapNewsRow) });
+    return res.status(200).json({
+      items: listResult.rows.map(mapNewsRow),
+      total,
+      page,
+      pageSize,
+    });
   } catch (error) {
     console.error('Public news error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni a híreket' });
@@ -927,7 +1723,13 @@ app.get('*', (req, res) => {
   return res.sendFile(path.join(DIST_PATH, 'index.html'));
 });
 
-Promise.all([ensureAdminUser(), ensureNewsTables(), ensureProjectsTables(), ensurePageContentTable()])
+Promise.all([
+  ensureAdminUser(),
+  ensureNewsTables(),
+  ensureProjectsTables(),
+  ensureGalleryTables(),
+  ensurePageContentTable(),
+])
   .then(() => {
     app.listen(PORT, () => {
       console.log(`API server listening on port ${PORT}`);

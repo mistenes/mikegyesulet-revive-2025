@@ -7,7 +7,7 @@ export type Session = {
 let cachedSession: Session | null = null;
 
 async function handleResponse(response: Response) {
-  let payload: any = null;
+  let payload: unknown = null;
   try {
     payload = await response.json();
   } catch (error) {
@@ -19,7 +19,7 @@ async function handleResponse(response: Response) {
     throw new Error(message);
   }
 
-  return payload;
+  return payload as { user: Session };
 }
 
 export async function login(email: string, password: string): Promise<Session> {

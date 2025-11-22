@@ -14,14 +14,18 @@ import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminProjects from "./pages/admin/AdminProjects";
+import AdminGallery from "./pages/admin/AdminGallery";
+import AdminMedia from "./pages/admin/AdminMedia";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
 import Dokumentumok from "./pages/Dokumentumok";
 import Projektek from "./pages/Projektek";
+import ProjectPage from "./pages/ProjectPage";
 import Galeria from "./pages/Galeria";
 import NotFound from "./pages/NotFound";
 import NewsArticlePage from "./pages/NewsArticle";
+import NewsIndex from "./pages/NewsIndex";
 
 const queryClient = new QueryClient();
 
@@ -54,13 +58,17 @@ const App = () => {
               <Route path="/kapcsolat" element={<Kapcsolat />} />
               <Route path="/dokumentumok" element={<Dokumentumok />} />
               <Route path="/projektek" element={<Projektek />} />
+              <Route path="/projektek/:slug" element={<ProjectPage />} />
               <Route path="/galeria" element={<Galeria />} />
+              <Route path="/news" element={<NewsIndex />} />
               <Route path="/news/:slug" element={<NewsArticlePage />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/pages" element={<AdminPages />} />
               <Route path="/admin/news" element={<AdminNews />} />
               <Route path="/admin/projects" element={<AdminProjects />} />
+              <Route path="/admin/gallery" element={<AdminGallery />} />
+              <Route path="/admin/media" element={<AdminMedia />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
