@@ -1575,6 +1575,34 @@ app.post('/api/gallery', authenticateRequest, async (req, res) => {
   }
 });
 
+app.put('/api/gallery/reorder', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const order = Array.isArray(req.body?.order) ? req.body.order : [];
+
+  if (!order.length) {
+    return res.status(400).json({ message: 'Érvénytelen rendezési sorrend' });
+  }
+
+  try {
+    await client.query('BEGIN');
+    for (let index = 0; index < order.length; index += 1) {
+      const id = order[index];
+      await client.query(
+        'UPDATE gallery_albums SET sort_order = $1, updated_at = NOW() WHERE id = $2',
+        [index + 1, id],
+      );
+    }
+    await client.query('COMMIT');
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Reorder gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a sorrendet' });
+  } finally {
+    client.release();
+  }
+});
+
 app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const payload = req.body || {};
@@ -1622,34 +1650,6 @@ app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
     console.error('Update gallery error', error);
     const status = error.status || 500;
     return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a galériát' });
-  } finally {
-    client.release();
-  }
-});
-
-app.put('/api/gallery/reorder', authenticateRequest, async (req, res) => {
-  const client = await pool.connect();
-  const order = Array.isArray(req.body?.order) ? req.body.order : [];
-
-  if (!order.length) {
-    return res.status(400).json({ message: 'Érvénytelen rendezési sorrend' });
-  }
-
-  try {
-    await client.query('BEGIN');
-    for (let index = 0; index < order.length; index += 1) {
-      const id = order[index];
-      await client.query(
-        'UPDATE gallery_albums SET sort_order = $1, updated_at = NOW() WHERE id = $2',
-        [index + 1, id],
-      );
-    }
-    await client.query('COMMIT');
-    return res.status(200).json({ success: true });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Reorder gallery error', error);
-    return res.status(500).json({ message: 'Nem sikerült frissíteni a sorrendet' });
   } finally {
     client.release();
   }
