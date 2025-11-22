@@ -74,6 +74,7 @@ export default function AdminProjects() {
   const [browserSearch, setBrowserSearch] = useState("");
   const [browserPath, setBrowserPath] = useState<string>("");
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
+  const [heroPreviewLoading, setHeroPreviewLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const slugifyText = (value: string) =>
@@ -105,6 +106,14 @@ export default function AdminProjects() {
 
     loadProjects();
   }, [session]);
+
+  useEffect(() => {
+    if (form.heroImageUrl) {
+      setHeroPreviewLoading(true);
+    } else {
+      setHeroPreviewLoading(false);
+    }
+  }, [form.heroImageUrl]);
 
   const resetForm = () => {
     setForm(createEmptyProject(projects.length + 1));
@@ -664,17 +673,24 @@ export default function AdminProjects() {
                   )}
                 </div>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
-                  <div className="flex-1 rounded-lg border bg-muted/40 p-3 flex items-center justify-center min-h-[180px]">
+                  <div className="relative flex-1 rounded-lg border bg-muted/40 p-3 flex items-center justify-center min-h-[180px]">
                     {form.heroImageUrl ? (
                       <img
                         src={form.heroImageUrl}
                         alt={form.heroImageAlt || "Borítókép"}
                         className="h-full max-h-64 w-full rounded-lg object-cover"
+                        onLoad={() => setHeroPreviewLoading(false)}
+                        onError={() => setHeroPreviewLoading(false)}
                       />
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <ImageIcon className="h-10 w-10" />
                         <p className="text-sm">Nincs kiválasztott borítókép</p>
+                      </div>
+                    )}
+                    {heroPreviewLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-lg">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
                       </div>
                     )}
                   </div>
