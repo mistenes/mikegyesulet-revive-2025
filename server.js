@@ -382,6 +382,7 @@ async function ensureGalleryTables() {
         title TEXT NOT NULL,
         subtitle TEXT DEFAULT '',
         event_date DATE,
+        slug TEXT NOT NULL DEFAULT '',
         cover_image_url TEXT NOT NULL,
         cover_image_alt TEXT DEFAULT '',
         images JSONB NOT NULL DEFAULT '[]',
@@ -392,12 +393,32 @@ async function ensureGalleryTables() {
       );
     `);
 
+    await client.query('ALTER TABLE gallery_albums ADD COLUMN IF NOT EXISTS slug TEXT NOT NULL DEFAULT '''';');
+
     await client.query(
       'CREATE INDEX IF NOT EXISTS gallery_sort_idx ON gallery_albums(sort_order, created_at DESC);',
     );
     await client.query(
       'CREATE INDEX IF NOT EXISTS gallery_published_idx ON gallery_albums(published, sort_order);',
     );
+
+    const existingAlbums = await client.query('SELECT id, title, slug FROM gallery_albums ORDER BY created_at ASC');
+    const usedSlugs = new Set(existingAlbums.rows.map((row) => row.slug).filter(Boolean));
+
+    for (const row of existingAlbums.rows) {
+      let baseSlug = (row.slug || '').trim();
+      if (!baseSlug) {
+        baseSlug = slugify(row.title || 'galeria');
+      } else {
+        baseSlug = slugify(baseSlug);
+      }
+
+      const uniqueSlug = ensureUniqueSlug(baseSlug, usedSlugs);
+      await client.query('UPDATE gallery_albums SET slug = $1 WHERE id = $2', [uniqueSlug, row.id]);
+    }
+
+    await client.query('ALTER TABLE gallery_albums ALTER COLUMN slug SET NOT NULL;');
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS gallery_slug_idx ON gallery_albums(slug);');
   } finally {
     client.release();
   }
@@ -580,6 +601,29 @@ function ensureUniqueSlug(base, usedSet) {
   return candidate;
 }
 
+async function generateUniqueGallerySlug(client, title, excludeId) {
+  const base = slugify(title || 'galeria') || 'galeria';
+  let candidate = base;
+  let suffix = 1;
+
+  while (true) {
+    const params = excludeId ? [candidate, excludeId] : [candidate];
+    const existing = await client.query(
+      excludeId
+        ? 'SELECT 1 FROM gallery_albums WHERE slug = $1 AND id <> $2 LIMIT 1'
+        : 'SELECT 1 FROM gallery_albums WHERE slug = $1 LIMIT 1',
+      params,
+    );
+
+    if (!existing.rows.length) {
+      return candidate;
+    }
+
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+}
+
 function mapGalleryRow(row) {
   const eventDate = row.event_date instanceof Date ? row.event_date.toISOString().split('T')[0] : null;
 
@@ -587,6 +631,7 @@ function mapGalleryRow(row) {
     id: row.id,
     title: row.title || '',
     subtitle: row.subtitle || '',
+    slug: row.slug || '',
     eventDate,
     coverImageUrl: row.cover_image_url || '',
     coverImageAlt: row.cover_image_alt || '',
@@ -1124,6 +1169,31 @@ app.get('/api/gallery/public', async (_req, res) => {
   }
 });
 
+app.get('/api/gallery/public/:slug', async (req, res) => {
+  const client = await pool.connect();
+  const { slug } = req.params;
+
+  try {
+    const result = await client.query(
+      `SELECT * FROM gallery_albums
+       WHERE published = true AND slug = $1
+       LIMIT 1`,
+      [slug],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'A galéria nem található' });
+    }
+
+    return res.json(mapGalleryRow(result.rows[0]));
+  } catch (error) {
+    console.error('Get public gallery by slug error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
 function validateProjectPayload(payload) {
   const availability = payload?.languageAvailability || 'both';
   const allowedLanguages = ['hu', 'en', 'both'];
@@ -1543,6 +1613,8 @@ app.post('/api/gallery', authenticateRequest, async (req, res) => {
   try {
     validateGalleryPayload({ ...payload, images });
 
+    const slug = await generateUniqueGallerySlug(client, payload.title);
+
     const countResult = await client.query('SELECT COUNT(*) AS total FROM gallery_albums');
     const total = Number(countResult.rows[0]?.total || 0);
     const desiredOrderRaw = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 1;
@@ -1553,13 +1625,14 @@ app.post('/api/gallery', authenticateRequest, async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO gallery_albums
-       (title, subtitle, event_date, cover_image_url, cover_image_alt, images, sort_order, published)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (title, subtitle, event_date, slug, cover_image_url, cover_image_alt, images, sort_order, published)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         payload.title,
         payload.subtitle || '',
         payload.eventDate || null,
+        slug,
         payload.coverImageUrl,
         payload.coverImageAlt || '',
         JSON.stringify(images),
@@ -1644,23 +1717,27 @@ app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
       );
     }
 
+    const slug = await generateUniqueGallerySlug(client, payload.title, albumId);
+
     const result = await client.query(
       `UPDATE gallery_albums
        SET title = $1,
            subtitle = $2,
            event_date = $3,
-           cover_image_url = $4,
-           cover_image_alt = $5,
-           images = $6,
-           sort_order = $7,
-           published = $8,
+           slug = $4,
+           cover_image_url = $5,
+           cover_image_alt = $6,
+           images = $7,
+           sort_order = $8,
+           published = $9,
            updated_at = NOW()
-       WHERE id = $9
+       WHERE id = $10
        RETURNING *`,
       [
         payload.title,
         payload.subtitle || '',
         payload.eventDate || null,
+        slug,
         payload.coverImageUrl,
         payload.coverImageAlt || '',
         JSON.stringify(images),

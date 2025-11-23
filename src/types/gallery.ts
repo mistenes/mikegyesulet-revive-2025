@@ -2,6 +2,7 @@ export interface GalleryAlbum {
   id: string;
   title: string;
   subtitle: string;
+  slug: string;
   eventDate: string | null;
   coverImageUrl: string;
   coverImageAlt: string;

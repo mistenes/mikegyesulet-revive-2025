@@ -23,6 +23,7 @@ import Dokumentumok from "./pages/Dokumentumok";
 import Projektek from "./pages/Projektek";
 import ProjectPage from "./pages/ProjectPage";
 import Galeria from "./pages/Galeria";
+import GalleryAlbumPage from "./pages/GalleryAlbumPage";
 import NotFound from "./pages/NotFound";
 import NewsArticlePage from "./pages/NewsArticle";
 import NewsIndex from "./pages/NewsIndex";
@@ -60,6 +61,7 @@ const App = () => {
               <Route path="/projektek" element={<Projektek />} />
               <Route path="/projektek/:slug" element={<ProjectPage />} />
               <Route path="/galeria" element={<Galeria />} />
+              <Route path="/galeria/:slug" element={<GalleryAlbumPage />} />
               <Route path="/news" element={<NewsIndex />} />
               <Route path="/news/:slug" element={<NewsArticlePage />} />
               <Route path="/auth" element={<Auth />} />

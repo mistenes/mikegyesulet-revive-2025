@@ -32,6 +32,11 @@ export async function getPublicGallery(): Promise<GalleryAlbum[]> {
   return data.items;
 }
 
+export async function getPublicGalleryAlbum(slug: string): Promise<GalleryAlbum> {
+  const response = await fetch(new URL(`/api/gallery/public/${slug}`, defaultBase).toString());
+  return handleResponse<GalleryAlbum>(response);
+}
+
 export async function getAdminGallery(): Promise<GalleryAlbum[]> {
   const response = await fetch(new URL("/api/gallery", defaultBase).toString(), { credentials: "include" });
   const data = await handleResponse<{ items: GalleryAlbum[] }>(response);
