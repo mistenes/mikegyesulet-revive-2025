@@ -1,4 +1,5 @@
 import type { GalleryAlbum, GalleryAlbumInput } from "@/types/gallery";
+import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "gallery-updated";
@@ -32,6 +33,11 @@ export async function getPublicGallery(): Promise<GalleryAlbum[]> {
   return data.items;
 }
 
+export async function getPublicGalleryAlbum(slug: string): Promise<GalleryAlbum> {
+  const response = await fetch(new URL(`/api/gallery/public/${slug}`, defaultBase).toString());
+  return handleResponse<GalleryAlbum>(response);
+}
+
 export async function getAdminGallery(): Promise<GalleryAlbum[]> {
   const response = await fetch(new URL("/api/gallery", defaultBase).toString(), { credentials: "include" });
   const data = await handleResponse<{ items: GalleryAlbum[] }>(response);
@@ -42,7 +48,7 @@ export async function createAlbum(payload: GalleryAlbumInput): Promise<GalleryAl
   const response = await fetch(new URL("/api/gallery", defaultBase).toString(), {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
 
@@ -55,7 +61,7 @@ export async function updateAlbum(id: string, payload: GalleryAlbumInput): Promi
   const response = await fetch(new URL(`/api/gallery/${id}`, defaultBase).toString(), {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
 
@@ -68,6 +74,7 @@ export async function deleteAlbum(id: string): Promise<void> {
   const response = await fetch(new URL(`/api/gallery/${id}`, defaultBase).toString(), {
     method: "DELETE",
     credentials: "include",
+    headers: withCsrfHeader(),
   });
 
   if (!response.ok && response.status !== 204) {
@@ -81,7 +88,7 @@ export async function reorderAlbums(order: string[]): Promise<void> {
   const response = await fetch(new URL("/api/gallery/reorder", defaultBase).toString(), {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify({ order }),
   });
 

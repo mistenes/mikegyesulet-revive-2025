@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Card } from "@/components/ui/card";
-import { LightGallery } from "@/components/LightGallery";
 import { getPublicGallery } from "@/services/galleryService";
 import type { GalleryAlbum } from "@/types/gallery";
 
 
 export default function Galeria() {
-  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [albums, setAlbums] = useState<GalleryAlbum[]>([]);
-  const [currentAlbum, setCurrentAlbum] = useState<GalleryAlbum | null>(null);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,12 +34,6 @@ export default function Galeria() {
       active = false;
     };
   }, []);
-
-  const openLightbox = (album: GalleryAlbum) => {
-    setCurrentAlbum(album);
-    setCurrentImageIndex(0);
-    setLightboxOpen(true);
-  };
 
   const heroAlbums = useMemo(
     () => [...albums].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -86,34 +77,32 @@ export default function Galeria() {
                   : null;
 
                 return (
-                  <Card
-                    key={album.id}
-                    className="group overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 bg-card border-border"
-                    onClick={() => openLightbox(album)}
-                  >
-                    <div className="relative aspect-[4/3] overflow-hidden">
-                      <img
-                        src={album.coverImageUrl}
-                        alt={album.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                        <span className="text-white text-lg font-semibold">
-                          {album.images.length} fotó
-                        </span>
+                  <Link key={album.id} to={`/galeria/${album.slug}`} className="block">
+                    <Card className="group overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 bg-card border-border">
+                      <div className="relative aspect-[4/3] overflow-hidden">
+                        <img
+                          src={album.coverImageUrl}
+                          alt={album.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                          <span className="text-white text-lg font-semibold">
+                            {album.images.length} fotó
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="p-6">
-                      <h3 className="text-xl font-bold text-foreground mb-2 group-hover:text-primary transition-colors">
-                        {album.title}
-                      </h3>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {album.subtitle}
-                      </p>
-                      {eventDate && <time className="text-xs text-muted-foreground/70">{eventDate}</time>}
-                    </div>
-                  </Card>
+                      <div className="p-6">
+                        <h3 className="text-xl font-bold text-foreground mb-2 group-hover:text-primary transition-colors">
+                          {album.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          {album.subtitle}
+                        </p>
+                        {eventDate && <time className="text-xs text-muted-foreground/70">{eventDate}</time>}
+                      </div>
+                    </Card>
+                  </Link>
                 );
               })}
             </div>
@@ -124,18 +113,6 @@ export default function Galeria() {
       </section>
 
       <Footer />
-
-      {/* LightGallery */}
-      {currentAlbum && (
-        <LightGallery
-          isOpen={lightboxOpen}
-          onClose={() => setLightboxOpen(false)}
-          images={currentAlbum.images}
-          currentIndex={currentImageIndex}
-          onNavigate={setCurrentImageIndex}
-          albumTitle={currentAlbum.title}
-        />
-      )}
     </div>
   );
 }

@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Shield, Mail, Lock } from "lucide-react";
+import { Shield, Mail, Lock, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { getSession, login } from "@/services/authService";
+import { getSession, login, AuthError } from "@/services/authService";
+import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from "@/components/ui/input-otp";
 
 const authSchema = z.object({
   email: z.string().email("Érvényes e-mail címet adj meg"),
@@ -17,6 +18,9 @@ const authSchema = z.object({
 export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [requiresMfa, setRequiresMfa] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -55,10 +59,21 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await login(email, password, requiresMfa ? { mfaCode: otp, recoveryCode } : undefined);
       toast.success("Sikeres bejelentkezés!");
       navigate("/admin");
     } catch (error: unknown) {
+      if (error instanceof AuthError && error.requiresMfa) {
+        setRequiresMfa(true);
+        toast.message("Kérjük add meg a hitelesítő kódot a belépéshez");
+        return;
+      }
+
+      if (error instanceof AuthError && error.resetRequired) {
+        toast.error("Új jelszó beállítása szükséges. Ellenőrizd az e-mailedet.");
+        return;
+      }
+
       const message = error instanceof Error ? error.message : "Helytelen belépési adatok";
       toast.error(message);
     } finally {
@@ -94,7 +109,7 @@ export default function Auth() {
                 placeholder="admin@mik.hu"
                 className="pl-10"
                 required
-                disabled={isLoading}
+                disabled={isLoading || requiresMfa}
               />
             </div>
           </div>
@@ -111,15 +126,65 @@ export default function Auth() {
                 placeholder="••••••••"
                 className="pl-10"
                 required
-                disabled={isLoading}
+                disabled={isLoading || requiresMfa}
                 minLength={6}
               />
             </div>
           </div>
 
+          {requiresMfa && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="otp">Hitelesítő kód</Label>
+                <InputOTP maxLength={6} value={otp} onChange={setOtp}>
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                  </InputOTPGroup>
+                  <InputOTPSeparator />
+                  <InputOTPGroup>
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="recovery">Vagy helyreállító kód</Label>
+                <Input
+                  id="recovery"
+                  value={recoveryCode}
+                  onChange={(e) => setRecoveryCode(e.target.value)}
+                  placeholder="XXXXX-XXXXX"
+                  disabled={isLoading}
+                />
+                <p className="text-xs text-muted-foreground">Használhatod, ha nincs kéznél a TOTP alkalmazás.</p>
+              </div>
+            </div>
+          )}
+
           <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-            {isLoading ? "Folyamatban..." : "Bejelentkezés"}
+            {isLoading ? "Folyamatban..." : requiresMfa ? "Kód megerősítése" : "Bejelentkezés"}
           </Button>
+
+          {requiresMfa && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setRequiresMfa(false);
+                setOtp("");
+                setRecoveryCode("");
+              }}
+              disabled={isLoading}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Vissza a jelszóhoz
+            </Button>
+          )}
         </form>
 
         <div className="text-sm text-muted-foreground text-center">

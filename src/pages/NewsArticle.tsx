@@ -73,13 +73,14 @@ export default function NewsArticlePage() {
   }
 
   const translation = article.translations[language] || article.translations.hu;
-  const formattedDate = article.publishedAt
-    ? new Date(article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
+  const formattedDate = (article.date || article.publishedAt)
+    ? new Date(article.date || article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",
       })
     : "";
+  const categoryLabel = article.categoryTranslations?.[language] || article.category;
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -100,7 +101,7 @@ export default function NewsArticlePage() {
           </div>
 
           <div className="space-y-4">
-            <p className="text-sm uppercase tracking-wider text-muted-foreground">{article.category}</p>
+            <p className="text-sm uppercase tracking-wider text-muted-foreground">{categoryLabel}</p>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
               {translation.title}
             </h1>

@@ -16,6 +16,8 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminProjects from "./pages/admin/AdminProjects";
 import AdminGallery from "./pages/admin/AdminGallery";
 import AdminMedia from "./pages/admin/AdminMedia";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AcceptInvite from "./pages/admin/AcceptInvite";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -23,6 +25,7 @@ import Dokumentumok from "./pages/Dokumentumok";
 import Projektek from "./pages/Projektek";
 import ProjectPage from "./pages/ProjectPage";
 import Galeria from "./pages/Galeria";
+import GalleryAlbumPage from "./pages/GalleryAlbumPage";
 import NotFound from "./pages/NotFound";
 import NewsArticlePage from "./pages/NewsArticle";
 import NewsIndex from "./pages/NewsIndex";
@@ -60,6 +63,7 @@ const App = () => {
               <Route path="/projektek" element={<Projektek />} />
               <Route path="/projektek/:slug" element={<ProjectPage />} />
               <Route path="/galeria" element={<Galeria />} />
+              <Route path="/galeria/:slug" element={<GalleryAlbumPage />} />
               <Route path="/news" element={<NewsIndex />} />
               <Route path="/news/:slug" element={<NewsArticlePage />} />
               <Route path="/auth" element={<Auth />} />
@@ -69,6 +73,8 @@ const App = () => {
               <Route path="/admin/projects" element={<AdminProjects />} />
               <Route path="/admin/gallery" element={<AdminGallery />} />
               <Route path="/admin/media" element={<AdminMedia />} />
+              <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/accept-invite" element={<AcceptInvite />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

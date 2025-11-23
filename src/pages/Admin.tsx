@@ -1,11 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Users, FileText, Map, LogOut } from "lucide-react";
+import { LogOut, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { logout } from "@/services/authService";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -48,31 +49,24 @@ export default function Admin() {
           </Button>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="p-6 space-y-2 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <Users className="h-8 w-8 text-primary" />
-              <span className="text-3xl font-bold text-foreground">2000+</span>
-            </div>
-            <h3 className="text-sm font-medium text-muted-foreground">Aktív tagok</h3>
-          </Card>
+        {!session.mfaEnabled && (
+          <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+            <ShieldAlert className="h-4 w-4" />
+            <AlertTitle>Kétlépcsős azonosítás ajánlott</AlertTitle>
+            <AlertDescription>
+              A fiókod jelenleg nem védett 2FA-val. Kapcsold be a Biztonság menüpontban, hogy megakadályozd az illetéktelen
+              hozzáférést.
+            </AlertDescription>
+          </Alert>
+        )}
 
-          <Card className="p-6 space-y-2 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <Map className="h-8 w-8 text-accent" />
-              <span className="text-3xl font-bold text-foreground">10</span>
-            </div>
-            <h3 className="text-sm font-medium text-muted-foreground">Régiók</h3>
-          </Card>
-
-          <Card className="p-6 space-y-2 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <FileText className="h-8 w-8 text-primary-glow" />
-              <span className="text-3xl font-bold text-foreground">150+</span>
-            </div>
-            <h3 className="text-sm font-medium text-muted-foreground">Projektek</h3>
-          </Card>
-        </div>
+        <Card className="p-6 space-y-3">
+          <h2 className="text-lg font-semibold">Kezdés</h2>
+          <p className="text-sm text-muted-foreground">
+            Válaszd ki a bal oldali menüből a szerkeszteni kívánt tartalmat, vagy látogasd meg a Biztonság menüpontot az
+            adminisztrációs fiók védelmének erősítéséhez.
+          </p>
+        </Card>
 
       </div>
     </AdminLayout>

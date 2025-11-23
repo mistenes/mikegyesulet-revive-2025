@@ -1,5 +1,6 @@
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { LocalizedSectionContent, PageContentStore } from "@/types/pageContent";
+import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const STORAGE_EVENT = "page-content-updated";
@@ -24,13 +25,6 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-function mergeWithDefaults(store: PageContentStore | null): PageContentStore {
-  return {
-    ...defaultPageContent,
-    ...(store || {}),
-  };
-}
-
 function broadcastUpdate(sectionKey?: string) {
   if (!isBrowser) return;
   window.dispatchEvent(
@@ -46,9 +40,9 @@ export async function fetchPublicPageContent(): Promise<PageContentStore> {
   try {
     const response = await fetch(`${API_BASE}/api/page-content/public`);
     const data = await handleResponse<{ sections: PageContentStore }>(response);
-    publicCache = mergeWithDefaults(data.sections);
+    publicCache = data.sections || {};
   } catch (error) {
-    publicCache = mergeWithDefaults(null);
+    publicCache = {};
   }
 
   return publicCache;
@@ -56,7 +50,7 @@ export async function fetchPublicPageContent(): Promise<PageContentStore> {
 
 export async function getSectionContent(sectionKey: string): Promise<LocalizedSectionContent> {
   const store = await fetchPublicPageContent();
-  return store[sectionKey] || defaultPageContent[sectionKey] || { hu: {}, en: {} };
+  return store[sectionKey] || { hu: {}, en: {} };
 }
 
 export async function getAllSections(): Promise<PageContentStore> {
@@ -65,19 +59,29 @@ export async function getAllSections(): Promise<PageContentStore> {
       credentials: "include",
     });
     const data = await handleResponse<{ sections: PageContentStore }>(response);
-    adminCache = mergeWithDefaults(data.sections);
+    adminCache = {
+      ...defaultPageContent,
+      ...(data.sections || {}),
+    };
   } catch (error) {
-    adminCache = mergeWithDefaults(publicCache);
+    adminCache = {
+      ...defaultPageContent,
+      ...(publicCache || {}),
+    };
   }
 
-  return adminCache || mergeWithDefaults(null);
+  return (
+    adminCache || {
+      ...defaultPageContent,
+    }
+  );
 }
 
 export async function saveSection(sectionKey: string, content: LocalizedSectionContent) {
   const response = await fetch(`${API_BASE}/api/page-content/${encodeURIComponent(sectionKey)}`, {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify({ translations: content }),
   });
 
@@ -93,6 +97,10 @@ export async function saveSection(sectionKey: string, content: LocalizedSectionC
   if (publicCache) {
     publicCache = {
       ...publicCache,
+      [data.sectionKey]: data.translations,
+    };
+  } else {
+    publicCache = {
       [data.sectionKey]: data.translations,
     };
   }

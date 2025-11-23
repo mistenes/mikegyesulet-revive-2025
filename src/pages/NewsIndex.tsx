@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { getPublishedNewsPage } from "@/services/newsService";
-import type { NewsArticle } from "@/types/news";
+import { getPublicNewsCategories, getPublishedNewsPage } from "@/services/newsService";
+import type { NewsArticle, NewsCategory } from "@/types/news";
 
 const PAGE_SIZE = 9;
 
@@ -19,13 +19,19 @@ export default function NewsIndex() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<NewsCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
 
   useEffect(() => {
     const fetchNews = async () => {
       setLoading(true);
       setError(null);
       try {
-        const { items, total: totalItems } = await getPublishedNewsPage({ page, pageSize: PAGE_SIZE });
+        const { items, total: totalItems } = await getPublishedNewsPage({
+          page,
+          pageSize: PAGE_SIZE,
+          categoryId: selectedCategory || undefined,
+        });
         setArticles(items);
         setTotal(totalItems);
       } catch (err) {
@@ -37,14 +43,28 @@ export default function NewsIndex() {
     };
 
     fetchNews();
-  }, [language, page]);
+  }, [language, page, selectedCategory]);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const items = await getPublicNewsCategories();
+        setCategories(items);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    loadCategories();
+  }, []);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
   const renderArticle = (article: NewsArticle) => {
     const translation = article.translations[language] || article.translations.hu;
-    const formattedDate = article.publishedAt
-      ? new Date(article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
+    const categoryLabel = article.categoryTranslations?.[language] || article.category;
+    const formattedDate = (article.date || article.publishedAt)
+      ? new Date(article.date || article.publishedAt).toLocaleDateString(language === "hu" ? "hu-HU" : "en-US", {
           year: "numeric",
           month: "short",
           day: "numeric",
@@ -75,7 +95,7 @@ export default function NewsIndex() {
             </h3>
             <p className="text-sm text-muted-foreground line-clamp-3 flex-1">{translation.excerpt}</p>
             <div className="pt-2">
-              <Badge variant="secondary">{article.category}</Badge>
+              <Badge variant="secondary">{categoryLabel}</Badge>
             </div>
           </div>
         </Link>
@@ -98,6 +118,28 @@ export default function NewsIndex() {
               ? "Olvasd el legfrissebb híreinket és beszámolóinkat a HYCA közösségeiből."
               : "Browse the latest stories and updates from HYCA communities."}
           </p>
+        </div>
+
+        <div className="max-w-3xl mx-auto mb-8 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-center">
+          <label className="text-sm font-medium text-muted-foreground" htmlFor="news-category-filter">
+            {language === "hu" ? "Kategória szűrő" : "Filter by category"}
+          </label>
+          <select
+            id="news-category-filter"
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={selectedCategory}
+            onChange={(e) => {
+              setSelectedCategory(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">{language === "hu" ? "Összes" : "All"}</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name[language] || category.name.hu}
+              </option>
+            ))}
+          </select>
         </div>
 
         {loading ? (

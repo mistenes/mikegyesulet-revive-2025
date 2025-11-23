@@ -1,4 +1,5 @@
 import type { Project, ProjectInput } from "@/types/project";
+import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "projects-updated";
@@ -60,7 +61,7 @@ export async function createProject(project: ProjectInput): Promise<Project> {
   const response = await fetch(url.toString(), {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(project),
   });
 
@@ -74,7 +75,7 @@ export async function updateProject(id: string, project: ProjectInput): Promise<
   const response = await fetch(url.toString(), {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(project),
   });
 
@@ -88,6 +89,7 @@ export async function deleteProject(id: string): Promise<void> {
   const response = await fetch(url.toString(), {
     method: "DELETE",
     credentials: "include",
+    headers: withCsrfHeader(),
   });
 
   if (!response.ok && response.status !== 204) {
@@ -102,7 +104,7 @@ export async function reorderProjects(order: string[]): Promise<void> {
   const response = await fetch(url.toString(), {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify({ order }),
   });
 

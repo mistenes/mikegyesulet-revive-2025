@@ -6,6 +6,8 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
+import speakeasy from 'speakeasy';
+import SibApiV3Sdk from 'sib-api-v3-sdk';
 
 const { Pool } = pkg;
 
@@ -16,7 +18,10 @@ const DIST_PATH = path.join(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me';
 const COOKIE_NAME = 'mik_admin_session';
-const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const REFRESH_COOKIE_NAME = 'mik_admin_refresh';
+const CSRF_COOKIE_NAME = 'mik_admin_csrf';
+const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
@@ -26,8 +31,26 @@ const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
 const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
 const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || process.env.ADMIN_EMAIL || '';
+const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'MIK Admin';
+const INVITE_BASE_URL = FRONTEND_ORIGIN || RENDER_EXTERNAL_URL || LOCAL_DEV_ORIGIN;
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
+const LOGIN_RATE_LIMIT_WINDOW_MS = 60_000;
+const LOGIN_RATE_LIMIT_MAX = 10;
+const LOGIN_MAX_FAILED_ATTEMPTS = 5;
+const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
+const PASSWORD_HISTORY_LIMIT = 5;
+const PASSWORD_MIN_LENGTH = 12;
+const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const brevoClient = BREVO_API_KEY ? new SibApiV3Sdk.TransactionalEmailsApi() : null;
+
+if (BREVO_API_KEY) {
+  const defaultClient = SibApiV3Sdk.ApiClient.instance;
+  defaultClient.authentications['api-key'].apiKey = BREVO_API_KEY;
+}
 
 const defaultPageContent = {
   hero_content: {
@@ -137,18 +160,102 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
+const loginRateLimitBuckets = new Map();
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (Array.isArray(forwarded)) {
+    return forwarded[0];
+  }
+
+  if (typeof forwarded === 'string' && forwarded.includes(',')) {
+    return forwarded.split(',')[0].trim();
+  }
+
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.trim();
+  }
+
+  return req.ip;
+}
+
+function loginRateLimiter(req, res, next) {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const bucket = loginRateLimitBuckets.get(ip) || { count: 0, start: now };
+
+  if (now - bucket.start > LOGIN_RATE_LIMIT_WINDOW_MS) {
+    bucket.start = now;
+    bucket.count = 0;
+  }
+
+  bucket.count += 1;
+  loginRateLimitBuckets.set(ip, bucket);
+
+  if (bucket.count > LOGIN_RATE_LIMIT_MAX) {
+    const retryAfterSeconds = Math.ceil((LOGIN_RATE_LIMIT_WINDOW_MS - (now - bucket.start)) / 1000);
+    return res
+      .status(429)
+      .json({ message: 'Túl sok bejelentkezési kísérlet. Próbáld újra később.', retryAfterSeconds });
+  }
+
+  return next();
+}
+
 app.get('/healthz', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-function signSession(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+function signAccessToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(ACCESS_TOKEN_MAX_AGE_MS / 1000) });
+}
+
+function verifyAccessToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 function createPasswordHash(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.pbkdf2Sync(password, salt, HASH_ITERATIONS, 64, 'sha512').toString('hex');
   return `${HASH_ITERATIONS}$${salt}$${hash}`;
+}
+
+function validatePasswordComplexity(password, email = '') {
+  const issues = [];
+
+  if (!password || password.length < PASSWORD_MIN_LENGTH) {
+    issues.push(`A jelszónak legalább ${PASSWORD_MIN_LENGTH} karakter hosszúnak kell lennie.`);
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    issues.push('Legalább egy nagybetűt tartalmaznia kell.');
+  }
+
+  if (!/[a-z]/.test(password)) {
+    issues.push('Legalább egy kisbetűt tartalmaznia kell.');
+  }
+
+  if (!/[0-9]/.test(password)) {
+    issues.push('Legalább egy számjegyet tartalmaznia kell.');
+  }
+
+  if (!/[!@#$%^&*(),.?":{}|<>\-_+=\[\];'/\\`~]/.test(password)) {
+    issues.push('Legalább egy speciális karakter szükséges.');
+  }
+
+  if (email && password.toLowerCase().includes(email.toLowerCase())) {
+    issues.push('A jelszó nem tartalmazhatja az e-mail címet.');
+  }
+
+  return issues;
 }
 
 function verifyPassword(password, stored) {
@@ -164,12 +271,114 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(storedBuffer, derivedBuffer);
 }
 
-function verifySession(token) {
-  try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch (error) {
+async function isPasswordReused(client, email, newPassword) {
+  const current = await client.query('SELECT password_hash FROM admin_users WHERE email = $1', [email]);
+
+  if (current.rows[0]?.password_hash && verifyPassword(newPassword, current.rows[0].password_hash)) {
+    return true;
+  }
+
+  const history = await client.query(
+    'SELECT password_hash FROM admin_password_history WHERE email = $1 ORDER BY created_at DESC LIMIT $2',
+    [email, PASSWORD_HISTORY_LIMIT],
+  );
+
+  return history.rows.some((row) => verifyPassword(newPassword, row.password_hash));
+}
+
+async function recordPasswordHistory(client, email, passwordHash) {
+  await client.query(
+    `INSERT INTO admin_password_history (email, password_hash, created_at)
+     VALUES ($1, $2, NOW())`,
+    [email, passwordHash],
+  );
+}
+
+function generateRecoveryCodes(count = 8) {
+  const codes = [];
+  for (let i = 0; i < count; i += 1) {
+    codes.push(crypto.randomBytes(5).toString('hex').toUpperCase());
+  }
+  return codes;
+}
+
+function hashRecoveryCodes(codes) {
+  return codes.map((code) => hashToken(code.replace(/\s+/g, '').toUpperCase()));
+}
+
+async function storeMfaEnrollment(client, email, secret, recoveryCodes) {
+  await client.query(
+    `INSERT INTO admin_mfa_enrollments (email, secret, recovery_codes, created_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (email) DO UPDATE SET secret = EXCLUDED.secret, recovery_codes = EXCLUDED.recovery_codes, created_at = NOW()`,
+    [email, secret, recoveryCodes],
+  );
+}
+
+async function getMfaEnrollment(client, email) {
+  const result = await client.query('SELECT secret, recovery_codes FROM admin_mfa_enrollments WHERE email = $1', [email]);
+  return result.rows[0];
+}
+
+async function clearMfaEnrollment(client, email) {
+  await client.query('DELETE FROM admin_mfa_enrollments WHERE email = $1', [email]);
+}
+
+async function createUserToken(client, email, type, ttlMs = INVITE_TOKEN_TTL_MS) {
+  const token = crypto.randomBytes(48).toString('hex');
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + ttlMs);
+
+  await client.query(
+    `INSERT INTO admin_user_tokens (email, token_hash, type, expires_at, used, created_at)
+     VALUES ($1, $2, $3, $4, FALSE, NOW())`,
+    [email, tokenHash, type, expiresAt],
+  );
+
+  return { token, expiresAt };
+}
+
+async function consumeUserToken(client, token, type) {
+  const tokenHash = hashToken(token);
+  const result = await client.query(
+    `SELECT * FROM admin_user_tokens
+     WHERE token_hash = $1 AND type = $2 AND used = FALSE AND expires_at > NOW()`,
+    [tokenHash, type],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
     return null;
   }
+
+  await client.query('UPDATE admin_user_tokens SET used = TRUE WHERE id = $1', [row.id]);
+  return row;
+}
+
+function buildInviteLink(token) {
+  const baseUrl = INVITE_BASE_URL.replace(/\/$/, '');
+  return `${baseUrl}/admin/accept-invite?token=${encodeURIComponent(token)}`;
+}
+
+async function sendInviteEmail(email, inviteLink) {
+  if (!brevoClient || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a meghívók küldéséhez');
+  }
+
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  sendSmtpEmail.sender = { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME };
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.subject = 'Admin felhasználói meghívó';
+  sendSmtpEmail.htmlContent = `
+    <p>Üdvözlünk! Meghívtak, hogy szerkeszd a MIK admin felületét.</p>
+    <p>Kattints az alábbi gombra, hogy beállítsd a jelszavad és a kétlépcsős azonosítást:</p>
+    <p><a href="${inviteLink}" style="display:inline-block;padding:12px 18px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px">Meghívó elfogadása</a></p>
+    <p>Ha a gomb nem működik, másold be ezt a linket a böngészőbe:</p>
+    <p>${inviteLink}</p>
+    <p>A meghívó 7 napig érvényes.</p>
+  `;
+
+  await brevoClient.sendTransacEmail(sendSmtpEmail);
 }
 
 async function ensureAdminUser() {
@@ -179,14 +388,34 @@ async function ensureAdminUser() {
       CREATE TABLE IF NOT EXISTS admin_users (
         email TEXT PRIMARY KEY,
         password_hash TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        mfa_secret TEXT,
+        mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        recovery_codes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+        must_reset_password BOOLEAN NOT NULL DEFAULT FALSE,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        last_login_at TIMESTAMPTZ,
+        last_password_change TIMESTAMPTZ
       );
     `);
+
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS mfa_secret TEXT');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS recovery_codes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS must_reset_password BOOLEAN NOT NULL DEFAULT FALSE');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_password_change TIMESTAMPTZ');
 
     const adminEmail = process.env.ADMIN_EMAIL;
     const adminPassword = process.env.ADMIN_PASSWORD;
 
     if (adminEmail && adminPassword) {
+      const errors = validatePasswordComplexity(adminPassword, adminEmail);
+      if (errors.length) {
+        console.error('Alapértelmezett admin jelszó nem elég erős:', errors.join(' '));
+      }
+
       const passwordHash = createPasswordHash(adminPassword);
       await client.query(
         `INSERT INTO admin_users (email, password_hash)
@@ -201,6 +430,66 @@ async function ensureAdminUser() {
   }
 }
 
+async function ensureAdminSecurityTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_password_history (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE INDEX IF NOT EXISTS admin_password_history_email_idx ON admin_password_history(email);');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_user_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        type TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS admin_user_tokens_hash_idx ON admin_user_tokens(token_hash);');
+    await client.query('CREATE INDEX IF NOT EXISTS admin_user_tokens_email_idx ON admin_user_tokens(email);');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_mfa_enrollments (
+        email TEXT PRIMARY KEY,
+        secret TEXT NOT NULL,
+        recovery_codes TEXT[] NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureLoginAttemptTable() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_login_attempts (
+        email TEXT NOT NULL,
+        ip TEXT NOT NULL,
+        failed_attempts INTEGER NOT NULL DEFAULT 0,
+        last_failed_at TIMESTAMPTZ,
+        locked_until TIMESTAMPTZ,
+        PRIMARY KEY (email, ip)
+      );
+    `);
+  } finally {
+    client.release();
+  }
+}
+
 async function ensureNewsTables() {
   const client = await pool.connect();
   try {
@@ -208,11 +497,23 @@ async function ensureNewsTables() {
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS news_categories (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name_hu TEXT NOT NULL,
+        name_en TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS news_articles (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         category TEXT NOT NULL,
+        category_id UUID REFERENCES news_categories(id),
         image_url TEXT,
         image_alt TEXT,
+        sticky BOOLEAN NOT NULL DEFAULT FALSE,
+        news_date DATE NOT NULL DEFAULT CURRENT_DATE,
         published BOOLEAN NOT NULL DEFAULT FALSE,
         published_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -232,6 +533,38 @@ async function ensureNewsTables() {
     await client.query(
       'CREATE INDEX IF NOT EXISTS news_published_idx ON news_articles(published, published_at DESC, created_at DESC);',
     );
+    await client.query(
+      'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES news_categories(id);',
+    );
+    await client.query(
+      'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS sticky BOOLEAN NOT NULL DEFAULT FALSE;',
+    );
+    await client.query(
+      'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS news_date DATE NOT NULL DEFAULT CURRENT_DATE;',
+    );
+
+    const distinctCategories = await client.query(
+      'SELECT DISTINCT category FROM news_articles WHERE category IS NOT NULL',
+    );
+
+    const existingCategories = await client.query('SELECT id, name_hu FROM news_categories');
+    const categoryMap = new Map(existingCategories.rows.map((row) => [row.name_hu, row.id]));
+
+    for (const row of distinctCategories.rows) {
+      const name = row.category;
+      if (!name || categoryMap.has(name)) continue;
+
+      const inserted = await client.query(
+        'INSERT INTO news_categories (name_hu, name_en) VALUES ($1, $2) RETURNING id',
+        [name, name],
+      );
+
+      categoryMap.set(name, inserted.rows[0].id);
+    }
+
+    for (const [name, id] of categoryMap.entries()) {
+      await client.query('UPDATE news_articles SET category_id = $1 WHERE category = $2', [id, name]);
+    }
   } finally {
     client.release();
   }
@@ -338,6 +671,7 @@ async function ensureGalleryTables() {
         title TEXT NOT NULL,
         subtitle TEXT DEFAULT '',
         event_date DATE,
+        slug TEXT NOT NULL DEFAULT '',
         cover_image_url TEXT NOT NULL,
         cover_image_alt TEXT DEFAULT '',
         images JSONB NOT NULL DEFAULT '[]',
@@ -349,11 +683,33 @@ async function ensureGalleryTables() {
     `);
 
     await client.query(
+      "ALTER TABLE gallery_albums ADD COLUMN IF NOT EXISTS slug TEXT NOT NULL DEFAULT '';",
+    );
+
+    await client.query(
       'CREATE INDEX IF NOT EXISTS gallery_sort_idx ON gallery_albums(sort_order, created_at DESC);',
     );
     await client.query(
       'CREATE INDEX IF NOT EXISTS gallery_published_idx ON gallery_albums(published, sort_order);',
     );
+
+    const existingAlbums = await client.query('SELECT id, title, slug FROM gallery_albums ORDER BY created_at ASC');
+    const usedSlugs = new Set(existingAlbums.rows.map((row) => row.slug).filter(Boolean));
+
+    for (const row of existingAlbums.rows) {
+      let baseSlug = (row.slug || '').trim();
+      if (!baseSlug) {
+        baseSlug = slugifyText(row.title || 'galeria');
+      } else {
+        baseSlug = slugifyText(baseSlug);
+      }
+
+      const uniqueSlug = ensureUniqueSlug(baseSlug, usedSlugs);
+      await client.query('UPDATE gallery_albums SET slug = $1 WHERE id = $2', [uniqueSlug, row.id]);
+    }
+
+    await client.query('ALTER TABLE gallery_albums ALTER COLUMN slug SET NOT NULL;');
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS gallery_slug_idx ON gallery_albums(slug);');
   } finally {
     client.release();
   }
@@ -385,17 +741,93 @@ async function ensurePageContentTable() {
 }
 
 function mapNewsRow(row) {
+  const categoryTranslations = {
+    hu: row.category_name_hu || row.category || '',
+    en: row.category_name_en || row.category || '',
+  };
+
   return {
     id: row.id,
-    category: row.category,
+    categoryId: row.category_id || null,
+    category: categoryTranslations.hu,
+    categoryTranslations,
     imageUrl: row.image_url || undefined,
     imageAlt: row.image_alt || '',
+    sticky: Boolean(row.sticky),
+    date: row.news_date ? row.news_date.toISOString().slice(0, 10) : undefined,
     published: row.published,
     publishedAt: row.published_at ? row.published_at.toISOString() : null,
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
     translations: row.translations || { hu: {}, en: {} },
   };
+}
+
+function mapNewsCategory(row) {
+  return {
+    id: row.id,
+    name: {
+      hu: row.name_hu,
+      en: row.name_en,
+    },
+    createdAt: row.created_at ? row.created_at.toISOString() : '',
+  };
+}
+
+async function resolveNewsCategory(client, payload) {
+  const requestedId = payload.categoryId || null;
+  let categoryNameHu = (payload.categoryTranslations?.hu || payload.category || '').toString().trim();
+  let categoryNameEn = (payload.categoryTranslations?.en || payload.category || '').toString().trim();
+
+  if (requestedId) {
+    const existing = await client.query('SELECT * FROM news_categories WHERE id = $1 LIMIT 1', [requestedId]);
+    if (!existing.rows.length) {
+      const error = new Error('A megadott kategória nem található');
+      error.status = 400;
+      throw error;
+    }
+
+    const row = existing.rows[0];
+    return { categoryId: requestedId, categoryNameHu: row.name_hu, categoryNameEn: row.name_en };
+  }
+
+  if (!categoryNameHu) {
+    const error = new Error('A kategória megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!categoryNameEn) {
+    categoryNameEn = categoryNameHu;
+  }
+
+  const matched = await client.query('SELECT * FROM news_categories WHERE LOWER(name_hu) = LOWER($1) LIMIT 1', [categoryNameHu]);
+
+  if (matched.rows.length) {
+    const row = matched.rows[0];
+    return { categoryId: row.id, categoryNameHu: row.name_hu, categoryNameEn: row.name_en };
+  }
+
+  const created = await client.query(
+    'INSERT INTO news_categories (name_hu, name_en) VALUES ($1, $2) RETURNING *',
+    [categoryNameHu, categoryNameEn],
+  );
+
+  const row = created.rows[0];
+  return { categoryId: row.id, categoryNameHu: row.name_hu, categoryNameEn: row.name_en };
+}
+
+async function fetchNewsWithCategory(client, id) {
+  const result = await client.query(
+    `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+     FROM news_articles a
+     LEFT JOIN news_categories c ON a.category_id = c.id
+     WHERE a.id = $1
+     LIMIT 1`,
+    [id],
+  );
+
+  return result.rows[0];
 }
 
 function normalizeProjectTranslations(translations = { hu: {}, en: {} }) {
@@ -460,6 +892,29 @@ function ensureUniqueSlug(base, usedSet) {
   return candidate;
 }
 
+async function generateUniqueGallerySlug(client, title, excludeId) {
+  const base = slugifyText(title || 'galeria') || 'galeria';
+  let candidate = base;
+  let suffix = 1;
+
+  while (true) {
+    const params = excludeId ? [candidate, excludeId] : [candidate];
+    const existing = await client.query(
+      excludeId
+        ? 'SELECT 1 FROM gallery_albums WHERE slug = $1 AND id <> $2 LIMIT 1'
+        : 'SELECT 1 FROM gallery_albums WHERE slug = $1 LIMIT 1',
+      params,
+    );
+
+    if (!existing.rows.length) {
+      return candidate;
+    }
+
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+}
+
 function mapGalleryRow(row) {
   const eventDate = row.event_date instanceof Date ? row.event_date.toISOString().split('T')[0] : null;
 
@@ -467,6 +922,7 @@ function mapGalleryRow(row) {
     id: row.id,
     title: row.title || '',
     subtitle: row.subtitle || '',
+    slug: row.slug || '',
     eventDate,
     coverImageUrl: row.cover_image_url || '',
     coverImageAlt: row.cover_image_alt || '',
@@ -488,7 +944,7 @@ function mapPageContentRows(rows) {
 
 async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
   const params = [slugHu, slugEn];
-  let query = 'SELECT id, slug_hu, slug_en FROM news_articles WHERE slug_hu = $1 OR slug_en = $2';
+  let query = 'SELECT id, slug_hu, slug_en FROM news_articles WHERE (slug_hu = $1 OR slug_en = $2)';
 
   if (excludeId) {
     params.push(excludeId);
@@ -507,6 +963,166 @@ async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
   }
 }
 
+async function getLoginAttempt(client, emailKey, ip) {
+  const result = await client.query(
+    'SELECT failed_attempts, locked_until FROM admin_login_attempts WHERE email = $1 AND ip = $2',
+    [emailKey, ip],
+  );
+
+  return result.rows[0];
+}
+
+async function recordFailedLogin(client, emailKey, ip) {
+  const current = await getLoginAttempt(client, emailKey, ip);
+  const nextFailures = (current?.failed_attempts || 0) + 1;
+  const shouldLock = nextFailures >= LOGIN_MAX_FAILED_ATTEMPTS;
+  const lockedUntil = shouldLock ? new Date(Date.now() + LOGIN_LOCK_DURATION_MS) : current?.locked_until || null;
+
+  await client.query(
+    `INSERT INTO admin_login_attempts (email, ip, failed_attempts, last_failed_at, locked_until)
+     VALUES ($1, $2, $3, NOW(), $4)
+     ON CONFLICT (email, ip) DO UPDATE SET
+       failed_attempts = EXCLUDED.failed_attempts,
+       last_failed_at = EXCLUDED.last_failed_at,
+       locked_until = EXCLUDED.locked_until`,
+    [emailKey, ip, nextFailures, lockedUntil],
+  );
+
+  return {
+    failedAttempts: nextFailures,
+    lockedUntil,
+    remainingAttempts: Math.max(LOGIN_MAX_FAILED_ATTEMPTS - nextFailures, 0),
+  };
+}
+
+async function resetLoginAttempts(client, emailKey, ip) {
+  await client.query('DELETE FROM admin_login_attempts WHERE email = $1 AND ip = $2', [emailKey, ip]);
+}
+
+async function ensureAdminSessionsTable() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL,
+        refresh_token_hash TEXT NOT NULL,
+        csrf_token TEXT NOT NULL,
+        token_nonce TEXT NOT NULL,
+        revoked BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE INDEX IF NOT EXISTS admin_sessions_email_idx ON admin_sessions(email);');
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS admin_sessions_refresh_hash_idx ON admin_sessions(refresh_token_hash);',
+    );
+  } finally {
+    client.release();
+  }
+}
+
+async function revokeSessionsForEmail(client, email) {
+  await client.query('DELETE FROM admin_sessions WHERE email = $1', [email]);
+}
+
+async function getSessionById(client, sessionId) {
+  const result = await client.query('SELECT * FROM admin_sessions WHERE id = $1', [sessionId]);
+  return result.rows[0];
+}
+
+async function getSessionByRefreshHash(client, refreshHash) {
+  const result = await client.query(
+    'SELECT * FROM admin_sessions WHERE refresh_token_hash = $1 AND revoked = FALSE',
+    [refreshHash],
+  );
+
+  return result.rows[0];
+}
+
+async function persistSession(client, sessionId, email, refreshToken, csrfToken, tokenNonce) {
+  const refreshTokenHash = hashToken(refreshToken);
+  await client.query(
+    `INSERT INTO admin_sessions (id, email, refresh_token_hash, csrf_token, token_nonce)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (id) DO UPDATE SET
+       refresh_token_hash = EXCLUDED.refresh_token_hash,
+       csrf_token = EXCLUDED.csrf_token,
+       token_nonce = EXCLUDED.token_nonce,
+       revoked = FALSE,
+       updated_at = NOW()`,
+    [sessionId, email, refreshTokenHash, csrfToken, tokenNonce],
+  );
+}
+
+async function updateSessionWithRotation(client, sessionId, refreshToken, csrfToken, tokenNonce) {
+  const refreshTokenHash = hashToken(refreshToken);
+  await client.query(
+    `UPDATE admin_sessions SET
+       refresh_token_hash = $1,
+       csrf_token = $2,
+       token_nonce = $3,
+       revoked = FALSE,
+     updated_at = NOW()
+   WHERE id = $4`,
+    [refreshTokenHash, csrfToken, tokenNonce, sessionId],
+  );
+}
+
+async function createFreshSession(client, email) {
+  await revokeSessionsForEmail(client, email);
+
+  const sessionId = crypto.randomUUID();
+  const refreshToken = crypto.randomBytes(48).toString('hex');
+  const csrfToken = crypto.randomBytes(32).toString('hex');
+  const tokenNonce = crypto.randomBytes(16).toString('hex');
+  const accessToken = signAccessToken({ email, sid: sessionId, nonce: tokenNonce });
+
+  await persistSession(client, sessionId, email, refreshToken, csrfToken, tokenNonce);
+
+  return { sessionId, accessToken, refreshToken, csrfToken, tokenNonce };
+}
+
+async function rotateSession(client, sessionId, email) {
+  const refreshToken = crypto.randomBytes(48).toString('hex');
+  const csrfToken = crypto.randomBytes(32).toString('hex');
+  const tokenNonce = crypto.randomBytes(16).toString('hex');
+  const accessToken = signAccessToken({ email, sid: sessionId, nonce: tokenNonce });
+
+  await updateSessionWithRotation(client, sessionId, refreshToken, csrfToken, tokenNonce);
+
+  return { sessionId, accessToken, refreshToken, csrfToken, tokenNonce };
+}
+
+function setSessionCookies(res, accessToken, refreshToken, csrfToken) {
+  res.cookie(COOKIE_NAME, accessToken, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: true,
+    maxAge: ACCESS_TOKEN_MAX_AGE_MS,
+    path: '/',
+  });
+
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: true,
+    maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+    path: '/',
+  });
+
+  res.cookie(CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: false,
+    sameSite: 'strict',
+    secure: true,
+    maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+    path: '/',
+  });
+}
+
 async function authenticateRequest(req, res, next) {
   const bearer = req.headers.authorization?.replace('Bearer ', '');
   const token = req.cookies[COOKIE_NAME] || bearer;
@@ -515,18 +1131,44 @@ async function authenticateRequest(req, res, next) {
     return res.status(401).json({ message: 'Nincs aktív munkamenet' });
   }
 
-  const session = verifySession(token);
+  const payload = verifyAccessToken(token);
 
-  if (!session) {
+  if (!payload?.sid || !payload?.email || !payload?.nonce) {
     return res.status(401).json({ message: 'Érvénytelen vagy lejárt munkamenet' });
   }
 
-  req.user = session;
-  return next();
+  const client = await pool.connect();
+
+  try {
+    const session = await getSessionById(client, payload.sid);
+
+    if (!session || session.revoked || session.email !== payload.email || session.token_nonce !== payload.nonce) {
+      return res.status(401).json({ message: 'Érvénytelen vagy lejárt munkamenet' });
+    }
+
+    const unsafeMethod = !['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase());
+    if (unsafeMethod) {
+      const csrfCookie = req.cookies[CSRF_COOKIE_NAME];
+      const csrfHeader = req.headers['x-csrf-token'];
+      if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader || csrfCookie !== session.csrf_token) {
+        return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+      }
+    }
+
+    req.user = { email: payload.email, sessionId: payload.sid };
+    return next();
+  } catch (error) {
+    console.error('Auth error', error);
+    return res.status(500).json({ message: 'Váratlan hiba történt' });
+  } finally {
+    client.release();
+  }
 }
 
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
+app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
+  const { email, password, mfaCode, recoveryCode } = req.body || {};
+  const emailKey = (email || 'unknown').toLowerCase();
+  const ip = getClientIp(req);
 
   if (!email || !password) {
     return res.status(400).json({ message: 'Az e-mail és jelszó megadása kötelező' });
@@ -534,33 +1176,415 @@ app.post('/api/auth/login', async (req, res) => {
 
   const client = await pool.connect();
   try {
-    const result = await client.query('SELECT email, password_hash FROM admin_users WHERE email = $1', [email]);
+    const attempt = await getLoginAttempt(client, emailKey, ip);
+    const lockExpiry = attempt?.locked_until ? new Date(attempt.locked_until) : null;
+
+    if (lockExpiry && lockExpiry.getTime() > Date.now()) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((lockExpiry.getTime() - Date.now()) / 1000));
+      return res.status(429).json({
+        message: 'A fiók átmenetileg zárolva túl sok sikertelen próbálkozás miatt.',
+        lockedUntil: lockExpiry.toISOString(),
+        remainingAttempts: 0,
+        retryAfterSeconds,
+      });
+    }
+
+    const result = await client.query(
+      'SELECT email, password_hash, mfa_enabled, mfa_secret, recovery_codes, must_reset_password, is_active FROM admin_users WHERE email = $1',
+      [email],
+    );
 
     if (!result.rows.length) {
-      return res.status(401).json({ message: 'Helytelen belépési adatok' });
+      const failed = await recordFailedLogin(client, emailKey, ip);
+      const status = failed.lockedUntil ? 429 : 401;
+      return res.status(status).json({
+        message: 'Helytelen belépési adatok',
+        lockedUntil: failed.lockedUntil ? new Date(failed.lockedUntil).toISOString() : undefined,
+        remainingAttempts: failed.remainingAttempts,
+      });
     }
 
     const user = result.rows[0];
+
+    if (user.is_active === false) {
+      return res.status(403).json({ message: 'A fiók le van tiltva' });
+    }
+
     const isValid = verifyPassword(password, user.password_hash);
 
     if (!isValid) {
-      return res.status(401).json({ message: 'Helytelen belépési adatok' });
+      const failed = await recordFailedLogin(client, emailKey, ip);
+      const status = failed.lockedUntil ? 429 : 401;
+      return res.status(status).json({
+        message: 'Helytelen belépési adatok',
+        lockedUntil: failed.lockedUntil ? new Date(failed.lockedUntil).toISOString() : undefined,
+        remainingAttempts: failed.remainingAttempts,
+      });
     }
 
-    const token = signSession({ email: user.email });
+    if (user.must_reset_password) {
+      return res.status(403).json({ message: 'A fiók új jelszót igényel. Ellenőrizd az e-mailt.', resetRequired: true });
+    }
 
-    res.cookie(COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: SESSION_MAX_AGE_MS,
-      path: '/',
-    });
+    if (user.mfa_enabled) {
+      if (!mfaCode && !recoveryCode) {
+        return res.status(401).json({ message: 'Add meg az ellenőrző kódot a belépéshez', requiresMfa: true });
+      }
 
-    return res.status(200).json({ user: { email: user.email } });
+      const isTotpValid = mfaCode
+        ? speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: mfaCode, window: 1 })
+        : false;
+
+      let isRecoveryValid = false;
+      if (!isTotpValid && recoveryCode && Array.isArray(user.recovery_codes)) {
+        const normalized = recoveryCode.replace(/\s+/g, '').toUpperCase();
+        const matchingIndex = user.recovery_codes.findIndex((code) => hashToken(normalized) === code);
+        if (matchingIndex >= 0) {
+          isRecoveryValid = true;
+          const nextCodes = [...user.recovery_codes];
+          nextCodes.splice(matchingIndex, 1);
+          await client.query('UPDATE admin_users SET recovery_codes = $1 WHERE email = $2', [nextCodes, user.email]);
+        }
+      }
+
+      if (!isTotpValid && !isRecoveryValid) {
+        const failed = await recordFailedLogin(client, emailKey, ip);
+        const status = failed.lockedUntil ? 429 : 401;
+        return res.status(status).json({
+          message: 'Érvénytelen vagy lejárt ellenőrző kód',
+          lockedUntil: failed.lockedUntil ? new Date(failed.lockedUntil).toISOString() : undefined,
+          remainingAttempts: failed.remainingAttempts,
+          requiresMfa: true,
+        });
+      }
+    }
+
+    await resetLoginAttempts(client, emailKey, ip);
+    const sessionTokens = await createFreshSession(client, user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
+
+    await client.query('UPDATE admin_users SET last_login_at = NOW() WHERE email = $1', [user.email]);
+
+    return res
+      .status(200)
+      .json({ user: { email: user.email, mfaEnabled: Boolean(user.mfa_enabled) }, csrfToken: sessionTokens.csrfToken });
   } catch (error) {
     console.error('Login error', error);
     return res.status(500).json({ message: 'Váratlan hiba történt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+  const refreshToken = req.cookies[REFRESH_COOKIE_NAME];
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'A munkamenet lejárt, jelentkezz be újra' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const refreshHash = hashToken(refreshToken);
+    const session = await getSessionByRefreshHash(client, refreshHash);
+
+    if (!session) {
+      res.clearCookie(COOKIE_NAME, { path: '/' });
+      res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+      res.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
+      return res.status(401).json({ message: 'A munkamenet lejárt, jelentkezz be újra' });
+    }
+
+    const csrfCookie = req.cookies[CSRF_COOKIE_NAME];
+    const csrfHeader = req.headers['x-csrf-token'];
+
+    if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader || csrfCookie !== session.csrf_token) {
+      return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+    }
+
+    const userResult = await client.query('SELECT mfa_enabled FROM admin_users WHERE email = $1', [session.email]);
+    const rotated = await rotateSession(client, session.id, session.email);
+    setSessionCookies(res, rotated.accessToken, rotated.refreshToken, rotated.csrfToken);
+
+    return res
+      .status(200)
+      .json({ user: { email: session.email, mfaEnabled: Boolean(userResult.rows[0]?.mfa_enabled) }, csrfToken: rotated.csrfToken });
+  } catch (error) {
+    console.error('Refresh error', error);
+    return res.status(500).json({ message: 'Váratlan hiba történt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/auth/complete-invite', async (req, res) => {
+  const { token, password } = req.body || {};
+
+  if (!token || !password) {
+    return res.status(400).json({ message: 'Hiányzó meghívó token vagy jelszó' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const invite = await consumeUserToken(client, token, 'invite');
+    if (!invite) {
+      return res.status(400).json({ message: 'A meghívó lejárt vagy már felhasználták' });
+    }
+
+    const issues = validatePasswordComplexity(password, invite.email);
+    if (issues.length) {
+      return res.status(400).json({ message: issues[0] });
+    }
+
+    const reused = await isPasswordReused(client, invite.email, password);
+    if (reused) {
+      return res.status(400).json({ message: 'Ne használj korábbi jelszót' });
+    }
+
+    const passwordHash = createPasswordHash(password);
+    await recordPasswordHistory(client, invite.email, passwordHash);
+    await revokeSessionsForEmail(client, invite.email);
+
+    await client.query(
+      `UPDATE admin_users
+       SET password_hash = $1, must_reset_password = FALSE, last_password_change = NOW()
+       WHERE email = $2`,
+      [passwordHash, invite.email],
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Complete invite error', error);
+    return res.status(500).json({ message: 'Nem sikerült aktiválni a fiókot' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/security/mfa', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT mfa_enabled, recovery_codes FROM admin_users WHERE email = $1', [req.user.email]);
+    const row = result.rows[0];
+    return res.status(200).json({ enabled: Boolean(row?.mfa_enabled), recoveryCodesRemaining: row?.recovery_codes?.length || 0 });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/mfa/prepare', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const secret = speakeasy.generateSecret({ name: `MIK Admin (${req.user.email})` });
+    const recoveryCodes = generateRecoveryCodes();
+    await storeMfaEnrollment(client, req.user.email, secret.base32, recoveryCodes);
+
+    return res.status(200).json({ secret: secret.base32, otpauthUrl: secret.otpauth_url, recoveryCodes });
+  } catch (error) {
+    console.error('MFA prepare error', error);
+    return res.status(500).json({ message: 'Nem sikerült előkészíteni a kétlépcsős azonosítást' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/mfa/confirm', authenticateRequest, async (req, res) => {
+  const { code, recoveryCode } = req.body || {};
+  if (!code) {
+    return res.status(400).json({ message: 'Hiányzó ellenőrző kód' });
+  }
+
+  const normalizedRecovery = typeof recoveryCode === 'string' ? recoveryCode.replace(/\s+/g, '').toUpperCase() : '';
+  if (!normalizedRecovery) {
+    return res.status(400).json({ message: 'Adj meg egy helyreállító kódot is a mentés megerősítéséhez' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const enrollment = await getMfaEnrollment(client, req.user.email);
+    if (!enrollment) {
+      return res.status(400).json({ message: 'Nincs aktív MFA beállítás' });
+    }
+
+    const isRecoveryFromSet = enrollment.recovery_codes?.some(
+      (candidate) => candidate.replace(/\s+/g, '').toUpperCase() === normalizedRecovery,
+    );
+    if (!isRecoveryFromSet) {
+      return res.status(400).json({ message: 'Add meg a megjelenített helyreállító kódok egyikét' });
+    }
+
+    const isValid = speakeasy.totp.verify({ secret: enrollment.secret, encoding: 'base32', token: code, window: 1 });
+    if (!isValid) {
+      return res.status(400).json({ message: 'Érvénytelen kód' });
+    }
+
+    const hashedCodes = hashRecoveryCodes(enrollment.recovery_codes);
+    await client.query(
+      `UPDATE admin_users
+       SET mfa_enabled = TRUE, mfa_secret = $1, recovery_codes = $2
+       WHERE email = $3`,
+      [enrollment.secret, hashedCodes, req.user.email],
+    );
+    await clearMfaEnrollment(client, req.user.email);
+
+    const sessionTokens = await createFreshSession(client, req.user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
+
+    return res.status(200).json({ recoveryCodes: enrollment.recovery_codes });
+  } catch (error) {
+    console.error('MFA confirm error', error);
+    return res.status(500).json({ message: 'Nem sikerült bekapcsolni a kétlépcsős azonosítást' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/mfa/disable', authenticateRequest, async (req, res) => {
+  const { code, recoveryCode } = req.body || {};
+  const client = await pool.connect();
+  try {
+    const userResult = await client.query('SELECT mfa_enabled, mfa_secret, recovery_codes FROM admin_users WHERE email = $1', [req.user.email]);
+    const user = userResult.rows[0];
+
+    if (!user?.mfa_enabled) {
+      return res.status(200).json({ success: true });
+    }
+
+    const isTotpValid = code
+      ? speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: code, window: 1 })
+      : false;
+
+    let isRecoveryValid = false;
+    if (!isTotpValid && recoveryCode && Array.isArray(user.recovery_codes)) {
+      const normalized = recoveryCode.replace(/\s+/g, '').toUpperCase();
+      const match = user.recovery_codes.find((stored) => stored === hashToken(normalized));
+      isRecoveryValid = Boolean(match);
+    }
+
+    if (!isTotpValid && !isRecoveryValid) {
+      return res.status(400).json({ message: 'Érvénytelen kód a kikapcsoláshoz' });
+    }
+
+    await client.query(
+      `UPDATE admin_users
+       SET mfa_enabled = FALSE, mfa_secret = NULL, recovery_codes = ARRAY[]::TEXT[]
+       WHERE email = $1`,
+      [req.user.email],
+    );
+    await clearMfaEnrollment(client, req.user.email);
+
+    const sessionTokens = await createFreshSession(client, req.user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('MFA disable error', error);
+    return res.status(500).json({ message: 'Nem sikerült kikapcsolni a kétlépcsős azonosítást' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/password', authenticateRequest, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Hiányzó jelszó mezők' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const userResult = await client.query('SELECT password_hash FROM admin_users WHERE email = $1', [req.user.email]);
+    const user = userResult.rows[0];
+    if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+      return res.status(400).json({ message: 'A jelenlegi jelszó hibás' });
+    }
+
+    const issues = validatePasswordComplexity(newPassword, req.user.email);
+    if (issues.length) {
+      return res.status(400).json({ message: issues[0] });
+    }
+
+    const reused = await isPasswordReused(client, req.user.email, newPassword);
+    if (reused) {
+      return res.status(400).json({ message: 'A jelszó nem egyezhet meg a korábbiakkal' });
+    }
+
+    const passwordHash = createPasswordHash(newPassword);
+    await recordPasswordHistory(client, req.user.email, user.password_hash);
+    await revokeSessionsForEmail(client, req.user.email);
+
+    await client.query(
+      `UPDATE admin_users
+       SET password_hash = $1, last_password_change = NOW(), must_reset_password = FALSE
+       WHERE email = $2`,
+      [passwordHash, req.user.email],
+    );
+
+    const sessionTokens = await createFreshSession(client, req.user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Password change error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a jelszót' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/users', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT email, created_at, last_login_at, mfa_enabled, must_reset_password, is_active
+       FROM admin_users
+       ORDER BY created_at DESC`,
+    );
+
+    return res.status(200).json({ users: result.rows });
+  } catch (error) {
+    console.error('List users error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a felhasználókat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/users/invite', authenticateRequest, async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL || !brevoClient) {
+    return res.status(500).json({ message: 'A meghívók küldéséhez konfiguráld a Brevo API kulcsot' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const randomPassword = crypto.randomBytes(24).toString('hex');
+    const passwordHash = createPasswordHash(randomPassword);
+
+    await client.query(
+      `INSERT INTO admin_users (email, password_hash, must_reset_password, is_active, created_at)
+       VALUES ($1, $2, TRUE, TRUE, NOW())
+       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_reset_password = TRUE, is_active = TRUE`,
+      [normalizedEmail, passwordHash],
+    );
+
+    await revokeSessionsForEmail(client, normalizedEmail);
+
+    const { token, expiresAt } = await createUserToken(client, normalizedEmail, 'invite');
+    const inviteLink = buildInviteLink(token);
+    await sendInviteEmail(normalizedEmail, inviteLink);
+
+    return res.status(201).json({ inviteExpiresAt: expiresAt.toISOString(), link: inviteLink });
+  } catch (error) {
+    console.error('Invite user error', error);
+    return res.status(500).json({ message: 'Nem sikerült elküldeni a meghívót' });
   } finally {
     client.release();
   }
@@ -771,11 +1795,59 @@ app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) 
 });
 
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
-  return res.status(200).json({ user: { email: req.user.email } });
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT mfa_enabled FROM admin_users WHERE email = $1', [req.user.email]);
+    return res
+      .status(200)
+      .json({ user: { email: req.user.email, mfaEnabled: Boolean(result.rows[0]?.mfa_enabled) } });
+  } finally {
+    client.release();
+  }
 });
 
-app.post('/api/auth/logout', (_req, res) => {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+app.post('/api/auth/logout', async (req, res) => {
+  const csrfCookie = req.cookies[CSRF_COOKIE_NAME];
+  const csrfHeader = req.headers['x-csrf-token'];
+
+  if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+    return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+  }
+
+  const accessToken = req.cookies[COOKIE_NAME] || req.headers.authorization?.replace('Bearer ', '');
+  const refreshToken = req.cookies[REFRESH_COOKIE_NAME];
+  const client = await pool.connect();
+
+  try {
+    let session = null;
+
+    if (accessToken) {
+      const payload = verifyAccessToken(accessToken);
+      if (payload?.sid) {
+        session = await getSessionById(client, payload.sid);
+      }
+    }
+
+    if (!session && refreshToken) {
+      session = await getSessionByRefreshHash(client, hashToken(refreshToken));
+    }
+
+    if (session && session.csrf_token !== csrfCookie) {
+      return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+    }
+
+    if (session) {
+      await client.query('DELETE FROM admin_sessions WHERE id = $1', [session.id]);
+    }
+  } catch (error) {
+    console.error('Logout error', error);
+  } finally {
+    client.release();
+    res.clearCookie(COOKIE_NAME, { path: '/' });
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+    res.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
+  }
+
   return res.status(200).json({ success: true });
 });
 
@@ -871,6 +1943,20 @@ app.post('/api/projects/translate', authenticateRequest, async (req, res) => {
   }
 });
 
+app.post('/api/news/translate', authenticateRequest, async (req, res) => {
+  const { excerptHu, contentHu } = req.body || {};
+
+  try {
+    const result = await translateNewsToEnglish({ excerptHu, contentHu });
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('News translation error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült lefordítani a hírt';
+    return res.status(status).json({ message });
+  }
+});
+
 app.get('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const search = (req.query.search || '').toString().trim();
@@ -878,6 +1964,7 @@ app.get('/api/projects', authenticateRequest, async (req, res) => {
 
   const filters = [];
   const values = [];
+  const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
 
   if (status === 'published') {
     filters.push('published = TRUE');
@@ -983,6 +2070,31 @@ app.get('/api/gallery/public', async (_req, res) => {
     return res.json({ items: result.rows.map(mapGalleryRow) });
   } catch (error) {
     console.error('Get public gallery error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/gallery/public/:slug', async (req, res) => {
+  const client = await pool.connect();
+  const { slug } = req.params;
+
+  try {
+    const result = await client.query(
+      `SELECT * FROM gallery_albums
+       WHERE published = true AND slug = $1
+       LIMIT 1`,
+      [slug],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'A galéria nem található' });
+    }
+
+    return res.json(mapGalleryRow(result.rows[0]));
+  } catch (error) {
+    console.error('Get public gallery by slug error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni a galériát' });
   } finally {
     client.release();
@@ -1133,6 +2245,72 @@ async function translateProjectToEnglish({ shortDescriptionHu, descriptionHu }) 
   const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
 
   return { shortDescription, description };
+}
+
+async function translateNewsToEnglish({ excerptHu, contentHu }) {
+  if (!OPENAI_API_KEY) {
+    const error = new Error('Az OpenAI API kulcs nincs konfigurálva');
+    error.status = 500;
+    throw error;
+  }
+
+  if (!excerptHu && !contentHu) {
+    const error = new Error('Nincs fordítandó szöveg');
+    error.status = 400;
+    throw error;
+  }
+
+  const parts = [];
+  if (excerptHu) {
+    parts.push(`Excerpt (Hungarian): ${excerptHu}`);
+  }
+  if (contentHu) {
+    parts.push(`Content (Hungarian): ${contentHu}`);
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-5-mini-2025-08-07',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'You translate Hungarian news copy into concise, natural English and return only a JSON object.',
+        },
+        {
+          role: 'user',
+          content: `${parts.join('\n')}\nReturn JSON with keys "excerpt" and "content" using English values. Use empty strings for missing inputs.`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(`Fordítási hiba: ${errorText || response.statusText}`);
+    error.status = response.status || 500;
+    throw error;
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content || '{}';
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    parsed = {};
+  }
+
+  const excerpt = typeof parsed.excerpt === 'string' ? parsed.excerpt.trim() : '';
+  const englishContent = typeof parsed.content === 'string' ? parsed.content.trim() : '';
+
+  return { excerpt, content: englishContent };
 }
 
 async function validateProjectSlugs(client, payload, excludeId) {
@@ -1342,85 +2520,41 @@ app.post('/api/gallery', authenticateRequest, async (req, res) => {
   try {
     validateGalleryPayload({ ...payload, images });
 
-    const orderResult = await client.query(
-      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM gallery_albums',
-    );
-    const nextOrder = Number(orderResult.rows[0]?.next_order || 1);
+    const slug = await generateUniqueGallerySlug(client, payload.title);
+
+    const countResult = await client.query('SELECT COUNT(*) AS total FROM gallery_albums');
+    const total = Number(countResult.rows[0]?.total || 0);
+    const desiredOrderRaw = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 1;
+    const desiredOrder = Math.min(Math.max(1, desiredOrderRaw || 1), total + 1);
+
+    await client.query('BEGIN');
+    await client.query('UPDATE gallery_albums SET sort_order = sort_order + 1 WHERE sort_order >= $1', [desiredOrder]);
 
     const result = await client.query(
       `INSERT INTO gallery_albums
-       (title, subtitle, event_date, cover_image_url, cover_image_alt, images, sort_order, published)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (title, subtitle, event_date, slug, cover_image_url, cover_image_alt, images, sort_order, published)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         payload.title,
         payload.subtitle || '',
         payload.eventDate || null,
+        slug,
         payload.coverImageUrl,
         payload.coverImageAlt || '',
         JSON.stringify(images),
-        payload.sortOrder ?? nextOrder,
+        desiredOrder,
         Boolean(payload.published),
       ],
     );
 
+    await client.query('COMMIT');
     return res.status(201).json(mapGalleryRow(result.rows[0]));
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Create gallery error', error);
     const status = error.status || 500;
     return res.status(status).json({ message: error.message || 'Nem sikerült létrehozni a galériát' });
-  } finally {
-    client.release();
-  }
-});
-
-app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
-  const client = await pool.connect();
-  const payload = req.body || {};
-  const albumId = req.params.id;
-  const images = Array.isArray(payload.images)
-    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
-    : [];
-
-  try {
-    validateGalleryPayload({ ...payload, images });
-
-    const existing = await client.query('SELECT * FROM gallery_albums WHERE id = $1 LIMIT 1', [albumId]);
-    if (!existing.rows.length) {
-      return res.status(404).json({ message: 'A galéria nem található' });
-    }
-
-    const result = await client.query(
-      `UPDATE gallery_albums
-       SET title = $1,
-           subtitle = $2,
-           event_date = $3,
-           cover_image_url = $4,
-           cover_image_alt = $5,
-           images = $6,
-           sort_order = $7,
-           published = $8,
-           updated_at = NOW()
-       WHERE id = $9
-       RETURNING *`,
-      [
-        payload.title,
-        payload.subtitle || '',
-        payload.eventDate || null,
-        payload.coverImageUrl,
-        payload.coverImageAlt || '',
-        JSON.stringify(images),
-        payload.sortOrder ?? existing.rows[0].sort_order,
-        Boolean(payload.published),
-        albumId,
-      ],
-    );
-
-    return res.status(200).json(mapGalleryRow(result.rows[0]));
-  } catch (error) {
-    console.error('Update gallery error', error);
-    const status = error.status || 500;
-    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a galériát' });
   } finally {
     client.release();
   }
@@ -1454,6 +2588,84 @@ app.put('/api/gallery/reorder', authenticateRequest, async (req, res) => {
   }
 });
 
+app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const payload = req.body || {};
+  const albumId = req.params.id;
+  const images = Array.isArray(payload.images)
+    ? payload.images.filter((img) => typeof img === 'string' && img.trim())
+    : [];
+
+  try {
+    validateGalleryPayload({ ...payload, images });
+
+    await client.query('BEGIN');
+    const existing = await client.query('SELECT * FROM gallery_albums WHERE id = $1 LIMIT 1', [albumId]);
+    if (!existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'A galéria nem található' });
+    }
+
+    const currentOrder = Number(existing.rows[0].sort_order || 1);
+    const countResult = await client.query('SELECT COUNT(*) AS total FROM gallery_albums');
+    const total = Number(countResult.rows[0]?.total || 1);
+    const desiredOrderRaw = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : currentOrder;
+    const desiredOrder = Math.min(Math.max(1, desiredOrderRaw || currentOrder), total);
+
+    if (desiredOrder < currentOrder) {
+      await client.query(
+        'UPDATE gallery_albums SET sort_order = sort_order + 1 WHERE sort_order >= $1 AND sort_order < $2 AND id <> $3',
+        [desiredOrder, currentOrder, albumId],
+      );
+    } else if (desiredOrder > currentOrder) {
+      await client.query(
+        'UPDATE gallery_albums SET sort_order = sort_order - 1 WHERE sort_order <= $1 AND sort_order > $2 AND id <> $3',
+        [desiredOrder, currentOrder, albumId],
+      );
+    }
+
+    const slug = await generateUniqueGallerySlug(client, payload.title, albumId);
+
+    const result = await client.query(
+      `UPDATE gallery_albums
+       SET title = $1,
+           subtitle = $2,
+           event_date = $3,
+           slug = $4,
+           cover_image_url = $5,
+           cover_image_alt = $6,
+           images = $7,
+           sort_order = $8,
+           published = $9,
+           updated_at = NOW()
+       WHERE id = $10
+       RETURNING *`,
+      [
+        payload.title,
+        payload.subtitle || '',
+        payload.eventDate || null,
+        slug,
+        payload.coverImageUrl,
+        payload.coverImageAlt || '',
+        JSON.stringify(images),
+        desiredOrder,
+        Boolean(payload.published),
+        albumId,
+      ],
+    );
+
+    await client.query('COMMIT');
+    return res.status(200).json(mapGalleryRow(result.rows[0]));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Update gallery error', error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a galériát' });
+  } finally {
+    client.release();
+  }
+});
+
 app.delete('/api/gallery/:id', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -1473,6 +2685,7 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
   const status = (req.query.status || 'all').toString();
   const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
   const pageSize = Number(req.query.pageSize) > 0 ? Number(req.query.pageSize) : PAGE_SIZE_DEFAULT;
+  const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
 
   const filters = [];
   const values = [];
@@ -1483,10 +2696,16 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
     filters.push('published = FALSE');
   }
 
+  if (categoryId) {
+    values.push(categoryId);
+    filters.push(`category_id = $${values.length}`);
+  }
+
   if (search) {
     values.push(`%${search}%`);
     filters.push(
-      `(LOWER(category) LIKE LOWER($${values.length})
+      `(LOWER(coalesce(c.name_hu, category)) LIKE LOWER($${values.length})
+        OR LOWER(coalesce(c.name_en, category)) LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'excerpt') LIKE LOWER($${values.length})
@@ -1495,17 +2714,18 @@ app.get('/api/news', authenticateRequest, async (req, res) => {
   }
 
   const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const baseFrom = 'FROM news_articles a LEFT JOIN news_categories c ON a.category_id = c.id';
   const offset = (page - 1) * pageSize;
 
   try {
-    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const countResult = await client.query(`SELECT COUNT(*) ${baseFrom} ${whereClause}`, values);
     const total = Number(countResult.rows[0]?.count || 0);
 
     const listResult = await client.query(
-      `SELECT *
-       FROM news_articles
+      `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+       ${baseFrom}
        ${whereClause}
-       ORDER BY published_at DESC NULLS LAST, created_at DESC
+       ORDER BY sticky DESC, news_date DESC, published_at DESC NULLS LAST, created_at DESC
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, pageSize, offset],
     );
@@ -1527,14 +2747,21 @@ app.get('/api/news/public', async (req, res) => {
   const pageSizeParam = Number(req.query.pageSize);
   const limitParam = Number(req.query.limit);
   const pageSize = pageSizeParam > 0 ? pageSizeParam : limitParam > 0 ? limitParam : 6;
+  const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
 
   const filters = ['published = TRUE'];
   const values = [];
 
+  if (categoryId) {
+    values.push(categoryId);
+    filters.push(`category_id = $${values.length}`);
+  }
+
   if (search) {
     values.push(`%${search}%`);
     filters.push(
-      `(LOWER(category) LIKE LOWER($${values.length})
+      `(LOWER(coalesce(c.name_hu, category)) LIKE LOWER($${values.length})
+        OR LOWER(coalesce(c.name_en, category)) LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'en' ->> 'title') LIKE LOWER($${values.length})
         OR LOWER(translations -> 'hu' ->> 'excerpt') LIKE LOWER($${values.length})
@@ -1543,17 +2770,18 @@ app.get('/api/news/public', async (req, res) => {
   }
 
   const whereClause = `WHERE ${filters.join(' AND ')}`;
+  const baseFrom = 'FROM news_articles a LEFT JOIN news_categories c ON a.category_id = c.id';
   const offset = (page - 1) * pageSize;
 
   try {
-    const countResult = await client.query(`SELECT COUNT(*) FROM news_articles ${whereClause}`, values);
+    const countResult = await client.query(`SELECT COUNT(*) ${baseFrom} ${whereClause}`, values);
     const total = Number(countResult.rows[0]?.count || 0);
 
     const listResult = await client.query(
-      `SELECT *
-       FROM news_articles
+      `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+       ${baseFrom}
        ${whereClause}
-       ORDER BY published_at DESC NULLS LAST, created_at DESC
+       ORDER BY sticky DESC, news_date DESC, published_at DESC NULLS LAST, created_at DESC
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, pageSize, offset],
     );
@@ -1576,7 +2804,9 @@ app.get('/api/news/slug/:slug', async (req, res) => {
   const client = await pool.connect();
   try {
     const result = await client.query(
-      `SELECT * FROM news_articles
+      `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
+       FROM news_articles a
+       LEFT JOIN news_categories c ON a.category_id = c.id
        WHERE (slug_hu = $1 OR slug_en = $1) AND published = TRUE
        LIMIT 1`,
       [req.params.slug],
@@ -1590,6 +2820,131 @@ app.get('/api/news/slug/:slug', async (req, res) => {
   } catch (error) {
     console.error('Fetch news by slug error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni a hírt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/news/categories', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM news_categories ORDER BY LOWER(name_hu) ASC');
+    return res.status(200).json({ items: result.rows.map(mapNewsCategory) });
+  } catch (error) {
+    console.error('List news categories error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a kategóriákat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/news/categories/public', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM news_categories ORDER BY LOWER(name_hu) ASC');
+    return res.status(200).json({ items: result.rows.map(mapNewsCategory) });
+  } catch (error) {
+    console.error('List public news categories error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a kategóriákat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/news/categories', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const nameHu = (req.body?.nameHu || '').toString().trim();
+  const nameEn = (req.body?.nameEn || '').toString().trim() || nameHu;
+
+  if (!nameHu) {
+    return res.status(400).json({ message: 'A magyar kategórianév megadása kötelező' });
+  }
+
+  try {
+    const existing = await client.query(
+      'SELECT * FROM news_categories WHERE LOWER(name_hu) = LOWER($1) OR LOWER(name_en) = LOWER($2) LIMIT 1',
+      [nameHu, nameEn],
+    );
+
+    if (existing.rows.length) {
+      return res.status(409).json({ message: 'Ez a kategória már létezik' });
+    }
+
+    const result = await client.query(
+      'INSERT INTO news_categories (name_hu, name_en) VALUES ($1, $2) RETURNING *',
+      [nameHu, nameEn],
+    );
+
+    return res.status(201).json(mapNewsCategory(result.rows[0]));
+  } catch (error) {
+    console.error('Create news category error', error);
+    return res.status(500).json({ message: 'Nem sikerült létrehozni a kategóriát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/news/categories/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const id = req.params.id;
+  const nameHu = (req.body?.nameHu || '').toString().trim();
+  const nameEn = (req.body?.nameEn || '').toString().trim() || nameHu;
+
+  if (!nameHu) {
+    client.release();
+    return res.status(400).json({ message: 'A magyar kategórianév megadása kötelező' });
+  }
+
+  try {
+    const existing = await client.query('SELECT * FROM news_categories WHERE id = $1 LIMIT 1', [id]);
+
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A kategória nem található' });
+    }
+
+    const duplicate = await client.query(
+      'SELECT * FROM news_categories WHERE (LOWER(name_hu) = LOWER($1) OR LOWER(name_en) = LOWER($2)) AND id <> $3 LIMIT 1',
+      [nameHu, nameEn, id],
+    );
+
+    if (duplicate.rows.length) {
+      return res.status(409).json({ message: 'Ez a kategória már létezik' });
+    }
+
+    const result = await client.query(
+      'UPDATE news_categories SET name_hu = $1, name_en = $2 WHERE id = $3 RETURNING *',
+      [nameHu, nameEn, id],
+    );
+
+    await client.query('UPDATE news_articles SET category = $1, updated_at = NOW() WHERE category_id = $2', [nameHu, id]);
+
+    return res.status(200).json(mapNewsCategory(result.rows[0]));
+  } catch (error) {
+    console.error('Update news category error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a kategóriát' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/news/categories/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const id = req.params.id;
+
+  try {
+    const existing = await client.query('SELECT * FROM news_categories WHERE id = $1 LIMIT 1', [id]);
+
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A kategória nem található' });
+    }
+
+    await client.query('UPDATE news_articles SET category_id = NULL, updated_at = NOW() WHERE category_id = $1', [id]);
+    await client.query('DELETE FROM news_categories WHERE id = $1', [id]);
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete news category error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a kategóriát' });
   } finally {
     client.release();
   }
@@ -1609,17 +2964,26 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
       slugEn: payload.translations.en.slug,
     });
 
-    const publishedAt = payload.published ? new Date().toISOString() : null;
+    const { categoryId: resolvedCategoryId, categoryNameHu, categoryNameEn } = await resolveNewsCategory(
+      client,
+      payload,
+    );
 
-    const result = await client.query(
+    const publishedAt = payload.published ? new Date().toISOString() : null;
+    const newsDate = payload.date || new Date().toISOString().slice(0, 10);
+
+    const insertResult = await client.query(
       `INSERT INTO news_articles
-       (category, image_url, image_alt, published, published_at, slug_hu, slug_en, translations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
+       (category, category_id, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id`,
       [
-        payload.category,
+        categoryNameHu,
+        resolvedCategoryId,
         payload.imageUrl || null,
         payload.imageAlt || null,
+        Boolean(payload.sticky),
+        newsDate,
         Boolean(payload.published),
         publishedAt,
         payload.translations.hu.slug,
@@ -1628,7 +2992,9 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
       ],
     );
 
-    return res.status(201).json(mapNewsRow(result.rows[0]));
+    const saved = await fetchNewsWithCategory(client, insertResult.rows[0].id);
+    const response = mapNewsRow({ ...saved, category_name_en: categoryNameEn, category_name_hu: categoryNameHu });
+    return res.status(201).json(response);
   } catch (error) {
     console.error('Create news error', error);
     const status = error.status || 500;
@@ -1660,27 +3026,38 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
     }
 
     const current = existing.rows[0];
+    const { categoryId: resolvedCategoryId, categoryNameHu, categoryNameEn } = await resolveNewsCategory(
+      client,
+      { ...payload, categoryId: payload.categoryId || current.category_id },
+    );
     const publishedAt = payload.published
       ? current.published_at || new Date().toISOString()
       : null;
+    const newsDate = payload.date || current.news_date || new Date().toISOString().slice(0, 10);
 
     const result = await client.query(
       `UPDATE news_articles
        SET category = $1,
-           image_url = $2,
-           image_alt = $3,
-           published = $4,
-           published_at = $5,
-           slug_hu = $6,
-           slug_en = $7,
-           translations = $8,
+           category_id = $2,
+           image_url = $3,
+           image_alt = $4,
+           sticky = $5,
+           news_date = $6,
+           published = $7,
+           published_at = $8,
+           slug_hu = $9,
+           slug_en = $10,
+           translations = $11,
            updated_at = NOW()
-       WHERE id = $9
-       RETURNING *`,
+       WHERE id = $12
+       RETURNING id`,
       [
-        payload.category,
+        categoryNameHu,
+        resolvedCategoryId,
         payload.imageUrl || null,
         payload.imageAlt || null,
+        Boolean(payload.sticky),
+        newsDate,
         Boolean(payload.published),
         publishedAt,
         payload.translations.hu.slug,
@@ -1690,7 +3067,9 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
       ],
     );
 
-    return res.status(200).json(mapNewsRow(result.rows[0]));
+    const saved = await fetchNewsWithCategory(client, result.rows[0].id);
+    const response = mapNewsRow({ ...saved, category_name_en: categoryNameEn, category_name_hu: categoryNameHu });
+    return res.status(200).json(response);
   } catch (error) {
     console.error('Update news error', error);
     const status = error.status || 500;
@@ -1725,6 +3104,9 @@ app.get('*', (req, res) => {
 
 Promise.all([
   ensureAdminUser(),
+  ensureAdminSecurityTables(),
+  ensureAdminSessionsTable(),
+  ensureLoginAttemptTable(),
   ensureNewsTables(),
   ensureProjectsTables(),
   ensureGalleryTables(),

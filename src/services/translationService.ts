@@ -1,3 +1,5 @@
+import { withCsrfHeader } from "@/utils/csrf";
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const isBrowser = typeof window !== "undefined";
 const defaultBase = API_BASE || (isBrowser ? window.location.origin : "http://localhost");
@@ -27,7 +29,23 @@ export async function translateProjectToEnglish(payload: {
   const response = await fetch(url.toString(), {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+
+  return handleResponse(response);
+}
+
+export async function translateNewsToEnglish(payload: {
+  excerptHu?: string;
+  contentHu?: string;
+}): Promise<{ excerpt?: string; content?: string }> {
+  const url = new URL("/api/news/translate", defaultBase);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    credentials: "include",
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
 

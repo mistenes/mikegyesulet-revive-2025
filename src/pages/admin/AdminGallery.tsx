@@ -7,9 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Folder, GripVertical, Image as ImageIcon, Loader2, Pencil, Plus, Save, Trash } from "lucide-react";
+import { Folder, GripVertical, Image as ImageIcon, Loader2, Pencil, Plus, Save, Trash, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
@@ -41,7 +40,6 @@ export default function AdminGallery() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [imagesInput, setImagesInput] = useState("");
   const [coverUploading, setCoverUploading] = useState(false);
   const [imagesUploading, setImagesUploading] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -52,6 +50,7 @@ export default function AdminGallery() {
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [browserPath, setBrowserPath] = useState<string>("");
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
+  const [browserSelected, setBrowserSelected] = useState<Set<string>>(new Set());
 
   const currentBrowserPath = browserPath || browserBasePath || "";
   const parentBrowserPath = useMemo(() => {
@@ -91,8 +90,7 @@ export default function AdminGallery() {
   }, [session]);
 
   const resetForm = () => {
-    setForm(createEmptyAlbum(albums.length + 1));
-    setImagesInput("");
+    setForm(createEmptyAlbum(1));
     setEditingId(null);
   };
 
@@ -101,15 +99,6 @@ export default function AdminGallery() {
       ...prev,
       [field]: value as never,
     }));
-  };
-
-  const handleImagesChange = (value: string) => {
-    setImagesInput(value);
-    const urls = value
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    setForm((prev) => ({ ...prev, images: urls }));
   };
 
   const handleCoverUpload = async (file?: File | null) => {
@@ -133,11 +122,10 @@ export default function AdminGallery() {
     setImagesUploading(true);
     try {
       const uploads = await Promise.all([...files].map((file) => uploadToImageKit(file)));
-      setForm((prev) => {
-        const images = [...prev.images, ...uploads];
-        setImagesInput(images.join("\n"));
-        return { ...prev, images };
-      });
+      setForm((prev) => ({
+        ...prev,
+        images: [...prev.images, ...uploads],
+      }));
       toast.success("Képek feltöltve");
     } catch (error) {
       console.error(error);
@@ -156,6 +144,10 @@ export default function AdminGallery() {
       setBrowserItems(items);
       setBrowserPath(folder || baseFolder);
       setBrowserBasePath(baseFolder);
+      setBrowserSelected((prev) => {
+        const validIds = new Set(items.map((item) => item.id));
+        return new Set([...prev].filter((id) => validIds.has(id)));
+      });
       if (!items.length) {
         toast.info("Nincs találat az ImageKitben");
       }
@@ -171,6 +163,7 @@ export default function AdminGallery() {
 
   const handleBrowserOpen = (target: "cover" | "gallery") => {
     setBrowserTarget(target);
+    setBrowserSelected(new Set());
     setBrowserOpen(true);
     void loadImageKitFiles(browserSearch, browserPath);
   };
@@ -187,14 +180,53 @@ export default function AdminGallery() {
         handleFieldChange("coverImageAlt", file.name);
       }
     } else {
-      setForm((prev) => {
-        const images = [...prev.images, file.url];
-        setImagesInput(images.join("\n"));
-        return { ...prev, images };
-      });
+      setForm((prev) => ({
+        ...prev,
+        images: [...prev.images, file.url],
+      }));
     }
 
     toast.success("Kép kiválasztva az ImageKitből");
+    setBrowserOpen(false);
+  };
+
+  const handleToggleSelection = (item: ImageKitItem) => {
+    if (item.isFolder || !item.url) return;
+
+    setBrowserSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) {
+        next.delete(item.id);
+      } else {
+        next.add(item.id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const selectableIds = browserItems.filter((item) => !item.isFolder && item.url).map((item) => item.id);
+    setBrowserSelected(new Set(selectableIds));
+  };
+
+  const handleClearSelection = () => setBrowserSelected(new Set());
+
+  const handleAddSelected = () => {
+    const selectedItems = browserItems.filter((item) => browserSelected.has(item.id) && !item.isFolder && item.url);
+    const newUrls = selectedItems.map((item) => item.url!).filter(Boolean);
+
+    if (!newUrls.length) {
+      toast.error("Nincs kiválasztott kép");
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      images: [...prev.images, ...newUrls.filter((url) => !prev.images.includes(url))],
+    }));
+
+    toast.success(`${newUrls.length} kép hozzáadva`);
+    setBrowserSelected(new Set());
     setBrowserOpen(false);
   };
 
@@ -222,7 +254,6 @@ export default function AdminGallery() {
       sortOrder: album.sortOrder,
       published: album.published,
     });
-    setImagesInput(album.images.join("\n"));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -275,7 +306,7 @@ export default function AdminGallery() {
     }
 
     if (!form.coverImageUrl.trim()) {
-      toast.error("Add meg a borítókép URL-jét");
+      toast.error("Válassz borítóképet az ImageKitből vagy tölts fel egyet");
       return;
     }
 
@@ -289,11 +320,36 @@ export default function AdminGallery() {
       let saved: GalleryAlbum;
       if (editingId) {
         saved = await updateAlbum(editingId, form);
-        setAlbums((prev) => prev.map((album) => (album.id === editingId ? saved : album)).sort((a, b) => a.sortOrder - b.sortOrder));
+        setAlbums((prev) => {
+          const current = prev.find((album) => album.id === editingId);
+          if (!current) {
+            return prev;
+          }
+
+          const others = prev.filter((album) => album.id !== editingId).map((album) => {
+            if (saved.sortOrder < current.sortOrder) {
+              if (album.sortOrder >= saved.sortOrder && album.sortOrder < current.sortOrder) {
+                return { ...album, sortOrder: album.sortOrder + 1 };
+              }
+            } else if (saved.sortOrder > current.sortOrder) {
+              if (album.sortOrder <= saved.sortOrder && album.sortOrder > current.sortOrder) {
+                return { ...album, sortOrder: album.sortOrder - 1 };
+              }
+            }
+            return album;
+          });
+
+          return [...others, saved].sort((a, b) => a.sortOrder - b.sortOrder);
+        });
         toast.success("Galéria frissítve");
       } else {
         saved = await createAlbum(form);
-        setAlbums((prev) => [...prev, saved].sort((a, b) => a.sortOrder - b.sortOrder));
+        setAlbums((prev) => {
+          const shifted = prev.map((album) =>
+            album.sortOrder >= saved.sortOrder ? { ...album, sortOrder: album.sortOrder + 1 } : album,
+          );
+          return [...shifted, saved].sort((a, b) => a.sortOrder - b.sortOrder);
+        });
         toast.success("Galéria létrehozva");
       }
 
@@ -308,7 +364,6 @@ export default function AdminGallery() {
         sortOrder: saved.sortOrder,
         published: saved.published,
       });
-      setImagesInput(saved.images.join("\n"));
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : "Nem sikerült menteni a galériát";
@@ -339,6 +394,13 @@ export default function AdminGallery() {
   };
 
   const previewImage = useMemo(() => form.coverImageUrl, [form.coverImageUrl]);
+
+  const handleRemoveImage = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+    }));
+  };
 
   if (isLoading) {
     return (
@@ -416,12 +478,16 @@ export default function AdminGallery() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Borítókép URL</Label>
-                <Input
-                  value={form.coverImageUrl}
-                  onChange={(e) => handleFieldChange("coverImageUrl", e.target.value)}
-                  placeholder="https://..."
-                />
+                <Label>Borítókép</Label>
+                <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted border relative">
+                  {previewImage ? (
+                    <img src={previewImage} alt={form.coverImageAlt || form.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
+                      Válassz egy képet borítóként
+                    </div>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-3">
                   <Button
                     type="button"
@@ -454,6 +520,9 @@ export default function AdminGallery() {
                     }}
                   />
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Válassz vagy tölts fel egy képet, amit a galéria borítójaként használunk.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -466,14 +535,28 @@ export default function AdminGallery() {
               </div>
 
               <div className="space-y-2">
-                <Label>Képek (soronként egy URL)</Label>
-                <Textarea
-                  rows={6}
-                  value={imagesInput}
-                  onChange={(e) => handleImagesChange(e.target.value)}
-                  placeholder="https://...\nhttps://..."
-                  className="font-mono text-sm"
-                />
+                <Label>Galéria képei</Label>
+                {form.images.length ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {form.images.map((image, index) => (
+                      <div key={image + index} className="relative group border rounded-lg overflow-hidden bg-muted">
+                        <img src={image} alt={form.title || `Galéria kép ${index + 1}`} className="h-32 w-full object-cover" />
+                        <button
+                          type="button"
+                          className="absolute top-2 right-2 h-7 w-7 inline-flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
+                          onClick={() => handleRemoveImage(index)}
+                          aria-label="Kép eltávolítása"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border bg-muted/50 p-6 text-center text-muted-foreground text-sm">
+                    Még nincs kiválasztott kép. Adj hozzá képeket az ImageKitből vagy tölts fel újakat.
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-3">
                   <Button
                     type="button"
@@ -520,15 +603,6 @@ export default function AdminGallery() {
               </div>
             </div>
           </div>
-
-          {previewImage && (
-            <div className="rounded-xl border bg-muted/30 p-4">
-              <Label className="text-sm text-muted-foreground mb-2 block">Borítókép előnézet</Label>
-              <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted">
-                <img src={previewImage} alt={form.coverImageAlt || form.title} className="w-full h-full object-cover" />
-              </div>
-            </div>
-          )}
 
           <div className="flex flex-wrap gap-3 justify-end">
             <Button variant="outline" onClick={resetForm} type="button">
@@ -641,6 +715,25 @@ export default function AdminGallery() {
 
               {browserError && <p className="text-sm text-destructive">{browserError}</p>}
 
+              {browserTarget === "gallery" && (
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {browserSelected.size ? `${browserSelected.size} kép kiválasztva` : "Nincs kiválasztott kép"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={handleSelectAll} disabled={!browserItems.length}>
+                      Összes kijelölése
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleClearSelection} disabled={!browserSelected.size}>
+                      Kijelölések törlése
+                    </Button>
+                    <Button size="sm" onClick={handleAddSelected} disabled={!browserSelected.size}>
+                      Kiválasztott képek hozzáadása
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {browserLoading ? (
                 <div className="py-10 text-center text-muted-foreground">Fájlok betöltése az ImageKitből...</div>
               ) : !browserItems.length ? (
@@ -670,7 +763,18 @@ export default function AdminGallery() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {browserItems.map((item) => (
                         <div key={item.id} className="border rounded-lg p-3 space-y-2 bg-card shadow-sm">
-                          <div className="aspect-video overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                          <div className="relative aspect-video overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                            {browserTarget === "gallery" && !item.isFolder && item.url && (
+                              <label className="absolute left-2 top-2 flex items-center gap-2 rounded bg-background/90 px-2 py-1 text-xs shadow">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4"
+                                  checked={browserSelected.has(item.id)}
+                                  onChange={() => handleToggleSelection(item)}
+                                />
+                                Kijelölés
+                              </label>
+                            )}
                             {item.isFolder ? (
                               <Folder className="h-10 w-10 text-muted-foreground" />
                             ) : item.thumbnailUrl ? (
@@ -708,8 +812,13 @@ export default function AdminGallery() {
                                 Megnyitás
                               </Button>
                             ) : (
-                              <Button size="sm" onClick={() => handlePickImage(item)}>
-                                {browserTarget === "cover" ? "Borító beállítása" : "Hozzáadás"}
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  browserTarget === "gallery" ? handleToggleSelection(item) : handlePickImage(item)
+                                }
+                              >
+                                {browserTarget === "cover" ? "Borító beállítása" : browserSelected.has(item.id) ? "Kijelölve" : "Kijelölés"}
                               </Button>
                             )}
                           </div>

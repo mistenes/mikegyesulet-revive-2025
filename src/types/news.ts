@@ -7,11 +7,27 @@ export interface NewsTranslation {
   content: string;
 }
 
+export interface NewsCategoryTranslations {
+  hu: string;
+  en: string;
+}
+
+export interface NewsCategory {
+  id: string;
+  name: NewsCategoryTranslations;
+  createdAt: string;
+}
+
 export interface NewsArticle {
   id: string;
+  categoryId: string | null;
   category: string;
+  categoryTranslations?: NewsCategoryTranslations;
   imageUrl?: string;
   imageAlt?: string;
+  sticky?: boolean;
+  date?: string;
+  languageAvailability?: "hu" | "en" | "both";
   published: boolean;
   publishedAt: string | null;
   createdAt: string;
@@ -20,9 +36,14 @@ export interface NewsArticle {
 }
 
 export interface NewsInput {
-  category: string;
+  categoryId?: string | null;
+  category?: string;
+  categoryTranslations?: NewsCategoryTranslations;
   imageUrl?: string;
   imageAlt?: string;
+  sticky?: boolean;
+  date?: string;
+  languageAvailability?: "hu" | "en" | "both";
   published: boolean;
   translations: Record<LanguageCode, NewsTranslation>;
 }

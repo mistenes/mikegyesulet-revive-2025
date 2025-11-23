@@ -1,4 +1,5 @@
-import type { NewsArticle, NewsInput, NewsListResponse } from "@/types/news";
+import type { NewsArticle, NewsCategory, NewsInput, NewsListResponse } from "@/types/news";
+import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "news-updated";
@@ -31,12 +32,14 @@ export async function getAdminNews(params: {
   status?: "all" | "published" | "draft";
   page?: number;
   pageSize?: number;
+  categoryId?: string;
 } = {}): Promise<NewsListResponse> {
   const url = new URL("/api/news", defaultBase);
   if (params.search) url.searchParams.set("search", params.search);
   if (params.status) url.searchParams.set("status", params.status);
   if (params.page) url.searchParams.set("page", String(params.page));
   if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
+  if (params.categoryId) url.searchParams.set("categoryId", params.categoryId);
 
   const response = await fetch(url.toString(), {
     credentials: "include",
@@ -45,9 +48,10 @@ export async function getAdminNews(params: {
   return handleResponse<NewsListResponse>(response);
 }
 
-export async function getPublishedNews(limit = 6): Promise<NewsArticle[]> {
+export async function getPublishedNews(limit = 6, categoryId?: string): Promise<NewsArticle[]> {
   const url = new URL("/api/news/public", defaultBase);
   url.searchParams.set("limit", String(limit));
+  if (categoryId) url.searchParams.set("categoryId", categoryId);
 
   const response = await fetch(url.toString());
   const data = await handleResponse<{ items: NewsArticle[] }>(response);
@@ -57,10 +61,12 @@ export async function getPublishedNews(limit = 6): Promise<NewsArticle[]> {
 export async function getPublishedNewsPage(params: {
   page?: number;
   pageSize?: number;
+  categoryId?: string;
 } = {}): Promise<NewsListResponse> {
   const url = new URL("/api/news/public", defaultBase);
   if (params.page) url.searchParams.set("page", String(params.page));
   if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
+  if (params.categoryId) url.searchParams.set("categoryId", params.categoryId);
 
   const response = await fetch(url.toString());
   const data = await handleResponse<Partial<NewsListResponse> & { items: NewsArticle[] }>(response);
@@ -84,11 +90,60 @@ export async function getNewsBySlug(slug: string): Promise<NewsArticle | null> {
   return handleResponse<NewsArticle>(response);
 }
 
+export async function getNewsCategories(): Promise<NewsCategory[]> {
+  const response = await fetch(`${API_BASE}/api/news/categories`, { credentials: "include" });
+  const data = await handleResponse<{ items: NewsCategory[] }>(response);
+  return data.items;
+}
+
+export async function getPublicNewsCategories(): Promise<NewsCategory[]> {
+  const response = await fetch(`${API_BASE}/api/news/categories/public`);
+  const data = await handleResponse<{ items: NewsCategory[] }>(response);
+  return data.items;
+}
+
+export async function createNewsCategory(input: { nameHu: string; nameEn: string }): Promise<NewsCategory> {
+  const response = await fetch(`${API_BASE}/api/news/categories`, {
+    method: "POST",
+    credentials: "include",
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+
+  return handleResponse<NewsCategory>(response);
+}
+
+export async function updateNewsCategory(
+  id: string,
+  input: { nameHu: string; nameEn: string },
+): Promise<NewsCategory> {
+  const response = await fetch(`${API_BASE}/api/news/categories/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+
+  return handleResponse<NewsCategory>(response);
+}
+
+export async function deleteNewsCategory(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/news/categories/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: withCsrfHeader(),
+  });
+
+  if (!response.ok && response.status !== 204) {
+    await handleResponse(response);
+  }
+}
+
 export async function createNews(article: NewsInput): Promise<NewsArticle> {
   const response = await fetch(`${API_BASE}/api/news`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(article),
   });
 
@@ -101,7 +156,7 @@ export async function updateNews(id: string, article: NewsInput): Promise<NewsAr
   const response = await fetch(`${API_BASE}/api/news/${id}`, {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(article),
   });
 
@@ -114,6 +169,7 @@ export async function deleteNews(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/api/news/${id}`, {
     method: "DELETE",
     credentials: "include",
+    headers: withCsrfHeader(),
   });
 
   if (!response.ok && response.status !== 204) {
