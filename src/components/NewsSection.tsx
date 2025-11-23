@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,9 +6,9 @@ import { ArrowRight, Calendar } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getPublishedNews, NEWS_EVENT } from "@/services/newsService";
-import { getSectionContent, PAGE_CONTENT_EVENT } from "@/services/pageContentService";
+import { useSectionContent } from "@/hooks/useSectionContent";
 import type { NewsArticle } from "@/types/news";
-import { defaultPageContent } from "@/data/defaultPageContent";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface NewsSectionContent {
   subtitle: string;
@@ -23,9 +23,12 @@ export const NewsSection = () => {
   const { language } = useLanguage();
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sectionContent, setSectionContent] = useState<NewsSectionContent>({
-    ...defaultPageContent.news_section.hu,
-  });
+  const { content: sectionContentRaw, isLoading: contentLoading } = useSectionContent("news_section");
+
+  const sectionContent = useMemo<NewsSectionContent | null>(() => {
+    if (!sectionContentRaw) return null;
+    return (sectionContentRaw[language] || sectionContentRaw.hu || null) as NewsSectionContent | null;
+  }, [language, sectionContentRaw]);
 
   useEffect(() => {
     let active = true;
@@ -43,38 +46,17 @@ export const NewsSection = () => {
       }
     };
 
-    const loadSectionContent = async () => {
-      try {
-        const content = await getSectionContent("news_section");
-        if (!active) return;
-        setSectionContent((content[language] || content.hu || defaultPageContent.news_section.hu) as NewsSectionContent);
-      } catch (error) {
-        console.error("Failed to load news section content", error);
-        if (!active) return;
-        setSectionContent(defaultPageContent.news_section[language] || defaultPageContent.news_section.hu);
-      }
-    };
-
     loadNews();
-    loadSectionContent();
 
     if (typeof window === "undefined") return undefined;
 
     const newsHandler = () => loadNews();
-    const contentHandler = (event: Event) => {
-      const detail = (event as CustomEvent<{ sectionKey: string }>).detail;
-      if (detail?.sectionKey === "news_section") {
-        loadSectionContent();
-      }
-    };
 
     window.addEventListener(NEWS_EVENT, newsHandler as EventListener);
-    window.addEventListener(PAGE_CONTENT_EVENT, contentHandler as EventListener);
 
     return () => {
       active = false;
       window.removeEventListener(NEWS_EVENT, newsHandler as EventListener);
-      window.removeEventListener(PAGE_CONTENT_EVENT, contentHandler as EventListener);
     };
   }, [language]);
 
@@ -105,25 +87,39 @@ export const NewsSection = () => {
             isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
         >
-          <p className="text-sm font-semibold text-primary mb-2 uppercase tracking-wider">
-            {sectionContent.subtitle}
-          </p>
-          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-            {sectionContent.title}
-          </h2>
-          <p className="text-lg text-muted-foreground mb-6 max-w-2xl">
-            {sectionContent.description}
-          </p>
-          <Button
-            asChild
-            variant="outline"
-            className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300"
-          >
-            <Link to="/news" className="inline-flex items-center">
-              {sectionContent.buttonText}
-              <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </Button>
+          {contentLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-10 w-3/4" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-11 w-32" />
+            </div>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-primary mb-2 uppercase tracking-wider">
+                {sectionContent?.subtitle}
+              </p>
+              <h2
+                className="text-4xl md:text-5xl font-bold text-foreground mb-4"
+                style={{ fontFamily: "'Sora', sans-serif" }}
+              >
+                {sectionContent?.title}
+              </h2>
+              <p className="text-lg text-muted-foreground mb-6 max-w-2xl">
+                {sectionContent?.description}
+              </p>
+              <Button
+                asChild
+                variant="outline"
+                className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300"
+              >
+                <Link to="/news" className="inline-flex items-center">
+                  {sectionContent?.buttonText}
+                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
 
         {loading ? (

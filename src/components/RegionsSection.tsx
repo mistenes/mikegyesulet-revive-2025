@@ -1,11 +1,11 @@
-import { useRef, useState, useEffect } from "react";
+import { useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { getSectionContent, PAGE_CONTENT_EVENT } from "@/services/pageContentService";
-import { defaultPageContent } from "@/data/defaultPageContent";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Import region images
 import erdelyImg from "@/assets/region-erdely.jpg";
@@ -45,42 +45,12 @@ export const RegionsSection = () => {
   const sectionRef = useRef<HTMLElement>(null);
   const isVisible = useScrollAnimation(sectionRef);
   const { language } = useLanguage();
-  const [content, setContent] = useState<RegionsContent>({
-    ...defaultPageContent.regions_section.hu,
-  });
+  const { content: regionsSection, isLoading } = useSectionContent("regions_section");
 
-  useEffect(() => {
-    let active = true;
-
-    const loadContent = async () => {
-      try {
-        const section = await getSectionContent("regions_section");
-        if (!active) return;
-        setContent((section[language] || section.hu || defaultPageContent.regions_section.hu) as RegionsContent);
-      } catch (error) {
-        console.error("Failed to load regions content", error);
-        if (!active) return;
-        setContent(defaultPageContent.regions_section[language] || defaultPageContent.regions_section.hu);
-      }
-    };
-
-    loadContent();
-
-    if (typeof window === "undefined") return;
-
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ sectionKey: string }>).detail;
-      if (detail?.sectionKey === "regions_section") {
-        loadContent();
-      }
-    };
-
-    window.addEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
-    return () => {
-      active = false;
-      window.removeEventListener(PAGE_CONTENT_EVENT, handler as EventListener);
-    };
-  }, [language]);
+  const content = useMemo<RegionsContent | null>(() => {
+    if (!regionsSection) return null;
+    return (regionsSection[language] || regionsSection.hu || null) as RegionsContent | null;
+  }, [language, regionsSection]);
 
   return (
     <section ref={sectionRef} className="py-24 bg-background relative overflow-hidden">
@@ -135,47 +105,65 @@ export const RegionsSection = () => {
               isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-12"
             }`}
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full border border-primary/20">
-              <MapPin className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold text-primary uppercase tracking-wider">
-                {content.eyebrow || "RÉGIÓK"}
-              </span>
-            </div>
-            <h2 className="text-4xl md:text-5xl font-bold text-foreground leading-tight" style={{ fontFamily: "'Sora', sans-serif" }}>
-              {content.title}
-            </h2>
-
-            <p className="text-lg text-muted-foreground leading-relaxed">
-              {content.description}
-            </p>
-
-            <div className="flex flex-wrap gap-3 pt-4">
-              {(content.chips || []).map((region, i) => (
-                <Button
-                  key={i}
-                  asChild={Boolean(regionAnchors[region])}
-                  variant="outline"
-                  className="rounded-full border-border bg-muted/50 hover:border-primary hover:bg-primary/5 text-sm font-medium text-foreground px-4 py-2 h-auto"
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-28" />
+                <Skeleton className="h-10 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+              </div>
+            ) : (
+              <>
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full border border-primary/20">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary uppercase tracking-wider">
+                    {content?.eyebrow || "RÉGIÓK"}
+                  </span>
+                </div>
+                <h2
+                  className="text-4xl md:text-5xl font-bold text-foreground leading-tight"
+                  style={{ fontFamily: "'Sora', sans-serif" }}
                 >
-                  {regionAnchors[region] ? (
-                    <Link to={`/regiok#${regionAnchors[region]}`}>{region}</Link>
-                  ) : (
-                    <span>{region}</span>
-                  )}
-                </Button>
-              ))}
-            </div>
+                  {content?.title}
+                </h2>
 
-            <Button
-              size="lg"
-              className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl mt-6"
-              asChild
-            >
-              <Link to="/regiok">
-                {content.buttonText || "Fedezd fel a régiókat"}
-                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </Button>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  {content?.description}
+                </p>
+
+                <div className="flex flex-wrap gap-3 pt-4">
+                  {(content?.chips || []).map((region, i) => (
+                    <Button
+                      key={i}
+                      asChild={Boolean(regionAnchors[region])}
+                      variant="outline"
+                      className="rounded-full border-border bg-muted/50 hover:border-primary hover:bg-primary/5 text-sm font-medium text-foreground px-4 py-2 h-auto"
+                    >
+                      {regionAnchors[region] ? (
+                        <Link to={`/regiok#${regionAnchors[region]}`}>{region}</Link>
+                      ) : (
+                        <span>{region}</span>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {isLoading ? (
+              <Skeleton className="h-12 w-48 mt-2" />
+            ) : (
+              <Button
+                size="lg"
+                className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl mt-6"
+                asChild
+              >
+                <Link to="/regiok">
+                  {content?.buttonText || "Fedezd fel a régiókat"}
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
       </div>
