@@ -5,12 +5,30 @@ import { Footer } from "@/components/Footer";
 import { Card } from "@/components/ui/card";
 import { getPublicGallery } from "@/services/galleryService";
 import type { GalleryAlbum } from "@/types/gallery";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 
 export default function Galeria() {
   const [albums, setAlbums] = useState<GalleryAlbum[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const { content: galleryIntroContent } = useSectionContent("gallery_intro");
+
+  const heroContent = useMemo(() => {
+    const fallback = defaultPageContent.gallery_intro;
+    const localized = (galleryIntroContent?.[language] || galleryIntroContent?.hu || fallback?.[language] || fallback?.hu || {}) as {
+      title?: string;
+      description?: string;
+    };
+
+    return {
+      title: localized.title || "GALÉRIA",
+      description: localized.description || "Tekintse meg eseményeink és tevékenységeink fotóit",
+    };
+  }, [galleryIntroContent, language]);
 
   useEffect(() => {
     let active = true;
@@ -48,10 +66,10 @@ export default function Galeria() {
       <section className="pt-32 pb-16 px-4 bg-gradient-to-b from-primary/5 to-background">
         <div className="container mx-auto max-w-7xl">
           <h1 className="text-5xl md:text-6xl font-bold mb-6 text-foreground">
-            GALÉRIA
+            {heroContent.title}
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl">
-            Tekintse meg eseményeink és tevékenységeink fotóit
+            {heroContent.description}
           </p>
         </div>
       </section>

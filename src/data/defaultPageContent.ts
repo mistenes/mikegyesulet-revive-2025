@@ -97,11 +97,13 @@ export const defaultPageContent: PageContentStore = {
   },
   regions_intro: {
     hu: {
+      eyebrow: "RÉGIÓK",
       title: "Régióink",
       description: "Ismerd meg a Kárpát-medence magyar fiataljainak közösségeit és szervezeteit.",
       imageUrl: galleryDefaultImage,
     },
     en: {
+      eyebrow: "REGIONS",
       title: "Our regions",
       description: "Discover the Hungarian youth communities and organizations across the Carpathian Basin.",
       imageUrl: galleryDefaultImage,

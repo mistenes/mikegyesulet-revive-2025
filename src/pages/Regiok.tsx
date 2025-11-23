@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -7,10 +7,28 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mail } from "lucide-react";
 import { regionsData } from "@/data/regions";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 export default function Regiok() {
   const { language, t } = useLanguage();
   const location = useLocation();
+  const { content: regionsIntroContent } = useSectionContent("regions_intro");
+
+  const heroContent = useMemo(() => {
+    const fallback = defaultPageContent.regions_intro;
+    const localized = (regionsIntroContent?.[language] || regionsIntroContent?.hu || fallback?.[language] || fallback?.hu || {}) as {
+      eyebrow?: string;
+      title?: string;
+      description?: string;
+    };
+
+    return {
+      eyebrow: localized.eyebrow || t("regions.hero.eyebrow"),
+      title: localized.title || t("regions.hero.title"),
+      subtitle: localized.description || t("regions.hero.subtitle"),
+    };
+  }, [language, regionsIntroContent, t]);
 
   useEffect(() => {
     if (!location.hash) return;
@@ -34,16 +52,16 @@ export default function Regiok() {
         <div className="container mx-auto max-w-6xl">
           <div className="text-center space-y-6 animate-fade-in">
             <p className="text-sm font-semibold text-primary tracking-wider uppercase">
-              {t('regions.hero.eyebrow')}
+              {heroContent.eyebrow}
             </p>
-            <h1 
+            <h1
               className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight"
               style={{ fontFamily: "'Sora', sans-serif" }}
             >
-              {t('regions.hero.title')}
+              {heroContent.title}
             </h1>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              {t('regions.hero.subtitle')}
+              {heroContent.subtitle}
             </p>
           </div>
 

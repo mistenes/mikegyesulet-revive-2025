@@ -37,6 +37,15 @@ async function handleResponse(response: Response) {
   return payload as { user: Session };
 }
 
+type LoginPayload = {
+  user?: Session;
+  message?: string;
+  requiresMfa?: boolean;
+  resetRequired?: boolean;
+  lockedUntil?: string;
+  remainingAttempts?: number;
+};
+
 export async function login(
   email: string,
   password: string,
@@ -51,9 +60,9 @@ export async function login(
     body: JSON.stringify({ email, password, mfaCode: options?.mfaCode, recoveryCode: options?.recoveryCode }),
   });
 
-  let payload: any = null;
+  let payload: LoginPayload | null = null;
   try {
-    payload = await response.json();
+    payload = (await response.json()) as LoginPayload;
   } catch (error) {
     // ignore
   }
@@ -68,7 +77,10 @@ export async function login(
     throw error;
   }
 
-  cachedSession = payload.user as Session;
+  cachedSession = payload?.user ?? null;
+  if (!cachedSession) {
+    throw new Error('Nem sikerült bejelentkezni');
+  }
   return cachedSession;
 }
 
