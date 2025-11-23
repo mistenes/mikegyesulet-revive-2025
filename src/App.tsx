@@ -16,6 +16,8 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminProjects from "./pages/admin/AdminProjects";
 import AdminGallery from "./pages/admin/AdminGallery";
 import AdminMedia from "./pages/admin/AdminMedia";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AcceptInvite from "./pages/admin/AcceptInvite";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -71,6 +73,8 @@ const App = () => {
               <Route path="/admin/projects" element={<AdminProjects />} />
               <Route path="/admin/gallery" element={<AdminGallery />} />
               <Route path="/admin/media" element={<AdminMedia />} />
+              <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/accept-invite" element={<AcceptInvite />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

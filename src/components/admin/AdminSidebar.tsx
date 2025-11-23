@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, FileText, Settings, FileEdit, FolderKanban, Images, Folders } from "lucide-react";
+import { LayoutDashboard, FileText, Settings, FileEdit, FolderKanban, Images, Folders, UsersRound } from "lucide-react";
 
 const menuItems = [
   {
@@ -42,6 +42,11 @@ const menuItems = [
     title: "Médiatár",
     url: "/admin/media",
     icon: Folders,
+  },
+  {
+    title: "Felhasználók",
+    url: "/admin/users",
+    icon: UsersRound,
   },
   {
     title: "Beállítások",

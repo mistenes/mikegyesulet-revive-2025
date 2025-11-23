@@ -6,6 +6,9 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
+import fetch from 'node-fetch';
+import speakeasy from 'speakeasy';
+import SibApiV3Sdk from 'sib-api-v3-sdk';
 
 const { Pool } = pkg;
 
@@ -29,12 +32,26 @@ const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
 const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
 const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || process.env.ADMIN_EMAIL || '';
+const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'MIK Admin';
+const INVITE_BASE_URL = FRONTEND_ORIGIN || RENDER_EXTERNAL_URL || LOCAL_DEV_ORIGIN;
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 60_000;
 const LOGIN_RATE_LIMIT_MAX = 10;
 const LOGIN_MAX_FAILED_ATTEMPTS = 5;
 const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
+const PASSWORD_HISTORY_LIMIT = 5;
+const PASSWORD_MIN_LENGTH = 12;
+const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const brevoClient = BREVO_API_KEY ? new SibApiV3Sdk.TransactionalEmailsApi() : null;
+
+if (BREVO_API_KEY) {
+  const defaultClient = SibApiV3Sdk.ApiClient.instance;
+  defaultClient.authentications['api-key'].apiKey = BREVO_API_KEY;
+}
 
 const defaultPageContent = {
   hero_content: {
@@ -212,6 +229,36 @@ function createPasswordHash(password) {
   return `${HASH_ITERATIONS}$${salt}$${hash}`;
 }
 
+function validatePasswordComplexity(password, email = '') {
+  const issues = [];
+
+  if (!password || password.length < PASSWORD_MIN_LENGTH) {
+    issues.push(`A jelszónak legalább ${PASSWORD_MIN_LENGTH} karakter hosszúnak kell lennie.`);
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    issues.push('Legalább egy nagybetűt tartalmaznia kell.');
+  }
+
+  if (!/[a-z]/.test(password)) {
+    issues.push('Legalább egy kisbetűt tartalmaznia kell.');
+  }
+
+  if (!/[0-9]/.test(password)) {
+    issues.push('Legalább egy számjegyet tartalmaznia kell.');
+  }
+
+  if (!/[!@#$%^&*(),.?":{}|<>\-_+=\[\];'/\\`~]/.test(password)) {
+    issues.push('Legalább egy speciális karakter szükséges.');
+  }
+
+  if (email && password.toLowerCase().includes(email.toLowerCase())) {
+    issues.push('A jelszó nem tartalmazhatja az e-mail címet.');
+  }
+
+  return issues;
+}
+
 function verifyPassword(password, stored) {
   const [iterations = '0', salt = '', hashedPassword = ''] = stored.split('$');
   const derived = crypto.pbkdf2Sync(password, salt, Number(iterations), 64, 'sha512').toString('hex');
@@ -225,6 +272,116 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(storedBuffer, derivedBuffer);
 }
 
+async function isPasswordReused(client, email, newPassword) {
+  const current = await client.query('SELECT password_hash FROM admin_users WHERE email = $1', [email]);
+
+  if (current.rows[0]?.password_hash && verifyPassword(newPassword, current.rows[0].password_hash)) {
+    return true;
+  }
+
+  const history = await client.query(
+    'SELECT password_hash FROM admin_password_history WHERE email = $1 ORDER BY created_at DESC LIMIT $2',
+    [email, PASSWORD_HISTORY_LIMIT],
+  );
+
+  return history.rows.some((row) => verifyPassword(newPassword, row.password_hash));
+}
+
+async function recordPasswordHistory(client, email, passwordHash) {
+  await client.query(
+    `INSERT INTO admin_password_history (email, password_hash, created_at)
+     VALUES ($1, $2, NOW())`,
+    [email, passwordHash],
+  );
+}
+
+function generateRecoveryCodes(count = 8) {
+  const codes = [];
+  for (let i = 0; i < count; i += 1) {
+    codes.push(crypto.randomBytes(5).toString('hex').toUpperCase());
+  }
+  return codes;
+}
+
+function hashRecoveryCodes(codes) {
+  return codes.map((code) => hashToken(code.replace(/\s+/g, '').toUpperCase()));
+}
+
+async function storeMfaEnrollment(client, email, secret, recoveryCodes) {
+  await client.query(
+    `INSERT INTO admin_mfa_enrollments (email, secret, recovery_codes, created_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (email) DO UPDATE SET secret = EXCLUDED.secret, recovery_codes = EXCLUDED.recovery_codes, created_at = NOW()`,
+    [email, secret, recoveryCodes],
+  );
+}
+
+async function getMfaEnrollment(client, email) {
+  const result = await client.query('SELECT secret, recovery_codes FROM admin_mfa_enrollments WHERE email = $1', [email]);
+  return result.rows[0];
+}
+
+async function clearMfaEnrollment(client, email) {
+  await client.query('DELETE FROM admin_mfa_enrollments WHERE email = $1', [email]);
+}
+
+async function createUserToken(client, email, type, ttlMs = INVITE_TOKEN_TTL_MS) {
+  const token = crypto.randomBytes(48).toString('hex');
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + ttlMs);
+
+  await client.query(
+    `INSERT INTO admin_user_tokens (email, token_hash, type, expires_at, used, created_at)
+     VALUES ($1, $2, $3, $4, FALSE, NOW())`,
+    [email, tokenHash, type, expiresAt],
+  );
+
+  return { token, expiresAt };
+}
+
+async function consumeUserToken(client, token, type) {
+  const tokenHash = hashToken(token);
+  const result = await client.query(
+    `SELECT * FROM admin_user_tokens
+     WHERE token_hash = $1 AND type = $2 AND used = FALSE AND expires_at > NOW()`,
+    [tokenHash, type],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  await client.query('UPDATE admin_user_tokens SET used = TRUE WHERE id = $1', [row.id]);
+  return row;
+}
+
+function buildInviteLink(token) {
+  const baseUrl = INVITE_BASE_URL.replace(/\/$/, '');
+  return `${baseUrl}/admin/accept-invite?token=${encodeURIComponent(token)}`;
+}
+
+async function sendInviteEmail(email, inviteLink) {
+  if (!brevoClient || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a meghívók küldéséhez');
+  }
+
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  sendSmtpEmail.sender = { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME };
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.subject = 'Admin felhasználói meghívó';
+  sendSmtpEmail.htmlContent = `
+    <p>Üdvözlünk! Meghívtak, hogy szerkeszd a MIK admin felületét.</p>
+    <p>Kattints az alábbi gombra, hogy beállítsd a jelszavad és a kétlépcsős azonosítást:</p>
+    <p><a href="${inviteLink}" style="display:inline-block;padding:12px 18px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px">Meghívó elfogadása</a></p>
+    <p>Ha a gomb nem működik, másold be ezt a linket a böngészőbe:</p>
+    <p>${inviteLink}</p>
+    <p>A meghívó 7 napig érvényes.</p>
+  `;
+
+  await brevoClient.sendTransacEmail(sendSmtpEmail);
+}
+
 async function ensureAdminUser() {
   const client = await pool.connect();
   try {
@@ -232,14 +389,34 @@ async function ensureAdminUser() {
       CREATE TABLE IF NOT EXISTS admin_users (
         email TEXT PRIMARY KEY,
         password_hash TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        mfa_secret TEXT,
+        mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        recovery_codes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+        must_reset_password BOOLEAN NOT NULL DEFAULT FALSE,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        last_login_at TIMESTAMPTZ,
+        last_password_change TIMESTAMPTZ
       );
     `);
+
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS mfa_secret TEXT');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS recovery_codes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS must_reset_password BOOLEAN NOT NULL DEFAULT FALSE');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
+    await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_password_change TIMESTAMPTZ');
 
     const adminEmail = process.env.ADMIN_EMAIL;
     const adminPassword = process.env.ADMIN_PASSWORD;
 
     if (adminEmail && adminPassword) {
+      const errors = validatePasswordComplexity(adminPassword, adminEmail);
+      if (errors.length) {
+        console.error('Alapértelmezett admin jelszó nem elég erős:', errors.join(' '));
+      }
+
       const passwordHash = createPasswordHash(adminPassword);
       await client.query(
         `INSERT INTO admin_users (email, password_hash)
@@ -249,6 +426,48 @@ async function ensureAdminUser() {
       );
       console.log('Default admin user ensured');
     }
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureAdminSecurityTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_password_history (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE INDEX IF NOT EXISTS admin_password_history_email_idx ON admin_password_history(email);');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_user_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        type TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS admin_user_tokens_hash_idx ON admin_user_tokens(token_hash);');
+    await client.query('CREATE INDEX IF NOT EXISTS admin_user_tokens_email_idx ON admin_user_tokens(email);');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_mfa_enrollments (
+        email TEXT PRIMARY KEY,
+        secret TEXT NOT NULL,
+        recovery_codes TEXT[] NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
   } finally {
     client.release();
   }
@@ -948,7 +1167,7 @@ async function authenticateRequest(req, res, next) {
 }
 
 app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
-  const { email, password } = req.body || {};
+  const { email, password, mfaCode, recoveryCode } = req.body || {};
   const emailKey = (email || 'unknown').toLowerCase();
   const ip = getClientIp(req);
 
@@ -971,7 +1190,10 @@ app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
       });
     }
 
-    const result = await client.query('SELECT email, password_hash FROM admin_users WHERE email = $1', [email]);
+    const result = await client.query(
+      'SELECT email, password_hash, mfa_enabled, mfa_secret, recovery_codes, must_reset_password, is_active FROM admin_users WHERE email = $1',
+      [email],
+    );
 
     if (!result.rows.length) {
       const failed = await recordFailedLogin(client, emailKey, ip);
@@ -984,6 +1206,11 @@ app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
     }
 
     const user = result.rows[0];
+
+    if (user.is_active === false) {
+      return res.status(403).json({ message: 'A fiók le van tiltva' });
+    }
+
     const isValid = verifyPassword(password, user.password_hash);
 
     if (!isValid) {
@@ -996,11 +1223,52 @@ app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
       });
     }
 
+    if (user.must_reset_password) {
+      return res.status(403).json({ message: 'A fiók új jelszót igényel. Ellenőrizd az e-mailt.', resetRequired: true });
+    }
+
+    if (user.mfa_enabled) {
+      if (!mfaCode && !recoveryCode) {
+        return res.status(401).json({ message: 'Add meg az ellenőrző kódot a belépéshez', requiresMfa: true });
+      }
+
+      const isTotpValid = mfaCode
+        ? speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: mfaCode, window: 1 })
+        : false;
+
+      let isRecoveryValid = false;
+      if (!isTotpValid && recoveryCode && Array.isArray(user.recovery_codes)) {
+        const normalized = recoveryCode.replace(/\s+/g, '').toUpperCase();
+        const matchingIndex = user.recovery_codes.findIndex((code) => hashToken(normalized) === code);
+        if (matchingIndex >= 0) {
+          isRecoveryValid = true;
+          const nextCodes = [...user.recovery_codes];
+          nextCodes.splice(matchingIndex, 1);
+          await client.query('UPDATE admin_users SET recovery_codes = $1 WHERE email = $2', [nextCodes, user.email]);
+        }
+      }
+
+      if (!isTotpValid && !isRecoveryValid) {
+        const failed = await recordFailedLogin(client, emailKey, ip);
+        const status = failed.lockedUntil ? 429 : 401;
+        return res.status(status).json({
+          message: 'Érvénytelen vagy lejárt ellenőrző kód',
+          lockedUntil: failed.lockedUntil ? new Date(failed.lockedUntil).toISOString() : undefined,
+          remainingAttempts: failed.remainingAttempts,
+          requiresMfa: true,
+        });
+      }
+    }
+
     await resetLoginAttempts(client, emailKey, ip);
     const sessionTokens = await createFreshSession(client, user.email);
     setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
 
-    return res.status(200).json({ user: { email: user.email }, csrfToken: sessionTokens.csrfToken });
+    await client.query('UPDATE admin_users SET last_login_at = NOW() WHERE email = $1', [user.email]);
+
+    return res
+      .status(200)
+      .json({ user: { email: user.email, mfaEnabled: Boolean(user.mfa_enabled) }, csrfToken: sessionTokens.csrfToken });
   } catch (error) {
     console.error('Login error', error);
     return res.status(500).json({ message: 'Váratlan hiba történt' });
@@ -1035,13 +1303,277 @@ app.post('/api/auth/refresh', async (req, res) => {
       return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
     }
 
+    const userResult = await client.query('SELECT mfa_enabled FROM admin_users WHERE email = $1', [session.email]);
     const rotated = await rotateSession(client, session.id, session.email);
     setSessionCookies(res, rotated.accessToken, rotated.refreshToken, rotated.csrfToken);
 
-    return res.status(200).json({ user: { email: session.email }, csrfToken: rotated.csrfToken });
+    return res
+      .status(200)
+      .json({ user: { email: session.email, mfaEnabled: Boolean(userResult.rows[0]?.mfa_enabled) }, csrfToken: rotated.csrfToken });
   } catch (error) {
     console.error('Refresh error', error);
     return res.status(500).json({ message: 'Váratlan hiba történt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/auth/complete-invite', async (req, res) => {
+  const { token, password } = req.body || {};
+
+  if (!token || !password) {
+    return res.status(400).json({ message: 'Hiányzó meghívó token vagy jelszó' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const invite = await consumeUserToken(client, token, 'invite');
+    if (!invite) {
+      return res.status(400).json({ message: 'A meghívó lejárt vagy már felhasználták' });
+    }
+
+    const issues = validatePasswordComplexity(password, invite.email);
+    if (issues.length) {
+      return res.status(400).json({ message: issues[0] });
+    }
+
+    const reused = await isPasswordReused(client, invite.email, password);
+    if (reused) {
+      return res.status(400).json({ message: 'Ne használj korábbi jelszót' });
+    }
+
+    const passwordHash = createPasswordHash(password);
+    await recordPasswordHistory(client, invite.email, passwordHash);
+    await revokeSessionsForEmail(client, invite.email);
+
+    await client.query(
+      `UPDATE admin_users
+       SET password_hash = $1, must_reset_password = FALSE, last_password_change = NOW()
+       WHERE email = $2`,
+      [passwordHash, invite.email],
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Complete invite error', error);
+    return res.status(500).json({ message: 'Nem sikerült aktiválni a fiókot' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/security/mfa', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT mfa_enabled, recovery_codes FROM admin_users WHERE email = $1', [req.user.email]);
+    const row = result.rows[0];
+    return res.status(200).json({ enabled: Boolean(row?.mfa_enabled), recoveryCodesRemaining: row?.recovery_codes?.length || 0 });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/mfa/prepare', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const secret = speakeasy.generateSecret({ name: `MIK Admin (${req.user.email})` });
+    const recoveryCodes = generateRecoveryCodes();
+    await storeMfaEnrollment(client, req.user.email, secret.base32, recoveryCodes);
+
+    return res.status(200).json({ secret: secret.base32, otpauthUrl: secret.otpauth_url, recoveryCodes });
+  } catch (error) {
+    console.error('MFA prepare error', error);
+    return res.status(500).json({ message: 'Nem sikerült előkészíteni a kétlépcsős azonosítást' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/mfa/confirm', authenticateRequest, async (req, res) => {
+  const { code } = req.body || {};
+  if (!code) {
+    return res.status(400).json({ message: 'Hiányzó ellenőrző kód' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const enrollment = await getMfaEnrollment(client, req.user.email);
+    if (!enrollment) {
+      return res.status(400).json({ message: 'Nincs aktív MFA beállítás' });
+    }
+
+    const isValid = speakeasy.totp.verify({ secret: enrollment.secret, encoding: 'base32', token: code, window: 1 });
+    if (!isValid) {
+      return res.status(400).json({ message: 'Érvénytelen kód' });
+    }
+
+    const hashedCodes = hashRecoveryCodes(enrollment.recovery_codes);
+    await client.query(
+      `UPDATE admin_users
+       SET mfa_enabled = TRUE, mfa_secret = $1, recovery_codes = $2
+       WHERE email = $3`,
+      [enrollment.secret, hashedCodes, req.user.email],
+    );
+    await clearMfaEnrollment(client, req.user.email);
+
+    const sessionTokens = await createFreshSession(client, req.user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
+
+    return res.status(200).json({ recoveryCodes: enrollment.recovery_codes });
+  } catch (error) {
+    console.error('MFA confirm error', error);
+    return res.status(500).json({ message: 'Nem sikerült bekapcsolni a kétlépcsős azonosítást' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/mfa/disable', authenticateRequest, async (req, res) => {
+  const { code, recoveryCode } = req.body || {};
+  const client = await pool.connect();
+  try {
+    const userResult = await client.query('SELECT mfa_enabled, mfa_secret, recovery_codes FROM admin_users WHERE email = $1', [req.user.email]);
+    const user = userResult.rows[0];
+
+    if (!user?.mfa_enabled) {
+      return res.status(200).json({ success: true });
+    }
+
+    const isTotpValid = code
+      ? speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: code, window: 1 })
+      : false;
+
+    let isRecoveryValid = false;
+    if (!isTotpValid && recoveryCode && Array.isArray(user.recovery_codes)) {
+      const normalized = recoveryCode.replace(/\s+/g, '').toUpperCase();
+      const match = user.recovery_codes.find((stored) => stored === hashToken(normalized));
+      isRecoveryValid = Boolean(match);
+    }
+
+    if (!isTotpValid && !isRecoveryValid) {
+      return res.status(400).json({ message: 'Érvénytelen kód a kikapcsoláshoz' });
+    }
+
+    await client.query(
+      `UPDATE admin_users
+       SET mfa_enabled = FALSE, mfa_secret = NULL, recovery_codes = ARRAY[]::TEXT[]
+       WHERE email = $1`,
+      [req.user.email],
+    );
+    await clearMfaEnrollment(client, req.user.email);
+
+    const sessionTokens = await createFreshSession(client, req.user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('MFA disable error', error);
+    return res.status(500).json({ message: 'Nem sikerült kikapcsolni a kétlépcsős azonosítást' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/security/password', authenticateRequest, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Hiányzó jelszó mezők' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const userResult = await client.query('SELECT password_hash FROM admin_users WHERE email = $1', [req.user.email]);
+    const user = userResult.rows[0];
+    if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+      return res.status(400).json({ message: 'A jelenlegi jelszó hibás' });
+    }
+
+    const issues = validatePasswordComplexity(newPassword, req.user.email);
+    if (issues.length) {
+      return res.status(400).json({ message: issues[0] });
+    }
+
+    const reused = await isPasswordReused(client, req.user.email, newPassword);
+    if (reused) {
+      return res.status(400).json({ message: 'A jelszó nem egyezhet meg a korábbiakkal' });
+    }
+
+    const passwordHash = createPasswordHash(newPassword);
+    await recordPasswordHistory(client, req.user.email, user.password_hash);
+    await revokeSessionsForEmail(client, req.user.email);
+
+    await client.query(
+      `UPDATE admin_users
+       SET password_hash = $1, last_password_change = NOW(), must_reset_password = FALSE
+       WHERE email = $2`,
+      [passwordHash, req.user.email],
+    );
+
+    const sessionTokens = await createFreshSession(client, req.user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Password change error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a jelszót' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/users', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT email, created_at, last_login_at, mfa_enabled, must_reset_password, is_active
+       FROM admin_users
+       ORDER BY created_at DESC`,
+    );
+
+    return res.status(200).json({ users: result.rows });
+  } catch (error) {
+    console.error('List users error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a felhasználókat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/users/invite', authenticateRequest, async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL || !brevoClient) {
+    return res.status(500).json({ message: 'A meghívók küldéséhez konfiguráld a Brevo API kulcsot' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const randomPassword = crypto.randomBytes(24).toString('hex');
+    const passwordHash = createPasswordHash(randomPassword);
+
+    await client.query(
+      `INSERT INTO admin_users (email, password_hash, must_reset_password, is_active, created_at)
+       VALUES ($1, $2, TRUE, TRUE, NOW())
+       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_reset_password = TRUE, is_active = TRUE`,
+      [normalizedEmail, passwordHash],
+    );
+
+    await revokeSessionsForEmail(client, normalizedEmail);
+
+    const { token, expiresAt } = await createUserToken(client, normalizedEmail, 'invite');
+    const inviteLink = buildInviteLink(token);
+    await sendInviteEmail(normalizedEmail, inviteLink);
+
+    return res.status(201).json({ inviteExpiresAt: expiresAt.toISOString(), link: inviteLink });
+  } catch (error) {
+    console.error('Invite user error', error);
+    return res.status(500).json({ message: 'Nem sikerült elküldeni a meghívót' });
   } finally {
     client.release();
   }
@@ -1252,7 +1784,15 @@ app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) 
 });
 
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
-  return res.status(200).json({ user: { email: req.user.email } });
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT mfa_enabled FROM admin_users WHERE email = $1', [req.user.email]);
+    return res
+      .status(200)
+      .json({ user: { email: req.user.email, mfaEnabled: Boolean(result.rows[0]?.mfa_enabled) } });
+  } finally {
+    client.release();
+  }
 });
 
 app.post('/api/auth/logout', async (req, res) => {
@@ -2553,6 +3093,7 @@ app.get('*', (req, res) => {
 
 Promise.all([
   ensureAdminUser(),
+  ensureAdminSecurityTables(),
   ensureAdminSessionsTable(),
   ensureLoginAttemptTable(),
   ensureNewsTables(),
