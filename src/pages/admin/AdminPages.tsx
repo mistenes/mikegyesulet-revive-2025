@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileText, Save, Loader2, Languages, Eye, Search, Upload, Image as ImageIcon } from "lucide-react";
+import { FileText, Save, Loader2, Languages, Eye, Search, Upload, Image as ImageIcon, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { getAllSections, saveSection } from "@/services/pageContentService";
 import type { LanguageCode } from "@/types/language";
@@ -53,6 +53,7 @@ const galleryPreviewAlbums = [
   },
 ];
 
+
 const sectionGroups = {
   fooldal: [
     { key: "hero_content", label: "Hero Szekció" },
@@ -74,6 +75,13 @@ const sectionGroups = {
     { key: "gallery_images", label: "Galéria Képek" },
   ],
 } as const;
+
+const liveTabPaths: Record<keyof typeof sectionGroups, string> = {
+  fooldal: "/",
+  regiok: "/regiok",
+  rolunk: "/rolunk",
+  galeria: "/galeria",
+};
 
 const sectionDefinitions: Record<
   string,
@@ -205,6 +213,7 @@ export default function AdminPages() {
   const [imageUploading, setImageUploading] = useState(false);
   const [uploadTarget, setUploadTarget] = useState<FieldTarget | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [livePreviewKey, setLivePreviewKey] = useState(() => Date.now().toString());
 
   const sectionTabMap = useMemo(() => {
     const map: Record<string, keyof typeof sectionGroups> = {};
@@ -952,25 +961,66 @@ export default function AdminPages() {
     </div>
   );
 
-  const renderPreview = () => (
-    <Card className="p-4 lg:p-6 space-y-6 sticky top-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Eye className="h-5 w-5 text-primary" />
-          <div>
-            <p className="font-semibold">Élő előnézet</p>
-            <p className="text-xs text-muted-foreground">Kattints az elemekre a gyors szerkesztéshez</p>
+  const renderPreview = () => {
+    const livePreviewUrl = liveTabPaths[activeTab];
+
+    return (
+      <Card className="p-4 lg:p-6 space-y-6 sticky top-4">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <ExternalLink className="h-5 w-5 text-primary" />
+              <div>
+                <p className="font-semibold">Publikus oldal</p>
+                <p className="text-xs text-muted-foreground">A látogatók által látott verzió az aktuális fül alapján</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLivePreviewKey(Date.now().toString())}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Újratöltés
+              </Button>
+              <Button asChild size="sm" variant="secondary" className="gap-2">
+                <a href={livePreviewUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Megnyitás
+                </a>
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-xl border overflow-hidden bg-muted/20">
+            <iframe
+              key={`${activeTab}-${livePreviewKey}`}
+              src={livePreviewUrl}
+              title="Publikus oldal előnézete"
+              className="w-full h-[520px] bg-background"
+            />
           </div>
         </div>
-        <div className="text-xs text-muted-foreground">Nyelv: {activeLanguage === "hu" ? "Magyar" : "English"}</div>
-      </div>
 
-      {activeTab === "fooldal" && renderHomePreview()}
-      {activeTab === "regiok" && renderRegionsPreview()}
-      {activeTab === "rolunk" && renderAboutPreview()}
-      {activeTab === "galeria" && renderGalleryPreview()}
-    </Card>
-  );
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Eye className="h-5 w-5 text-primary" />
+            <div>
+              <p className="font-semibold">Szerkeszthető előnézet</p>
+              <p className="text-xs text-muted-foreground">Kattints az elemekre a gyors szerkesztéshez</p>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">Nyelv: {activeLanguage === "hu" ? "Magyar" : "English"}</div>
+        </div>
+
+        {activeTab === "fooldal" && renderHomePreview()}
+        {activeTab === "regiok" && renderRegionsPreview()}
+        {activeTab === "rolunk" && renderAboutPreview()}
+        {activeTab === "galeria" && renderGalleryPreview()}
+      </Card>
+    );
+  };
 
   if (loading) {
     return (
