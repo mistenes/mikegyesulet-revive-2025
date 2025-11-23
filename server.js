@@ -393,7 +393,9 @@ async function ensureGalleryTables() {
       );
     `);
 
-    await client.query('ALTER TABLE gallery_albums ADD COLUMN IF NOT EXISTS slug TEXT NOT NULL DEFAULT '''';');
+    await client.query(
+      "ALTER TABLE gallery_albums ADD COLUMN IF NOT EXISTS slug TEXT NOT NULL DEFAULT '';",
+    );
 
     await client.query(
       'CREATE INDEX IF NOT EXISTS gallery_sort_idx ON gallery_albums(sort_order, created_at DESC);',
