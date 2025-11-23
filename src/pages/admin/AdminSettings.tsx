@@ -278,6 +278,21 @@ export default function AdminSettings() {
               {mfaSetup && (
                 <div className="rounded-lg border border-dashed border-border p-4 space-y-3">
                   <p className="text-sm text-muted-foreground">Olvasd be a kódot a hitelesítő appban.</p>
+                  {mfaSetup.otpauthUrl && (
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <div className="bg-white p-3 rounded-md border shadow-sm inline-flex">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(mfaSetup.otpauthUrl)}`}
+                          alt="Authenticator QR kód"
+                          className="h-48 w-48 object-contain"
+                        />
+                      </div>
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        <p>Szkenneld be a QR-kódot a választott hitelesítő alkalmazással.</p>
+                        <p>Ha nem tudsz szkennelni, használd a lenti URL-t vagy titkos kulcsot.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="bg-muted p-3 rounded-md space-y-2">
                     <p className="font-mono text-sm break-all">{mfaSetup.otpauthUrl}</p>
                     <Button
