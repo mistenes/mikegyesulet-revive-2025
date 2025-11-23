@@ -16,7 +16,10 @@ const DIST_PATH = path.join(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me';
 const COOKIE_NAME = 'mik_admin_session';
-const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const REFRESH_COOKIE_NAME = 'mik_admin_refresh';
+const CSRF_COOKIE_NAME = 'mik_admin_csrf';
+const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || '';
 const LOCAL_DEV_ORIGIN = process.env.LOCAL_DEV_ORIGIN || 'http://localhost:5173';
@@ -187,8 +190,20 @@ app.get('/healthz', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-function signSession(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+function signAccessToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(ACCESS_TOKEN_MAX_AGE_MS / 1000) });
+}
+
+function verifyAccessToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 function createPasswordHash(password) {
@@ -208,14 +223,6 @@ function verifyPassword(password, stored) {
   }
 
   return crypto.timingSafeEqual(storedBuffer, derivedBuffer);
-}
-
-function verifySession(token) {
-  try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch (error) {
-    return null;
-  }
 }
 
 async function ensureAdminUser() {
@@ -774,6 +781,130 @@ async function resetLoginAttempts(client, emailKey, ip) {
   await client.query('DELETE FROM admin_login_attempts WHERE email = $1 AND ip = $2', [emailKey, ip]);
 }
 
+async function ensureAdminSessionsTable() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL,
+        refresh_token_hash TEXT NOT NULL,
+        csrf_token TEXT NOT NULL,
+        token_nonce TEXT NOT NULL,
+        revoked BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE INDEX IF NOT EXISTS admin_sessions_email_idx ON admin_sessions(email);');
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS admin_sessions_refresh_hash_idx ON admin_sessions(refresh_token_hash);',
+    );
+  } finally {
+    client.release();
+  }
+}
+
+async function revokeSessionsForEmail(client, email) {
+  await client.query('DELETE FROM admin_sessions WHERE email = $1', [email]);
+}
+
+async function getSessionById(client, sessionId) {
+  const result = await client.query('SELECT * FROM admin_sessions WHERE id = $1', [sessionId]);
+  return result.rows[0];
+}
+
+async function getSessionByRefreshHash(client, refreshHash) {
+  const result = await client.query(
+    'SELECT * FROM admin_sessions WHERE refresh_token_hash = $1 AND revoked = FALSE',
+    [refreshHash],
+  );
+
+  return result.rows[0];
+}
+
+async function persistSession(client, sessionId, email, refreshToken, csrfToken, tokenNonce) {
+  const refreshTokenHash = hashToken(refreshToken);
+  await client.query(
+    `INSERT INTO admin_sessions (id, email, refresh_token_hash, csrf_token, token_nonce)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (id) DO UPDATE SET
+       refresh_token_hash = EXCLUDED.refresh_token_hash,
+       csrf_token = EXCLUDED.csrf_token,
+       token_nonce = EXCLUDED.token_nonce,
+       revoked = FALSE,
+       updated_at = NOW()`,
+    [sessionId, email, refreshTokenHash, csrfToken, tokenNonce],
+  );
+}
+
+async function updateSessionWithRotation(client, sessionId, refreshToken, csrfToken, tokenNonce) {
+  const refreshTokenHash = hashToken(refreshToken);
+  await client.query(
+    `UPDATE admin_sessions SET
+       refresh_token_hash = $1,
+       csrf_token = $2,
+       token_nonce = $3,
+       revoked = FALSE,
+     updated_at = NOW()
+   WHERE id = $4`,
+    [refreshTokenHash, csrfToken, tokenNonce, sessionId],
+  );
+}
+
+async function createFreshSession(client, email) {
+  await revokeSessionsForEmail(client, email);
+
+  const sessionId = crypto.randomUUID();
+  const refreshToken = crypto.randomBytes(48).toString('hex');
+  const csrfToken = crypto.randomBytes(32).toString('hex');
+  const tokenNonce = crypto.randomBytes(16).toString('hex');
+  const accessToken = signAccessToken({ email, sid: sessionId, nonce: tokenNonce });
+
+  await persistSession(client, sessionId, email, refreshToken, csrfToken, tokenNonce);
+
+  return { sessionId, accessToken, refreshToken, csrfToken, tokenNonce };
+}
+
+async function rotateSession(client, sessionId, email) {
+  const refreshToken = crypto.randomBytes(48).toString('hex');
+  const csrfToken = crypto.randomBytes(32).toString('hex');
+  const tokenNonce = crypto.randomBytes(16).toString('hex');
+  const accessToken = signAccessToken({ email, sid: sessionId, nonce: tokenNonce });
+
+  await updateSessionWithRotation(client, sessionId, refreshToken, csrfToken, tokenNonce);
+
+  return { sessionId, accessToken, refreshToken, csrfToken, tokenNonce };
+}
+
+function setSessionCookies(res, accessToken, refreshToken, csrfToken) {
+  res.cookie(COOKIE_NAME, accessToken, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: true,
+    maxAge: ACCESS_TOKEN_MAX_AGE_MS,
+    path: '/',
+  });
+
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: true,
+    maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+    path: '/',
+  });
+
+  res.cookie(CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: false,
+    sameSite: 'strict',
+    secure: true,
+    maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+    path: '/',
+  });
+}
+
 async function authenticateRequest(req, res, next) {
   const bearer = req.headers.authorization?.replace('Bearer ', '');
   const token = req.cookies[COOKIE_NAME] || bearer;
@@ -782,14 +913,38 @@ async function authenticateRequest(req, res, next) {
     return res.status(401).json({ message: 'Nincs aktív munkamenet' });
   }
 
-  const session = verifySession(token);
+  const payload = verifyAccessToken(token);
 
-  if (!session) {
+  if (!payload?.sid || !payload?.email || !payload?.nonce) {
     return res.status(401).json({ message: 'Érvénytelen vagy lejárt munkamenet' });
   }
 
-  req.user = session;
-  return next();
+  const client = await pool.connect();
+
+  try {
+    const session = await getSessionById(client, payload.sid);
+
+    if (!session || session.revoked || session.email !== payload.email || session.token_nonce !== payload.nonce) {
+      return res.status(401).json({ message: 'Érvénytelen vagy lejárt munkamenet' });
+    }
+
+    const unsafeMethod = !['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase());
+    if (unsafeMethod) {
+      const csrfCookie = req.cookies[CSRF_COOKIE_NAME];
+      const csrfHeader = req.headers['x-csrf-token'];
+      if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader || csrfCookie !== session.csrf_token) {
+        return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+      }
+    }
+
+    req.user = { email: payload.email, sessionId: payload.sid };
+    return next();
+  } catch (error) {
+    console.error('Auth error', error);
+    return res.status(500).json({ message: 'Váratlan hiba történt' });
+  } finally {
+    client.release();
+  }
 }
 
 app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
@@ -842,19 +997,50 @@ app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
     }
 
     await resetLoginAttempts(client, emailKey, ip);
-    const token = signSession({ email: user.email });
+    const sessionTokens = await createFreshSession(client, user.email);
+    setSessionCookies(res, sessionTokens.accessToken, sessionTokens.refreshToken, sessionTokens.csrfToken);
 
-    res.cookie(COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: SESSION_MAX_AGE_MS,
-      path: '/',
-    });
-
-    return res.status(200).json({ user: { email: user.email } });
+    return res.status(200).json({ user: { email: user.email }, csrfToken: sessionTokens.csrfToken });
   } catch (error) {
     console.error('Login error', error);
+    return res.status(500).json({ message: 'Váratlan hiba történt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+  const refreshToken = req.cookies[REFRESH_COOKIE_NAME];
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'A munkamenet lejárt, jelentkezz be újra' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const refreshHash = hashToken(refreshToken);
+    const session = await getSessionByRefreshHash(client, refreshHash);
+
+    if (!session) {
+      res.clearCookie(COOKIE_NAME, { path: '/' });
+      res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+      res.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
+      return res.status(401).json({ message: 'A munkamenet lejárt, jelentkezz be újra' });
+    }
+
+    const csrfCookie = req.cookies[CSRF_COOKIE_NAME];
+    const csrfHeader = req.headers['x-csrf-token'];
+
+    if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader || csrfCookie !== session.csrf_token) {
+      return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+    }
+
+    const rotated = await rotateSession(client, session.id, session.email);
+    setSessionCookies(res, rotated.accessToken, rotated.refreshToken, rotated.csrfToken);
+
+    return res.status(200).json({ user: { email: session.email }, csrfToken: rotated.csrfToken });
+  } catch (error) {
+    console.error('Refresh error', error);
     return res.status(500).json({ message: 'Váratlan hiba történt' });
   } finally {
     client.release();
@@ -1069,8 +1255,48 @@ app.get('/api/auth/me', authenticateRequest, async (req, res) => {
   return res.status(200).json({ user: { email: req.user.email } });
 });
 
-app.post('/api/auth/logout', (_req, res) => {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+app.post('/api/auth/logout', async (req, res) => {
+  const csrfCookie = req.cookies[CSRF_COOKIE_NAME];
+  const csrfHeader = req.headers['x-csrf-token'];
+
+  if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+    return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+  }
+
+  const accessToken = req.cookies[COOKIE_NAME] || req.headers.authorization?.replace('Bearer ', '');
+  const refreshToken = req.cookies[REFRESH_COOKIE_NAME];
+  const client = await pool.connect();
+
+  try {
+    let session = null;
+
+    if (accessToken) {
+      const payload = verifyAccessToken(accessToken);
+      if (payload?.sid) {
+        session = await getSessionById(client, payload.sid);
+      }
+    }
+
+    if (!session && refreshToken) {
+      session = await getSessionByRefreshHash(client, hashToken(refreshToken));
+    }
+
+    if (session && session.csrf_token !== csrfCookie) {
+      return res.status(403).json({ message: 'CSRF token hiányzik vagy érvénytelen' });
+    }
+
+    if (session) {
+      await client.query('DELETE FROM admin_sessions WHERE id = $1', [session.id]);
+    }
+  } catch (error) {
+    console.error('Logout error', error);
+  } finally {
+    client.release();
+    res.clearCookie(COOKIE_NAME, { path: '/' });
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+    res.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
+  }
+
   return res.status(200).json({ success: true });
 });
 
@@ -2327,6 +2553,7 @@ app.get('*', (req, res) => {
 
 Promise.all([
   ensureAdminUser(),
+  ensureAdminSessionsTable(),
   ensureLoginAttemptTable(),
   ensureNewsTables(),
   ensureProjectsTables(),

@@ -1,5 +1,6 @@
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { LocalizedSectionContent, PageContentStore } from "@/types/pageContent";
+import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const STORAGE_EVENT = "page-content-updated";
@@ -80,7 +81,7 @@ export async function saveSection(sectionKey: string, content: LocalizedSectionC
   const response = await fetch(`${API_BASE}/api/page-content/${encodeURIComponent(sectionKey)}`, {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify({ translations: content }),
   });
 

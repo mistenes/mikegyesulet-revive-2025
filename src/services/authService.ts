@@ -1,3 +1,5 @@
+import { withCsrfHeader } from '@/utils/csrf';
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 export type Session = {
@@ -42,6 +44,7 @@ export async function logout(): Promise<void> {
   await fetch(`${API_BASE}/api/auth/logout`, {
     method: 'POST',
     credentials: 'include',
+    headers: withCsrfHeader(),
   });
 }
 
@@ -51,6 +54,26 @@ export async function getSession(): Promise<Session | null> {
   const response = await fetch(`${API_BASE}/api/auth/me`, {
     method: 'GET',
     credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    const refreshed = await refreshSession();
+    if (refreshed) return refreshed;
+
+    cachedSession = null;
+    return null;
+  }
+
+  const data = await handleResponse(response);
+  cachedSession = data.user as Session;
+  return cachedSession;
+}
+
+export async function refreshSession(): Promise<Session | null> {
+  const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: withCsrfHeader(),
   });
 
   if (response.status === 401) {

@@ -1,4 +1,5 @@
 import type { NewsArticle, NewsCategory, NewsInput, NewsListResponse } from "@/types/news";
+import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "news-updated";
@@ -105,7 +106,7 @@ export async function createNewsCategory(input: { nameHu: string; nameEn: string
   const response = await fetch(`${API_BASE}/api/news/categories`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(input),
   });
 
@@ -119,7 +120,7 @@ export async function updateNewsCategory(
   const response = await fetch(`${API_BASE}/api/news/categories/${id}`, {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(input),
   });
 
@@ -130,6 +131,7 @@ export async function deleteNewsCategory(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/api/news/categories/${id}`, {
     method: "DELETE",
     credentials: "include",
+    headers: withCsrfHeader(),
   });
 
   if (!response.ok && response.status !== 204) {
@@ -141,7 +143,7 @@ export async function createNews(article: NewsInput): Promise<NewsArticle> {
   const response = await fetch(`${API_BASE}/api/news`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(article),
   });
 
@@ -154,7 +156,7 @@ export async function updateNews(id: string, article: NewsInput): Promise<NewsAr
   const response = await fetch(`${API_BASE}/api/news/${id}`, {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     body: JSON.stringify(article),
   });
 
@@ -167,6 +169,7 @@ export async function deleteNews(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/api/news/${id}`, {
     method: "DELETE",
     credentials: "include",
+    headers: withCsrfHeader(),
   });
 
   if (!response.ok && response.status !== 204) {

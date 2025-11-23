@@ -1,3 +1,5 @@
+import { withCsrfHeader } from "@/utils/csrf";
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const isBrowser = typeof window !== "undefined";
 const defaultBase = API_BASE || (isBrowser ? window.location.origin : "http://localhost");
@@ -124,7 +126,7 @@ export async function listImageKitFiles(search?: string, path?: string): Promise
 export async function createImageKitFolder(parentPath: string, name: string): Promise<void> {
   const response = await fetch(new URL("/api/gallery/imagekit-folders", defaultBase).toString(), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
     credentials: "include",
     body: JSON.stringify({ parentPath, name }),
   });
