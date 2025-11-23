@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export default function AdminSettings() {
   const [security, setSecurity] = useState<SecurityStatus | null>(null);
   const [mfaSetup, setMfaSetup] = useState<MfaPreparation | null>(null);
   const [mfaCode, setMfaCode] = useState("");
+  const mfaInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [disableCode, setDisableCode] = useState("");
   const [disableRecovery, setDisableRecovery] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -312,7 +313,39 @@ export default function AdminSettings() {
                         key={idx}
                         maxLength={1}
                         value={mfaCode[idx] || ''}
-                        onChange={(e) => setMfaCode((prev) => `${prev.slice(0, idx)}${e.target.value.replace(/\D/g, '')}${prev.slice(idx + 1)}`)}
+                        ref={(el) => {
+                          mfaInputRefs.current[idx] = el;
+                        }}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, "");
+                          setMfaCode((prev) => {
+                            const next = Array.from({ length: 6 }, (_, i) => prev[i] || "");
+                            let position = idx;
+
+                            if (digits.length === 0) {
+                              next[idx] = "";
+                            } else {
+                              for (const digit of digits.slice(0, 6 - idx)) {
+                                next[position] = digit;
+                                position += 1;
+                              }
+                            }
+
+                            return next.join("").trimEnd();
+                          });
+
+                          if (digits.length > 0) {
+                            const nextIndex = Math.min(idx + digits.length, 5);
+                            const target = mfaInputRefs.current[nextIndex];
+                            target?.focus();
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Backspace" && !mfaCode[idx] && idx > 0) {
+                            const target = mfaInputRefs.current[idx - 1];
+                            target?.focus();
+                          }
+                        }}
                       />
                     ))}
                   </div>
@@ -334,7 +367,7 @@ export default function AdminSettings() {
                 <div className="space-y-2">
                   <Label>Helyreállítás vagy kikapcsolás</Label>
                   <Input
-                    placeholder="TOTP kód"
+                    placeholder="Hitelesítő app kód"
                     value={disableCode}
                     onChange={(e) => setDisableCode(e.target.value)}
                     disabled={securitySaving}
