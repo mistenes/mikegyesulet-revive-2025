@@ -410,9 +410,9 @@ async function ensureGalleryTables() {
     for (const row of existingAlbums.rows) {
       let baseSlug = (row.slug || '').trim();
       if (!baseSlug) {
-        baseSlug = slugify(row.title || 'galeria');
+        baseSlug = slugifyText(row.title || 'galeria');
       } else {
-        baseSlug = slugify(baseSlug);
+        baseSlug = slugifyText(baseSlug);
       }
 
       const uniqueSlug = ensureUniqueSlug(baseSlug, usedSlugs);
@@ -604,7 +604,7 @@ function ensureUniqueSlug(base, usedSet) {
 }
 
 async function generateUniqueGallerySlug(client, title, excludeId) {
-  const base = slugify(title || 'galeria') || 'galeria';
+  const base = slugifyText(title || 'galeria') || 'galeria';
   let candidate = base;
   let suffix = 1;
 
