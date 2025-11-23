@@ -17,8 +17,41 @@ import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
 import { cn } from "@/lib/utils";
+import { regionsData } from "@/data/regions";
 
 const PAGE_CONTENT_FOLDER = "page-content";
+
+const timelinePreview = [
+  { year: "1999", event: "Megalakul a MIK" },
+  { year: "2016", event: "Önálló jogi személlyé válás" },
+  { year: "2020", event: "Segítség.ma projekt" },
+  { year: "2021", event: "MIK Start program" },
+  { year: "2022", event: "EVITA program" },
+];
+
+const galleryPreviewAlbums = [
+  {
+    id: "album-1",
+    title: "Kárpát-medencei Ifjúsági Találkozó",
+    subtitle: "Budapest, 2024",
+    image:
+      "https://images.unsplash.com/photo-1529338296731-c4280a44fcfb?auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: "album-2",
+    title: "MIK Start mentorprogram",
+    subtitle: "Balatonfüred, 2023",
+    image:
+      "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: "album-3",
+    title: "Önkéntes hétvége",
+    subtitle: "Kolozsvár, 2024",
+    image:
+      "https://images.unsplash.com/photo-1515165562835-c3b8c52a2572?auto=format&fit=crop&w=800&q=80",
+  },
+];
 
 const sectionGroups = {
   fooldal: [
@@ -734,36 +767,46 @@ export default function AdminPages() {
 
   const renderRegionsPreview = () => (
     <div className="rounded-2xl border overflow-hidden">
-      <div className="grid lg:grid-cols-2 gap-6 p-6 bg-muted/30">
-        <div className="space-y-3">
+      <div className="relative p-6 bg-gradient-to-b from-primary/5 to-background">
+        <div className="text-center space-y-3 max-w-3xl mx-auto">
           <PreviewEditable sectionKey="regions_intro" fieldKey="eyebrow">
-            <p className="text-xs font-semibold tracking-widest text-primary">
+            <p className="text-xs font-semibold tracking-widest text-primary uppercase">
               {(previewContent.regionsIntro as Record<string, unknown>).eyebrow as string}
             </p>
           </PreviewEditable>
           <PreviewEditable sectionKey="regions_intro" fieldKey="title">
-            <h3 className="text-2xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
+            <h3 className="text-3xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
               {(previewContent.regionsIntro as Record<string, unknown>).title as string}
             </h3>
           </PreviewEditable>
           <PreviewEditable sectionKey="regions_intro" fieldKey="description">
-            <p className="text-sm text-muted-foreground leading-relaxed">
+            <p className="text-base text-muted-foreground leading-relaxed">
               {(previewContent.regionsIntro as Record<string, unknown>).description as string}
             </p>
           </PreviewEditable>
         </div>
+
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          {regionsData.slice(0, 6).map((region) => (
+            <Button key={region.id} variant="outline" size="sm" className="hover:bg-primary hover:text-primary-foreground">
+              {region.nameHu}
+            </Button>
+          ))}
+        </div>
+
         <PreviewEditable sectionKey="regions_intro" fieldKey="imageUrl">
-          <div className="rounded-xl overflow-hidden border bg-background">
+          <div className="rounded-xl overflow-hidden border bg-background mt-8 shadow-sm">
             <img
               src={((previewContent.regionsIntro as Record<string, unknown>).imageUrl as string) || (defaultPageContent.regions_intro[activeLanguage]?.imageUrl as string) || (defaultPageContent.regions_intro.hu?.imageUrl as string)}
               alt="Régiók hero"
-              className="w-full h-48 object-cover"
+              className="w-full h-56 object-cover"
             />
           </div>
         </PreviewEditable>
       </div>
-      <div className="grid md:grid-cols-2 gap-4 p-6 bg-background/80">
-        <div className="space-y-2">
+
+      <div className="grid md:grid-cols-2 gap-6 p-6 bg-background/90">
+        <Card className="p-4 space-y-2 shadow-none border-muted">
           <PreviewEditable sectionKey="regions_map" fieldKey="title">
             <h4 className="text-lg font-semibold">{(previewContent.regionsMap as Record<string, unknown>).title as string}</h4>
           </PreviewEditable>
@@ -772,8 +815,11 @@ export default function AdminPages() {
               {(previewContent.regionsMap as Record<string, unknown>).description as string}
             </p>
           </PreviewEditable>
-        </div>
-        <div className="space-y-2">
+          <div className="rounded-lg bg-muted h-32 w-full flex items-center justify-center text-muted-foreground text-xs">
+            Térkép előnézet
+          </div>
+        </Card>
+        <Card className="p-4 space-y-3 shadow-none border-muted">
           <PreviewEditable sectionKey="regions_list" fieldKey="title">
             <h4 className="text-lg font-semibold">{(previewContent.regionsList as Record<string, unknown>).title as string}</h4>
           </PreviewEditable>
@@ -782,68 +828,126 @@ export default function AdminPages() {
               {(previewContent.regionsList as Record<string, unknown>).description as string}
             </p>
           </PreviewEditable>
-        </div>
+          <div className="space-y-2">
+            {regionsData.slice(0, 2).map((region) => (
+              <div key={region.id} className="p-3 rounded-lg border bg-muted/40 space-y-1">
+                <p className="text-sm font-semibold">{region.nameHu}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2">{region.description}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </div>
   );
 
   const renderAboutPreview = () => (
-    <div className="rounded-2xl border p-6 space-y-4 bg-muted/30">
-      <PreviewEditable sectionKey="about_section" fieldKey="badge">
-        <p className="text-xs uppercase tracking-widest text-primary font-semibold">
-          {(previewContent.about as Record<string, unknown>).badge as string}
-        </p>
-      </PreviewEditable>
-      <PreviewEditable sectionKey="about_section" fieldKey="title">
-        <h3 className="text-2xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
-          {(previewContent.about as Record<string, unknown>).title as string}
-        </h3>
-      </PreviewEditable>
-      <PreviewEditable sectionKey="about_section" fieldKey="description">
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {(previewContent.about as Record<string, unknown>).description as string}
-        </p>
-      </PreviewEditable>
-      <PreviewEditable sectionKey="about_section" fieldKey="buttonText">
-        <Button variant="outline" size="sm">
-          {(previewContent.about as Record<string, unknown>).buttonText as string}
-        </Button>
-      </PreviewEditable>
-      <PreviewEditable sectionKey="about_section" fieldKey="imageUrl">
-        <div className="rounded-xl overflow-hidden border">
-          <img
-            src={((previewContent.about as Record<string, unknown>).imageUrl as string) || (defaultPageContent.about_section[activeLanguage]?.imageUrl as string) || (defaultPageContent.about_section.hu?.imageUrl as string)}
-            alt="About"
-            className="w-full h-48 object-cover"
-          />
+    <div className="rounded-2xl border overflow-hidden bg-background">
+      <div className="p-6 bg-gradient-to-b from-primary/5 to-background space-y-4">
+        <PreviewEditable sectionKey="about_section" fieldKey="badge">
+          <p className="text-xs uppercase tracking-widest text-primary font-semibold">
+            {(previewContent.about as Record<string, unknown>).badge as string}
+          </p>
+        </PreviewEditable>
+        <PreviewEditable sectionKey="about_section" fieldKey="title">
+          <h3 className="text-3xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
+            {(previewContent.about as Record<string, unknown>).title as string}
+          </h3>
+        </PreviewEditable>
+        <PreviewEditable sectionKey="about_section" fieldKey="subtitle">
+          <p className="text-lg text-muted-foreground">
+            {(previewContent.about as Record<string, unknown>).subtitle as string}
+          </p>
+        </PreviewEditable>
+      </div>
+
+      <div className="p-6 space-y-6 bg-card/30">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {timelinePreview.map((item) => (
+            <div key={item.year} className="text-center p-3 rounded-lg bg-background">
+              <div className="text-2xl font-bold text-primary">{item.year}</div>
+              <div className="text-xs text-muted-foreground">{item.event}</div>
+            </div>
+          ))}
         </div>
-      </PreviewEditable>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <PreviewEditable sectionKey="about_section" fieldKey="description">
+            <Card className="p-4 shadow-none border-muted">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {(previewContent.about as Record<string, unknown>).description as string}
+              </p>
+            </Card>
+          </PreviewEditable>
+          <PreviewEditable sectionKey="about_section" fieldKey="ctaDescription">
+            <Card className="p-4 shadow-none border-muted space-y-3">
+              <div className="text-xs font-semibold uppercase text-primary">
+                {(previewContent.about as Record<string, unknown>).ctaBadge as string}
+              </div>
+              <h4 className="text-lg font-semibold">{(previewContent.about as Record<string, unknown>).ctaTitle as string}</h4>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {(previewContent.about as Record<string, unknown>).ctaDescription as string}
+              </p>
+              <Button size="sm" variant="outline">
+                {(previewContent.about as Record<string, unknown>).ctaButton as string}
+              </Button>
+            </Card>
+          </PreviewEditable>
+        </div>
+
+        <PreviewEditable sectionKey="about_section" fieldKey="imageUrl">
+          <div className="rounded-xl overflow-hidden border shadow-sm">
+            <img
+              src={((previewContent.about as Record<string, unknown>).imageUrl as string) || (defaultPageContent.about_section[activeLanguage]?.imageUrl as string) || (defaultPageContent.about_section.hu?.imageUrl as string)}
+              alt="About"
+              className="w-full h-48 object-cover"
+            />
+          </div>
+        </PreviewEditable>
+      </div>
     </div>
   );
 
   const renderGalleryPreview = () => (
     <div className="rounded-2xl border overflow-hidden">
-      <div className="p-6 space-y-3 bg-muted/30">
+      <div className="p-6 space-y-3 bg-gradient-to-b from-primary/5 to-background">
         <PreviewEditable sectionKey="gallery_intro" fieldKey="title">
-          <h3 className="text-2xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
+          <h3 className="text-3xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
             {(previewContent.galleryIntro as Record<string, unknown>).title as string}
           </h3>
         </PreviewEditable>
         <PreviewEditable sectionKey="gallery_intro" fieldKey="description">
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-base text-muted-foreground leading-relaxed">
             {(previewContent.galleryIntro as Record<string, unknown>).description as string}
           </p>
         </PreviewEditable>
       </div>
-      <div className="p-6 bg-background/80 space-y-2">
-        <PreviewEditable sectionKey="gallery_images" fieldKey="title">
-          <h4 className="text-lg font-semibold">{(previewContent.galleryImages as Record<string, unknown>).title as string}</h4>
-        </PreviewEditable>
+      <div className="p-6 space-y-4 bg-background/80">
+        <div className="flex items-center justify-between">
+          <PreviewEditable sectionKey="gallery_images" fieldKey="title">
+            <h4 className="text-lg font-semibold">{(previewContent.galleryImages as Record<string, unknown>).title as string}</h4>
+          </PreviewEditable>
+          <span className="text-xs text-muted-foreground">Album előnézet</span>
+        </div>
         <PreviewEditable sectionKey="gallery_images" fieldKey="description">
           <p className="text-sm text-muted-foreground">
             {(previewContent.galleryImages as Record<string, unknown>).description as string}
           </p>
         </PreviewEditable>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {galleryPreviewAlbums.map((album) => (
+            <Card key={album.id} className="overflow-hidden border-muted shadow-none">
+              <div className="relative aspect-[4/3] overflow-hidden">
+                <img src={album.image} alt={album.title} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+              </div>
+              <div className="p-4 space-y-1">
+                <p className="text-sm text-muted-foreground">{album.subtitle}</p>
+                <h5 className="font-semibold">{album.title}</h5>
+              </div>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   );

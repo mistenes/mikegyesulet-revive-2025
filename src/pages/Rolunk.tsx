@@ -1,8 +1,12 @@
+import { useMemo } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 
 import { Card } from "@/components/ui/card";
 import { Mail } from "lucide-react";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { defaultPageContent } from "@/data/defaultPageContent";
 
 const regionAnchors: Record<string, string> = {
   "Erdély": "erdely",
@@ -76,16 +80,37 @@ const operationalTeam = [
 ];
 
 export default function Rolunk() {
+  const { language } = useLanguage();
+  const { content: aboutContent } = useSectionContent("about_section");
+
+  const heroContent = useMemo(() => {
+    const fallback = defaultPageContent.about_section;
+    const localized = (aboutContent?.[language] || aboutContent?.hu || fallback?.[language] || fallback?.hu || {}) as {
+      title?: string;
+      subtitle?: string;
+      description?: string;
+    };
+
+    return {
+      title: localized.title || "RÓLUNK: KIK IS VAGYUNK MI?",
+      subtitle: localized.subtitle || "Magyar fiatalok összefogása a Kárpát-medencében.",
+      description:
+        localized.description ||
+        "A Magyar Ifjúsági Konferencia Egyesület (MIK) a magyarországi és a határon túli magyar fiatalok legmagasabb szintű egyeztető fóruma.",
+    };
+  }, [aboutContent, language]);
+
   return (
     <div className="min-h-screen bg-background relative">
       <Header />
       
       {/* Hero Section */}
       <section className="pt-32 pb-16 px-4 bg-gradient-to-b from-primary/5 to-background">
-        <div className="container mx-auto max-w-7xl">
-          <h1 className="text-5xl md:text-6xl font-bold mb-4 text-foreground">
-            RÓLUNK:<br />KIK IS VAGYUNK MI?
+        <div className="container mx-auto max-w-7xl space-y-4">
+          <h1 className="text-5xl md:text-6xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
+            {heroContent.title}
           </h1>
+          <p className="text-xl text-muted-foreground max-w-3xl">{heroContent.subtitle}</p>
         </div>
       </section>
 
@@ -111,9 +136,7 @@ export default function Rolunk() {
       <section className="py-16 px-4">
         <div className="container mx-auto max-w-4xl">
           <div className="space-y-6 text-lg leading-relaxed text-foreground/90">
-            <p>
-              A Magyar Ifjúsági Konferencia Egyesület (MIK) a magyarországi és a határon túli magyar fiatalok legmagasabb szintű egyeztető fóruma, amely a Magyar Kormány kezdeményezésére Budapesten, 1999. november 27-én széleskörű magyarországi és határon túli magyar szervezeti részvétellel lett életre hívva. A szervezet alapvető célja mind a mai napig, hogy az ifjúság legmagasabb szintű egyeztető fóruma legyen, ezzel pedig a Magyar Állandó Értekezlet ifjúsági lábát képezze.
-            </p>
+            <p>{heroContent.description}</p>
             <p>
               A MIK célja a magyar ifjúság bevonása az össznemzeti ifjúságpolitika alakításába. Ennek révén elősegíthető a Magyarország határain túl élő magyar ifjúsági közösségek magyarországi erkölcsi, anyagi, szakmapolitikai és diplomáciai támogatása is.
             </p>
