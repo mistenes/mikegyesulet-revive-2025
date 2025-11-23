@@ -311,7 +311,7 @@ export default function AdminSettings() {
               {mfaSetup && (
                 <div className="rounded-lg border border-dashed border-border p-4 space-y-4">
                   <div className="flex flex-wrap gap-2">
-                    {[1, 2, 3].map((step) => (
+                    {[1, 2, 3, 4].map((step) => (
                       <div
                         key={step}
                         className={`flex items-center gap-2 rounded-full px-3 py-1 border text-sm ${mfaStep === step ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground'}`}
@@ -321,7 +321,8 @@ export default function AdminSettings() {
                         </span>
                         {step === 1 && 'Hitelesítő app'}
                         {step === 2 && 'Helyreállító kódok'}
-                        {step === 3 && 'Megerősítés'}
+                        {step === 3 && 'Kód megadása'}
+                        {step === 4 && 'Megerősítés'}
                       </div>
                     ))}
                   </div>
@@ -378,54 +379,82 @@ export default function AdminSettings() {
                           ))}
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Egyik kód beírása (ellenőrzéshez)</Label>
-                        <Input
-                          value={recoveryCodeInput}
-                          onChange={(e) => setRecoveryCodeInput(e.target.value.toUpperCase())}
-                          placeholder="Pl.: ABC123..."
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={recoveryAcknowledged}
+                          onChange={(e) => setRecoveryAcknowledged(e.target.checked)}
                         />
-                        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4"
-                            checked={recoveryAcknowledged}
-                            onChange={(e) => setRecoveryAcknowledged(e.target.checked)}
-                          />
-                          Feljegyeztem a helyreállító kódokat biztonságos helyre.
-                        </label>
-                      </div>
+                        Feljegyeztem a helyreállító kódokat biztonságos helyre.
+                      </label>
                       <div className="flex items-center justify-between gap-2">
                         <Button variant="ghost" onClick={() => setMfaStep(1)}>
                           Vissza
                         </Button>
                         <Button
                           onClick={() => {
-                            const normalizedRecovery = recoveryCodeInput.replace(/\s+/g, '').toUpperCase();
-                            const recoveryIsValid = mfaSetup.recoveryCodes.some(
-                              (code) => code.replace(/\s+/g, '').toUpperCase() === normalizedRecovery,
-                            );
-
                             if (!recoveryAcknowledged) {
                               toast.error('Erősítsd meg, hogy elmentetted a kódokat');
-                              return;
-                            }
-
-                            if (!recoveryIsValid) {
-                              toast.error('Írd be a megjelenített kódok egyikét');
                               return;
                             }
 
                             setMfaStep(3);
                           }}
                         >
-                          Tovább az ellenőrzéshez
+                          Tovább a helyreállító kód megadásához
                         </Button>
                       </div>
                     </div>
                   )}
 
                   {mfaStep === 3 && (
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label>Helyreállító kód megadása</Label>
+                        <Input
+                          value={recoveryCodeInput}
+                          onChange={(e) => setRecoveryCodeInput(e.target.value.toUpperCase())}
+                          placeholder="Pl.: ABC123..."
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Írd be a fenti kódok egyikét, hogy megerősítsd a mentést. Ha nem írod be, nem engedjük aktiválni a 2FA-t.
+                        </p>
+                        {!recoveryAcknowledged && (
+                          <p className="text-xs text-amber-600">Kérjük erősítsd meg, hogy elmentetted a kódokat.</p>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <Button variant="ghost" onClick={() => setMfaStep(2)}>
+                          Vissza
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            if (!recoveryAcknowledged) {
+                              toast.error('Erősítsd meg, hogy elmentetted a kódokat');
+                              return;
+                            }
+
+                            const normalizedRecovery = recoveryCodeInput.replace(/\s+/g, '').toUpperCase();
+                            const recoveryIsValid = mfaSetup.recoveryCodes.some(
+                              (code) => code.replace(/\s+/g, '').toUpperCase() === normalizedRecovery,
+                            );
+
+                            if (!recoveryIsValid) {
+                              toast.error('Írd be a megjelenített helyreállító kódok egyikét');
+                              return;
+                            }
+
+                            setMfaStep(4);
+                          }}
+                        >
+                          Tovább a hitelesítő kódhoz
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {mfaStep === 4 && (
                     <div className="space-y-3">
                       <div className="space-y-2">
                         <Label>Megadott helyreállító kód</Label>
@@ -484,7 +513,7 @@ export default function AdminSettings() {
                         </div>
                       </div>
                       <div className="flex items-center justify-between gap-2">
-                        <Button variant="ghost" onClick={() => setMfaStep(2)}>
+                        <Button variant="ghost" onClick={() => setMfaStep(3)}>
                           Vissza
                         </Button>
                         <Button onClick={handleConfirmMfa} disabled={securitySaving || mfaCode.length < 6} className="w-full">
