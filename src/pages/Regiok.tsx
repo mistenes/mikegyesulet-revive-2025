@@ -1,3 +1,4 @@
+import type React from "react";
 import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { Header } from "@/components/Header";
@@ -9,11 +10,20 @@ import { Mail } from "lucide-react";
 import { regionsData } from "@/data/regions";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { defaultPageContent } from "@/data/defaultPageContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
 export default function Regiok() {
   const { language, t } = useLanguage();
   const location = useLocation();
   const { content: regionsIntroContent } = useSectionContent("regions_intro");
+  const adminPreview = isAdminPreview();
+
+  const handleEditableClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("regions_intro", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   const heroContent = useMemo(() => {
     const fallback = defaultPageContent.regions_intro;
@@ -51,16 +61,29 @@ export default function Regiok() {
       <section className="relative pt-32 pb-20 px-4">
         <div className="container mx-auto max-w-6xl">
           <div className="text-center space-y-6 animate-fade-in">
-            <p className="text-sm font-semibold text-primary tracking-wider uppercase">
+            <p
+              className={`text-sm font-semibold text-primary tracking-wider uppercase ${adminPreview ? "cursor-pointer" : ""}`}
+              onClick={(event) => handleEditableClick(event, "eyebrow")}
+              role={adminPreview ? "button" : undefined}
+              tabIndex={adminPreview ? 0 : undefined}
+            >
               {heroContent.eyebrow}
             </p>
             <h1
-              className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight"
+              className={`text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight ${adminPreview ? "cursor-pointer" : ""}`}
               style={{ fontFamily: "'Sora', sans-serif" }}
+              onClick={(event) => handleEditableClick(event, "title")}
+              role={adminPreview ? "button" : undefined}
+              tabIndex={adminPreview ? 0 : undefined}
             >
               {heroContent.title}
             </h1>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+            <p
+              className={`text-xl text-muted-foreground max-w-3xl mx-auto ${adminPreview ? "cursor-pointer" : ""}`}
+              onClick={(event) => handleEditableClick(event, "description")}
+              role={adminPreview ? "button" : undefined}
+              tabIndex={adminPreview ? 0 : undefined}
+            >
               {heroContent.subtitle}
             </p>
           </div>

@@ -1,3 +1,4 @@
+import type React from "react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
@@ -6,6 +7,7 @@ import mikTeam from "@/assets/mik-team.jpg";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSectionContent } from "@/hooks/useSectionContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
 type HeroContent = {
   title: string;
@@ -33,6 +35,21 @@ export const Hero = () => {
     content: statsSection,
     isLoading: statsLoading,
   } = useSectionContent("hero_stats");
+  const adminPreview = isAdminPreview();
+
+  const handleHeroClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("hero_content", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const handleStatsClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (notifyAdminFocus("hero_stats", "stats")) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   const content = useMemo<HeroContent | null>(() => {
     if (!heroSection) return null;
@@ -72,15 +89,23 @@ export const Hero = () => {
             ) : (
               <>
                 <h1
-                  className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight max-w-3xl"
+                  className={`text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight max-w-3xl ${adminPreview ? "cursor-pointer" : ""}`}
                   style={{
                     fontFamily: "'Sora', sans-serif",
                   }}
+                  onClick={(event) => handleHeroClick(event, "title")}
+                  role={adminPreview ? "button" : undefined}
+                  tabIndex={adminPreview ? 0 : undefined}
                 >
                   {content?.title}
                 </h1>
 
-                <p className="text-xl text-muted-foreground leading-relaxed max-w-xl">
+                <p
+                  className={`text-xl text-muted-foreground leading-relaxed max-w-xl ${adminPreview ? "cursor-pointer" : ""}`}
+                  onClick={(event) => handleHeroClick(event, "description")}
+                  role={adminPreview ? "button" : undefined}
+                  tabIndex={adminPreview ? 0 : undefined}
+                >
                   {content?.description}
                 </p>
               </>
@@ -98,6 +123,7 @@ export const Hero = () => {
                     size="lg"
                     className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl"
                     asChild
+                    onClick={(event) => handleHeroClick(event, "primaryButtonText")}
                   >
                     <a href={content?.primaryButtonUrl || "#"} target="_blank" rel="noopener noreferrer">
                       {content?.primaryButtonText}
@@ -109,6 +135,7 @@ export const Hero = () => {
                     variant="outline"
                     className="font-semibold px-8 py-6 text-base border-2 hover:bg-muted/50 transition-all duration-300"
                     asChild
+                    onClick={(event) => handleHeroClick(event, "secondaryButtonText")}
                   >
                     <Link to="/rolunk">
                       {content?.secondaryButtonText}
@@ -128,17 +155,20 @@ export const Hero = () => {
                     </div>
                   ))
                 : stats.map((stat, index) => (
+                  <div
+                    key={index}
+                    className={`animate-fade-in ${adminPreview ? "cursor-pointer" : ""}`}
+                    style={{
+                      animationDelay: `${0.2 + index * 0.1}s`,
+                    }}
+                    onClick={handleStatsClick}
+                    role={adminPreview ? "button" : undefined}
+                    tabIndex={adminPreview ? 0 : undefined}
+                  >
                     <div
-                      key={index}
-                      className="animate-fade-in"
+                      className="text-3xl font-bold text-primary"
                       style={{
-                        animationDelay: `${0.2 + index * 0.1}s`,
-                      }}
-                    >
-                      <div
-                        className="text-3xl font-bold text-primary"
-                        style={{
-                          fontFamily: "'Sora', sans-serif",
+                        fontFamily: "'Sora', sans-serif",
                         }}
                       >
                         {stat.value}
@@ -156,7 +186,12 @@ export const Hero = () => {
             {loading ? (
               <Skeleton className="w-full h-[420px] rounded-3xl" />
             ) : (
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl group">
+              <div
+                className={`relative rounded-3xl overflow-hidden shadow-2xl group ${adminPreview ? "cursor-pointer" : ""}`}
+                onClick={(event) => handleHeroClick(event, "imageUrl")}
+                role={adminPreview ? "button" : undefined}
+                tabIndex={adminPreview ? 0 : undefined}
+              >
                 <img
                   src={content?.imageUrl || mikTeam}
                   alt="MIK Team"

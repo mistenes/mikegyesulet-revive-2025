@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,19 +250,6 @@ export default function AdminPages() {
     };
   }, [session]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Betöltés...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!session) return null;
-
   const ensureSection = (sectionKey: SectionKey): LocalizedSectionContent => {
     const existing = pageContent[sectionKey];
     if (existing) return existing;
@@ -287,12 +274,35 @@ export default function AdminPages() {
     }
   };
 
-  const focusFromPreview = (sectionKey: SectionKey, fieldKey: string) => {
-    const targetTab = sectionTabMap[sectionKey];
-    if (targetTab) setActiveTab(targetTab);
-    setSelectedField({ sectionKey, fieldKey });
-    setTimeout(() => scrollToField(sectionKey, fieldKey), 50);
-  };
+  const focusFromPreview = useCallback(
+    (sectionKey: SectionKey, fieldKey: string) => {
+      const targetTab = sectionTabMap[sectionKey];
+      if (targetTab) setActiveTab(targetTab);
+      setSelectedField({ sectionKey, fieldKey });
+      setTimeout(() => scrollToField(sectionKey, fieldKey), 50);
+    },
+    [sectionTabMap],
+  );
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || typeof event.data !== "object") return;
+
+      const { type, sectionKey, fieldKey } = event.data as {
+        type?: string;
+        sectionKey?: SectionKey;
+        fieldKey?: string;
+      };
+
+      if (type === "page-edit-focus" && sectionKey && fieldKey) {
+        focusFromPreview(sectionKey, fieldKey);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [focusFromPreview]);
 
   const handleFieldChange = (sectionKey: SectionKey, field: string, value: unknown) => {
     setSelectedField({ sectionKey, fieldKey: field });
@@ -962,7 +972,7 @@ export default function AdminPages() {
   );
 
   const renderPreview = () => {
-    const livePreviewUrl = liveTabPaths[activeTab];
+    const livePreviewUrl = `${liveTabPaths[activeTab]}?adminPreview=1`;
 
     return (
       <Card className="p-4 lg:p-6 space-y-6 sticky top-4">
@@ -1021,6 +1031,19 @@ export default function AdminPages() {
       </Card>
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Betöltés...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return null;
 
   if (loading) {
     return (

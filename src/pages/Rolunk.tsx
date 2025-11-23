@@ -1,3 +1,4 @@
+import type React from "react";
 import { useMemo } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -7,6 +8,7 @@ import { Mail } from "lucide-react";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { defaultPageContent } from "@/data/defaultPageContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
 const regionAnchors: Record<string, string> = {
   "Erdély": "erdely",
@@ -82,6 +84,14 @@ const operationalTeam = [
 export default function Rolunk() {
   const { language } = useLanguage();
   const { content: aboutContent } = useSectionContent("about_section");
+  const adminPreview = isAdminPreview();
+
+  const handleHeroClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("about_section", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   const heroContent = useMemo(() => {
     const fallback = defaultPageContent.about_section;
@@ -107,10 +117,23 @@ export default function Rolunk() {
       {/* Hero Section */}
       <section className="pt-32 pb-16 px-4 bg-gradient-to-b from-primary/5 to-background">
         <div className="container mx-auto max-w-7xl space-y-4">
-          <h1 className="text-5xl md:text-6xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
+          <h1
+            className={`text-5xl md:text-6xl font-bold text-foreground ${adminPreview ? "cursor-pointer" : ""}`}
+            style={{ fontFamily: "'Sora', sans-serif" }}
+            onClick={(event) => handleHeroClick(event, "title")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
             {heroContent.title}
           </h1>
-          <p className="text-xl text-muted-foreground max-w-3xl">{heroContent.subtitle}</p>
+          <p
+            className={`text-xl text-muted-foreground max-w-3xl ${adminPreview ? "cursor-pointer" : ""}`}
+            onClick={(event) => handleHeroClick(event, "subtitle")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {heroContent.subtitle}
+          </p>
         </div>
       </section>
 
@@ -136,7 +159,14 @@ export default function Rolunk() {
       <section className="py-16 px-4">
         <div className="container mx-auto max-w-4xl">
           <div className="space-y-6 text-lg leading-relaxed text-foreground/90">
-            <p>{heroContent.description}</p>
+            <p
+              className={adminPreview ? "cursor-pointer" : undefined}
+              onClick={(event) => handleHeroClick(event, "description")}
+              role={adminPreview ? "button" : undefined}
+              tabIndex={adminPreview ? 0 : undefined}
+            >
+              {heroContent.description}
+            </p>
             <p>
               A MIK célja a magyar ifjúság bevonása az össznemzeti ifjúságpolitika alakításába. Ennek révén elősegíthető a Magyarország határain túl élő magyar ifjúsági közösségek magyarországi erkölcsi, anyagi, szakmapolitikai és diplomáciai támogatása is.
             </p>
