@@ -13,6 +13,7 @@ type HeroContent = {
   primaryButtonText: string;
   primaryButtonUrl: string;
   secondaryButtonText: string;
+  imageUrl?: string;
 };
 
 type HeroStats = {
@@ -135,7 +136,11 @@ export const Hero = () => {
             animationDelay: "0.3s",
           }}>
             <div className="relative rounded-3xl overflow-hidden shadow-2xl group">
-              <img src={mikTeam} alt="MIK Team" className="w-full h-auto transition-transform duration-700 group-hover:scale-105" />
+              <img
+                src={content.imageUrl || mikTeam}
+                alt="MIK Team"
+                className="w-full h-auto transition-transform duration-700 group-hover:scale-105"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent opacity-60" />
             </div>
           </div>

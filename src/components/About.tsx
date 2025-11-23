@@ -17,6 +17,7 @@ type AboutContent = {
   ctaTitle?: string;
   ctaDescription?: string;
   ctaButton?: string;
+  imageUrl?: string;
 };
 
 export const About = () => {
@@ -92,7 +93,7 @@ export const About = () => {
           <div className="relative animate-slide-in" style={{ animationDelay: "0.2s" }}>
             <div className="rounded-3xl overflow-hidden shadow-2xl">
               <img
-                src={umbrellaImage}
+                src={content.imageUrl || umbrellaImage}
                 alt={content.title}
                 className="w-full h-auto"
               />
@@ -113,9 +114,9 @@ export const About = () => {
                 variant="ghost"
                 className="text-primary hover:text-primary-glow p-0 h-auto font-semibold group"
               >
-                {content.ctaButton}
-                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
+          {content.ctaButton}
+          <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+        </Button>
             </div>
           </div>
         </div>
