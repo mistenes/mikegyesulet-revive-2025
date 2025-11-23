@@ -1543,10 +1543,13 @@ app.post('/api/gallery', authenticateRequest, async (req, res) => {
   try {
     validateGalleryPayload({ ...payload, images });
 
-    const orderResult = await client.query(
-      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM gallery_albums',
-    );
-    const nextOrder = Number(orderResult.rows[0]?.next_order || 1);
+    const countResult = await client.query('SELECT COUNT(*) AS total FROM gallery_albums');
+    const total = Number(countResult.rows[0]?.total || 0);
+    const desiredOrderRaw = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 1;
+    const desiredOrder = Math.min(Math.max(1, desiredOrderRaw || 1), total + 1);
+
+    await client.query('BEGIN');
+    await client.query('UPDATE gallery_albums SET sort_order = sort_order + 1 WHERE sort_order >= $1', [desiredOrder]);
 
     const result = await client.query(
       `INSERT INTO gallery_albums
@@ -1560,13 +1563,15 @@ app.post('/api/gallery', authenticateRequest, async (req, res) => {
         payload.coverImageUrl,
         payload.coverImageAlt || '',
         JSON.stringify(images),
-        payload.sortOrder ?? nextOrder,
+        desiredOrder,
         Boolean(payload.published),
       ],
     );
 
+    await client.query('COMMIT');
     return res.status(201).json(mapGalleryRow(result.rows[0]));
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Create gallery error', error);
     const status = error.status || 500;
     return res.status(status).json({ message: error.message || 'Nem sikerült létrehozni a galériát' });
@@ -1614,9 +1619,29 @@ app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
   try {
     validateGalleryPayload({ ...payload, images });
 
+    await client.query('BEGIN');
     const existing = await client.query('SELECT * FROM gallery_albums WHERE id = $1 LIMIT 1', [albumId]);
     if (!existing.rows.length) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ message: 'A galéria nem található' });
+    }
+
+    const currentOrder = Number(existing.rows[0].sort_order || 1);
+    const countResult = await client.query('SELECT COUNT(*) AS total FROM gallery_albums');
+    const total = Number(countResult.rows[0]?.total || 1);
+    const desiredOrderRaw = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : currentOrder;
+    const desiredOrder = Math.min(Math.max(1, desiredOrderRaw || currentOrder), total);
+
+    if (desiredOrder < currentOrder) {
+      await client.query(
+        'UPDATE gallery_albums SET sort_order = sort_order + 1 WHERE sort_order >= $1 AND sort_order < $2 AND id <> $3',
+        [desiredOrder, currentOrder, albumId],
+      );
+    } else if (desiredOrder > currentOrder) {
+      await client.query(
+        'UPDATE gallery_albums SET sort_order = sort_order - 1 WHERE sort_order <= $1 AND sort_order > $2 AND id <> $3',
+        [desiredOrder, currentOrder, albumId],
+      );
     }
 
     const result = await client.query(
@@ -1639,14 +1664,16 @@ app.put('/api/gallery/:id', authenticateRequest, async (req, res) => {
         payload.coverImageUrl,
         payload.coverImageAlt || '',
         JSON.stringify(images),
-        payload.sortOrder ?? existing.rows[0].sort_order,
+        desiredOrder,
         Boolean(payload.published),
         albumId,
       ],
     );
 
+    await client.query('COMMIT');
     return res.status(200).json(mapGalleryRow(result.rows[0]));
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Update gallery error', error);
     const status = error.status || 500;
     return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a galériát' });

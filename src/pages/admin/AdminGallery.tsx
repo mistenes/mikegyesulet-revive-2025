@@ -90,7 +90,7 @@ export default function AdminGallery() {
   }, [session]);
 
   const resetForm = () => {
-    setForm(createEmptyAlbum(albums.length + 1));
+    setForm(createEmptyAlbum(1));
     setEditingId(null);
   };
 
@@ -320,11 +320,36 @@ export default function AdminGallery() {
       let saved: GalleryAlbum;
       if (editingId) {
         saved = await updateAlbum(editingId, form);
-        setAlbums((prev) => prev.map((album) => (album.id === editingId ? saved : album)).sort((a, b) => a.sortOrder - b.sortOrder));
+        setAlbums((prev) => {
+          const current = prev.find((album) => album.id === editingId);
+          if (!current) {
+            return prev;
+          }
+
+          const others = prev.filter((album) => album.id !== editingId).map((album) => {
+            if (saved.sortOrder < current.sortOrder) {
+              if (album.sortOrder >= saved.sortOrder && album.sortOrder < current.sortOrder) {
+                return { ...album, sortOrder: album.sortOrder + 1 };
+              }
+            } else if (saved.sortOrder > current.sortOrder) {
+              if (album.sortOrder <= saved.sortOrder && album.sortOrder > current.sortOrder) {
+                return { ...album, sortOrder: album.sortOrder - 1 };
+              }
+            }
+            return album;
+          });
+
+          return [...others, saved].sort((a, b) => a.sortOrder - b.sortOrder);
+        });
         toast.success("Galéria frissítve");
       } else {
         saved = await createAlbum(form);
-        setAlbums((prev) => [...prev, saved].sort((a, b) => a.sortOrder - b.sortOrder));
+        setAlbums((prev) => {
+          const shifted = prev.map((album) =>
+            album.sortOrder >= saved.sortOrder ? { ...album, sortOrder: album.sortOrder + 1 } : album,
+          );
+          return [...shifted, saved].sort((a, b) => a.sortOrder - b.sortOrder);
+        });
         toast.success("Galéria létrehozva");
       }
 
