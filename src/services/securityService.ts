@@ -40,12 +40,12 @@ export async function prepareMfa(): Promise<MfaPreparation> {
   return response.json();
 }
 
-export async function confirmMfa(code: string): Promise<{ recoveryCodes: string[] }> {
+export async function confirmMfa(code: string, recoveryCode: string): Promise<{ recoveryCodes: string[] }> {
   const response = await fetch(`${API_BASE}/api/admin/security/mfa/confirm`, {
     method: 'POST',
     credentials: 'include',
     headers: { ...withCsrfHeader(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, recoveryCode }),
   });
 
   if (!response.ok) {

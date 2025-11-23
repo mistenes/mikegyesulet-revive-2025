@@ -1389,9 +1389,14 @@ app.post('/api/admin/security/mfa/prepare', authenticateRequest, async (req, res
 });
 
 app.post('/api/admin/security/mfa/confirm', authenticateRequest, async (req, res) => {
-  const { code } = req.body || {};
+  const { code, recoveryCode } = req.body || {};
   if (!code) {
     return res.status(400).json({ message: 'Hiányzó ellenőrző kód' });
+  }
+
+  const normalizedRecovery = typeof recoveryCode === 'string' ? recoveryCode.replace(/\s+/g, '').toUpperCase() : '';
+  if (!normalizedRecovery) {
+    return res.status(400).json({ message: 'Adj meg egy helyreállító kódot is a mentés megerősítéséhez' });
   }
 
   const client = await pool.connect();
@@ -1399,6 +1404,13 @@ app.post('/api/admin/security/mfa/confirm', authenticateRequest, async (req, res
     const enrollment = await getMfaEnrollment(client, req.user.email);
     if (!enrollment) {
       return res.status(400).json({ message: 'Nincs aktív MFA beállítás' });
+    }
+
+    const isRecoveryFromSet = enrollment.recovery_codes?.some(
+      (candidate) => candidate.replace(/\s+/g, '').toUpperCase() === normalizedRecovery,
+    );
+    if (!isRecoveryFromSet) {
+      return res.status(400).json({ message: 'Add meg a megjelenített helyreállító kódok egyikét' });
     }
 
     const isValid = speakeasy.totp.verify({ secret: enrollment.secret, encoding: 'base32', token: code, window: 1 });
