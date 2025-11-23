@@ -28,6 +28,10 @@ const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
+const LOGIN_RATE_LIMIT_WINDOW_MS = 60_000;
+const LOGIN_RATE_LIMIT_MAX = 10;
+const LOGIN_MAX_FAILED_ATTEMPTS = 5;
+const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
 
 const defaultPageContent = {
   hero_content: {
@@ -137,6 +141,48 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
+const loginRateLimitBuckets = new Map();
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (Array.isArray(forwarded)) {
+    return forwarded[0];
+  }
+
+  if (typeof forwarded === 'string' && forwarded.includes(',')) {
+    return forwarded.split(',')[0].trim();
+  }
+
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.trim();
+  }
+
+  return req.ip;
+}
+
+function loginRateLimiter(req, res, next) {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const bucket = loginRateLimitBuckets.get(ip) || { count: 0, start: now };
+
+  if (now - bucket.start > LOGIN_RATE_LIMIT_WINDOW_MS) {
+    bucket.start = now;
+    bucket.count = 0;
+  }
+
+  bucket.count += 1;
+  loginRateLimitBuckets.set(ip, bucket);
+
+  if (bucket.count > LOGIN_RATE_LIMIT_MAX) {
+    const retryAfterSeconds = Math.ceil((LOGIN_RATE_LIMIT_WINDOW_MS - (now - bucket.start)) / 1000);
+    return res
+      .status(429)
+      .json({ message: 'Túl sok bejelentkezési kísérlet. Próbáld újra később.', retryAfterSeconds });
+  }
+
+  return next();
+}
+
 app.get('/healthz', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
@@ -196,6 +242,24 @@ async function ensureAdminUser() {
       );
       console.log('Default admin user ensured');
     }
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureLoginAttemptTable() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_login_attempts (
+        email TEXT NOT NULL,
+        ip TEXT NOT NULL,
+        failed_attempts INTEGER NOT NULL DEFAULT 0,
+        last_failed_at TIMESTAMPTZ,
+        locked_until TIMESTAMPTZ,
+        PRIMARY KEY (email, ip)
+      );
+    `);
   } finally {
     client.release();
   }
@@ -674,6 +738,42 @@ async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
   }
 }
 
+async function getLoginAttempt(client, emailKey, ip) {
+  const result = await client.query(
+    'SELECT failed_attempts, locked_until FROM admin_login_attempts WHERE email = $1 AND ip = $2',
+    [emailKey, ip],
+  );
+
+  return result.rows[0];
+}
+
+async function recordFailedLogin(client, emailKey, ip) {
+  const current = await getLoginAttempt(client, emailKey, ip);
+  const nextFailures = (current?.failed_attempts || 0) + 1;
+  const shouldLock = nextFailures >= LOGIN_MAX_FAILED_ATTEMPTS;
+  const lockedUntil = shouldLock ? new Date(Date.now() + LOGIN_LOCK_DURATION_MS) : current?.locked_until || null;
+
+  await client.query(
+    `INSERT INTO admin_login_attempts (email, ip, failed_attempts, last_failed_at, locked_until)
+     VALUES ($1, $2, $3, NOW(), $4)
+     ON CONFLICT (email, ip) DO UPDATE SET
+       failed_attempts = EXCLUDED.failed_attempts,
+       last_failed_at = EXCLUDED.last_failed_at,
+       locked_until = EXCLUDED.locked_until`,
+    [emailKey, ip, nextFailures, lockedUntil],
+  );
+
+  return {
+    failedAttempts: nextFailures,
+    lockedUntil,
+    remainingAttempts: Math.max(LOGIN_MAX_FAILED_ATTEMPTS - nextFailures, 0),
+  };
+}
+
+async function resetLoginAttempts(client, emailKey, ip) {
+  await client.query('DELETE FROM admin_login_attempts WHERE email = $1 AND ip = $2', [emailKey, ip]);
+}
+
 async function authenticateRequest(req, res, next) {
   const bearer = req.headers.authorization?.replace('Bearer ', '');
   const token = req.cookies[COOKIE_NAME] || bearer;
@@ -692,8 +792,10 @@ async function authenticateRequest(req, res, next) {
   return next();
 }
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
   const { email, password } = req.body || {};
+  const emailKey = (email || 'unknown').toLowerCase();
+  const ip = getClientIp(req);
 
   if (!email || !password) {
     return res.status(400).json({ message: 'Az e-mail és jelszó megadása kötelező' });
@@ -701,19 +803,45 @@ app.post('/api/auth/login', async (req, res) => {
 
   const client = await pool.connect();
   try {
+    const attempt = await getLoginAttempt(client, emailKey, ip);
+    const lockExpiry = attempt?.locked_until ? new Date(attempt.locked_until) : null;
+
+    if (lockExpiry && lockExpiry.getTime() > Date.now()) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((lockExpiry.getTime() - Date.now()) / 1000));
+      return res.status(429).json({
+        message: 'A fiók átmenetileg zárolva túl sok sikertelen próbálkozás miatt.',
+        lockedUntil: lockExpiry.toISOString(),
+        remainingAttempts: 0,
+        retryAfterSeconds,
+      });
+    }
+
     const result = await client.query('SELECT email, password_hash FROM admin_users WHERE email = $1', [email]);
 
     if (!result.rows.length) {
-      return res.status(401).json({ message: 'Helytelen belépési adatok' });
+      const failed = await recordFailedLogin(client, emailKey, ip);
+      const status = failed.lockedUntil ? 429 : 401;
+      return res.status(status).json({
+        message: 'Helytelen belépési adatok',
+        lockedUntil: failed.lockedUntil ? new Date(failed.lockedUntil).toISOString() : undefined,
+        remainingAttempts: failed.remainingAttempts,
+      });
     }
 
     const user = result.rows[0];
     const isValid = verifyPassword(password, user.password_hash);
 
     if (!isValid) {
-      return res.status(401).json({ message: 'Helytelen belépési adatok' });
+      const failed = await recordFailedLogin(client, emailKey, ip);
+      const status = failed.lockedUntil ? 429 : 401;
+      return res.status(status).json({
+        message: 'Helytelen belépési adatok',
+        lockedUntil: failed.lockedUntil ? new Date(failed.lockedUntil).toISOString() : undefined,
+        remainingAttempts: failed.remainingAttempts,
+      });
     }
 
+    await resetLoginAttempts(client, emailKey, ip);
     const token = signSession({ email: user.email });
 
     res.cookie(COOKIE_NAME, token, {
@@ -2199,6 +2327,7 @@ app.get('*', (req, res) => {
 
 Promise.all([
   ensureAdminUser(),
+  ensureLoginAttemptTable(),
   ensureNewsTables(),
   ensureProjectsTables(),
   ensureGalleryTables(),
