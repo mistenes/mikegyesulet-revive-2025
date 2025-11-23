@@ -6,7 +6,6 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
-import fetch from 'node-fetch';
 import speakeasy from 'speakeasy';
 import SibApiV3Sdk from 'sib-api-v3-sdk';
 
