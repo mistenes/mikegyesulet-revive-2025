@@ -37,11 +37,11 @@ const PAGE_CONTENT_FOLDER = "page-content";
 const sectionGroups = {
   fooldal: [
     { key: "hero_content", label: "Hero Szekció" },
-    { key: "impact_section", label: "Hatás Szekció" },
-    { key: "about_section", label: "Rólunk Röviden" },
     { key: "hero_stats", label: "Statisztikák" },
+    { key: "impact_section", label: "Hatás Szekció" },
     { key: "news_section", label: "Hírek Szekció" },
     { key: "regions_section", label: "Régiók Szekció" },
+    { key: "about_section", label: "Rólunk Röviden" },
     { key: "testimonials_section", label: "Visszajelzések" },
     { key: "closing_section", label: "Zárónyilatkozatok" },
     { key: "contact_section", label: "Kapcsolat" },
