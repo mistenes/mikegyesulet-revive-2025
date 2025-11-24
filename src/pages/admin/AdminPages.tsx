@@ -37,10 +37,14 @@ const PAGE_CONTENT_FOLDER = "page-content";
 const sectionGroups = {
   fooldal: [
     { key: "hero_content", label: "Hero Szekció" },
+    { key: "impact_section", label: "Hatás Szekció" },
     { key: "about_section", label: "Rólunk Röviden" },
     { key: "hero_stats", label: "Statisztikák" },
     { key: "news_section", label: "Hírek Szekció" },
     { key: "regions_section", label: "Régiók Szekció" },
+    { key: "testimonials_section", label: "Visszajelzések" },
+    { key: "closing_section", label: "Zárónyilatkozatok" },
+    { key: "contact_section", label: "Kapcsolat" },
   ],
   regiok: [
     { key: "regions_intro", label: "Bevezető Szekció" },
@@ -66,7 +70,7 @@ const liveTabPaths: Record<keyof typeof sectionGroups, string> = {
 const pageDefinitions: Record<keyof typeof sectionGroups, { title: string; description: string }> = {
   fooldal: {
     title: "Főoldal",
-    description: "Hero, rólunk röviden, statisztikák és kiemelt szekciók szerkesztése",
+    description: "Hero, hatás, rólunk, statisztikák, hírek, régiók, visszajelzések és kapcsolat szekciók szerkesztése",
   },
   regiok: {
     title: "Régiók",
@@ -94,6 +98,19 @@ const sectionDefinitions: Record<
     }>;
   }
 > = {
+  impact_section: {
+    fields: [
+      { key: "badge", label: "Badge" },
+      { key: "title", label: "Cím" },
+      { key: "description", label: "Leírás", type: "textarea" },
+      {
+        key: "stats",
+        label: "Statisztikák",
+        type: "json",
+        description: "JSON tömb, pl. [{ value: '1000+', label: 'Tag', description: 'Rövid leírás' }]",
+      },
+    ],
+  },
   hero_content: {
     fields: [
       { key: "title", label: "Cím", type: "textarea" },
@@ -181,6 +198,42 @@ const sectionDefinitions: Record<
     fields: [
       { key: "title", label: "Cím" },
       { key: "description", label: "Leírás", type: "textarea" },
+    ],
+  },
+  testimonials_section: {
+    fields: [
+      { key: "badge", label: "Badge" },
+      { key: "title", label: "Cím" },
+      { key: "description", label: "Leírás", type: "textarea" },
+      {
+        key: "testimonials",
+        label: "Visszajelzések",
+        type: "json",
+        description:
+          "JSON tömb, pl. [{ quote: 'idézet', author: 'Név', role: 'Szerep', region: 'Régió', image: 'https://...' }]",
+      },
+    ],
+  },
+  closing_section: {
+    fields: [
+      { key: "badge", label: "Badge" },
+      { key: "title", label: "Cím", type: "textarea" },
+      { key: "description", label: "Leírás", type: "textarea" },
+      { key: "buttonText", label: "Gomb szöveg" },
+      { key: "imageUrl", label: "Kép", type: "image" },
+    ],
+  },
+  contact_section: {
+    fields: [
+      { key: "badge", label: "Badge" },
+      { key: "title", label: "Cím" },
+      { key: "description", label: "Leírás", type: "textarea" },
+      {
+        key: "offices",
+        label: "Irodák",
+        type: "json",
+        description: "JSON tömb, pl. [{ name: 'Iroda', address: 'Cím', hours: ['H-Cs: 8:30-16:00'] }]",
+      },
     ],
   },
 };

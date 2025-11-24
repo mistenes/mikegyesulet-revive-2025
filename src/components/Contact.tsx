@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import type React from "react";
+import { useMemo, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,24 +9,63 @@ import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { Mail, Phone, MapPin, Clock, Send } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { defaultPageContent } from "@/data/defaultPageContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+
+type ContactOffice = {
+  name?: string;
+  address?: string;
+  hours?: string[];
+};
+
+type ContactContent = {
+  badge?: string;
+  title?: string;
+  description?: string;
+  offices?: ContactOffice[];
+};
 
 const contactSchema = z.object({
   name: z.string().trim().min(1, "A név megadása kötelező").max(100, "A név maximum 100 karakter lehet"),
   email: z.string().trim().email("Érvénytelen email cím").max(255, "Az email maximum 255 karakter lehet"),
   message: z.string().trim().min(1, "Az üzenet megadása kötelező").max(1000, "Az üzenet maximum 1000 karakter lehet"),
-  privacy: z.boolean().refine(val => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
+  privacy: z.boolean().refine((val) => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
 });
 
 const newsletterSchema = z.object({
   email: z.string().trim().email("Érvénytelen email cím").max(255),
-  privacy: z.boolean().refine(val => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
+  privacy: z.boolean().refine((val) => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
 });
 
 export const Contact = () => {
   const { toast } = useToast();
+  const { language } = useLanguage();
   const sectionRef = useRef<HTMLElement>(null);
   const isVisible = useScrollAnimation(sectionRef);
-  
+  const adminPreview = isAdminPreview();
+  const { content: sectionContent } = useSectionContent("contact_section");
+
+  const content = useMemo<ContactContent>(() => {
+    const localized = (sectionContent?.[language] || sectionContent?.hu) as ContactContent | undefined;
+    const fallback = (defaultPageContent.contact_section?.[language] || defaultPageContent.contact_section?.hu) as
+      | ContactContent
+      | undefined;
+
+    return localized || fallback || {};
+  }, [language, sectionContent]);
+
+  const offices = useMemo<ContactOffice[]>(() => {
+    const localized = (sectionContent?.[language]?.offices || sectionContent?.hu?.offices) as ContactOffice[] | undefined;
+    const fallback =
+      (defaultPageContent.contact_section?.[language]?.offices || defaultPageContent.contact_section?.hu?.offices) as
+        | ContactOffice[]
+        | undefined;
+
+    return localized || fallback || [];
+  }, [language, sectionContent]);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -40,16 +80,16 @@ export const Contact = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       contactSchema.parse(formData);
       setErrors({});
-      
+
       toast({
         title: "Üzenet elküldve!",
         description: "Köszönjük az érdeklődést, hamarosan válaszolunk.",
       });
-      
+
       setFormData({ name: "", email: "", message: "", privacy: false });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -66,16 +106,16 @@ export const Contact = () => {
 
   const handleNewsletterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       newsletterSchema.parse({ email: newsletterEmail, privacy: newsletterPrivacy });
       setNewsletterErrors({});
-      
+
       toast({
         title: "Sikeres feliratkozás!",
         description: "Köszönjük, hogy feliratkoztál hírlevelünkre.",
       });
-      
+
       setNewsletterEmail("");
       setNewsletterPrivacy(false);
     } catch (error) {
@@ -91,41 +131,51 @@ export const Contact = () => {
     }
   };
 
-  const offices = [
-    {
-      name: "Központi Iroda",
-      address: "2900 Komárom, Arany János utca 17.",
-      hours: ["H-Cs: 8:30-16:00", "P-V: zárva"],
-    },
-    {
-      name: "Kárpátaljai Iroda",
-      address: "Beregszász, Mihók Péter út 4.",
-      hours: ["H-K: 8:00-14:00", "Sz-Cs: 12:00-18:00", "P: 8:00-14:00", "Szo-V: zárva"],
-    },
-  ];
+  const handleClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("contact_section", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   return (
     <section ref={sectionRef} id="kapcsolat" className="py-20 bg-muted/20">
       <div className="container px-4">
-        <div 
+        <div
           className={`text-center mb-12 transition-all duration-700 ${
             isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
         >
-          <p className="text-sm font-semibold text-primary uppercase tracking-wider mb-2">
-            Kapcsolat
+          <p
+            className={`text-sm font-semibold text-primary uppercase tracking-wider mb-2 ${adminPreview ? "cursor-pointer" : ""}`}
+            onClick={(event) => handleClick(event, "badge")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {content.badge}
           </p>
-          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-            Vedd fel velünk a kapcsolatot
+          <h2
+            className={`text-4xl md:text-5xl font-bold text-foreground mb-4 ${adminPreview ? "cursor-pointer" : ""}`}
+            style={{ fontFamily: "'Sora', sans-serif" }}
+            onClick={(event) => handleClick(event, "title")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {content.title}
           </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Itt üzenhetsz nekünk. Egyszerűbb, mint e-mailt írni, és ugyanolyan hatékony.
+          <p
+            className={`text-lg text-muted-foreground max-w-2xl mx-auto ${adminPreview ? "cursor-pointer" : ""}`}
+            onClick={(event) => handleClick(event, "description")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {content.description}
           </p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
           {/* Contact Form - Takes 2 columns */}
-          <Card 
+          <Card
             className={`lg:col-span-2 p-6 bg-card border-border shadow-lg transition-all duration-700 ${
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
             }`}
@@ -140,7 +190,7 @@ export const Contact = () => {
                     placeholder="Név"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className={`bg-muted/30 border-border ${errors.name ? 'border-destructive' : ''}`}
+                    className={`bg-muted/30 border-border ${errors.name ? "border-destructive" : ""}`}
                   />
                   {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
                 </div>
@@ -150,7 +200,7 @@ export const Contact = () => {
                     placeholder="Email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className={`bg-muted/30 border-border ${errors.email ? 'border-destructive' : ''}`}
+                    className={`bg-muted/30 border-border ${errors.email ? "border-destructive" : ""}`}
                   />
                   {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
                 </div>
@@ -162,7 +212,7 @@ export const Contact = () => {
                   rows={4}
                   value={formData.message}
                   onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                  className={`bg-muted/30 border-border resize-none ${errors.message ? 'border-destructive' : ''}`}
+                  className={`bg-muted/30 border-border resize-none ${errors.message ? "border-destructive" : ""}`}
                 />
                 {errors.message && <p className="text-xs text-destructive mt-1">{errors.message}</p>}
               </div>
@@ -179,8 +229,8 @@ export const Contact = () => {
               </div>
               {errors.privacy && <p className="text-xs text-destructive">{errors.privacy}</p>}
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full md:w-auto bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 transition-all duration-300"
               >
                 Küldés
@@ -190,7 +240,7 @@ export const Contact = () => {
           </Card>
 
           {/* Contact Info & Office Hours - Takes 1 column */}
-          <div 
+          <div
             className={`space-y-6 transition-all duration-700 delay-100 ${
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
             }`}
@@ -198,105 +248,104 @@ export const Contact = () => {
             {/* Quick Contact */}
             <Card className="p-6 bg-gradient-primary text-primary-foreground border-0 shadow-lg">
               <h3 className="text-xl font-bold mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-                Gyors Elérhetőség
+                Elérhetőségeink
               </h3>
-              <div className="space-y-3 text-sm">
+              <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 opacity-80" />
-                  <a
-                    href="mailto:titkarsag@mikegyesulet.hu"
-                    className="underline-offset-2 hover:underline"
-                  >
-                    titkarsag@mikegyesulet.hu
-                  </a>
+                  <Mail className="h-5 w-5" />
+                  <div>
+                    <p className="text-sm opacity-80">Email</p>
+                    <p className="font-semibold">info@mikegyesulet.hu</p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 opacity-80" />
-                  <a href="tel:+36309594595" className="underline-offset-2 hover:underline">
-                    +36 30 959 4595
-                  </a>
+                  <Phone className="h-5 w-5" />
+                  <div>
+                    <p className="text-sm opacity-80">Telefon</p>
+                    <p className="font-semibold">+36 30 123 4567</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Clock className="h-5 w-5" />
+                  <div>
+                    <p className="text-sm opacity-80">Nyitvatartás</p>
+                    <p className="font-semibold">Hétfő - Csütörtök: 9:00 - 17:00</p>
+                    <p className="font-semibold">Péntek: 9:00 - 14:00</p>
+                  </div>
                 </div>
               </div>
             </Card>
 
-            {/* Office Hours */}
-            <Card className="p-6 bg-card border-border shadow-lg">
-              <div className="flex items-center gap-2 mb-4">
-                <Clock className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-                  Nyitvatartás
-                </h3>
-              </div>
+            {/* Office Locations */}
+            <Card className="p-6 bg-card border-border shadow-sm">
+              <h3
+                className={`text-xl font-bold mb-4 ${adminPreview ? "cursor-pointer" : ""}`}
+                style={{ fontFamily: "'Sora', sans-serif" }}
+                onClick={(event) => handleClick(event, "offices")}
+                role={adminPreview ? "button" : undefined}
+                tabIndex={adminPreview ? 0 : undefined}
+              >
+                Irodáink
+              </h3>
               <div className="space-y-4">
                 {offices.map((office, index) => (
-                  <div key={index} className="border-t border-border pt-3 first:border-0 first:pt-0">
-                    <div className="flex items-start gap-2 mb-2">
-                      <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="font-semibold text-foreground text-sm">{office.name}</p>
-                        <p className="text-xs text-muted-foreground">{office.address}</p>
-                      </div>
+                  <div key={`${office.name}-${index}`} className="flex gap-3">
+                    <div className="mt-1">
+                      <MapPin className="h-5 w-5 text-primary" />
                     </div>
-                    <div className="ml-6 space-y-1">
-                      {office.hours.map((hour, i) => (
-                        <p key={i} className="text-xs text-muted-foreground">{hour}</p>
-                      ))}
+                    <div>
+                      <p className="font-semibold">{office.name}</p>
+                      <p className="text-sm text-muted-foreground">{office.address}</p>
+                      {office.hours?.length ? (
+                        <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                          {office.hours.map((hour, hourIndex) => (
+                            <p key={`${hour}-${hourIndex}`}>{hour}</p>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
               </div>
             </Card>
-          </div>
-        </div>
 
-        {/* Newsletter Section - Full Width Below */}
-        <Card 
-          className={`mt-6 p-6 bg-card border-border shadow-lg max-w-7xl mx-auto transition-all duration-700 delay-200 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-          }`}
-        >
-          <div className="grid md:grid-cols-2 gap-6 items-center">
-            <div>
-              <h3 className="text-2xl font-bold text-foreground mb-2" style={{ fontFamily: "'Sora', sans-serif" }}>
-                Olvastad már?
+            {/* Newsletter */}
+            <Card className="p-6 bg-card border-border shadow-sm">
+              <h3 className="text-xl font-bold mb-3" style={{ fontFamily: "'Sora', sans-serif" }}>
+                Hírlevél
               </h3>
-              <p className="text-muted-foreground text-sm">
-                Iratkozz fel a MIK hírlevelére, ahol havonta egyszer összefoglaljuk neked, hogy mi történt velünk, valamint megosztjuk veled a legnépszerűbb cikkeink a HYCA blog kínálatából.
+              <p className="text-sm text-muted-foreground mb-4">
+                Iratkozz fel, hogy elsőként értesülj a friss hírekről, eseményekről.
               </p>
-            </div>
-            <form onSubmit={handleNewsletterSubmit} className="space-y-3">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Input
-                    type="email"
-                    placeholder="Email címed"
-                    value={newsletterEmail}
-                    onChange={(e) => setNewsletterEmail(e.target.value)}
-                    className={`bg-muted/30 border-border ${newsletterErrors.email ? 'border-destructive' : ''}`}
+              <form onSubmit={handleNewsletterSubmit} className="space-y-3">
+                <Input
+                  type="email"
+                  placeholder="Email cím"
+                  value={newsletterEmail}
+                  onChange={(e) => setNewsletterEmail(e.target.value)}
+                  className={`bg-muted/30 border-border ${newsletterErrors.email ? "border-destructive" : ""}`}
+                />
+                {newsletterErrors.email && <p className="text-xs text-destructive">{newsletterErrors.email}</p>}
+
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="newsletter-privacy"
+                    checked={newsletterPrivacy}
+                    onCheckedChange={(checked) => setNewsletterPrivacy(checked as boolean)}
                   />
-                  {newsletterErrors.email && <p className="text-xs text-destructive mt-1">{newsletterErrors.email}</p>}
+                  <label htmlFor="newsletter-privacy" className="text-xs text-muted-foreground cursor-pointer">
+                    Elfogadom az Adatkezelési Tájékoztatót
+                  </label>
                 </div>
-                <Button 
-                  type="submit" 
-                  className="bg-foreground hover:bg-foreground/90 text-background font-semibold px-6"
-                >
+                {newsletterErrors.privacy && <p className="text-xs text-destructive">{newsletterErrors.privacy}</p>}
+
+                <Button type="submit" className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
                   Feliratkozás
                 </Button>
-              </div>
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  id="newsletter-privacy"
-                  checked={newsletterPrivacy}
-                  onCheckedChange={(checked) => setNewsletterPrivacy(checked as boolean)}
-                />
-                <label htmlFor="newsletter-privacy" className="text-xs text-muted-foreground cursor-pointer">
-                  Elfogadom az Adatkezelési Tájékoztatót
-                </label>
-              </div>
-              {newsletterErrors.privacy && <p className="text-xs text-destructive">{newsletterErrors.privacy}</p>}
-            </form>
+              </form>
+            </Card>
           </div>
-        </Card>
+        </div>
       </div>
     </section>
   );
