@@ -33,6 +33,9 @@ export const Header = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
+      <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4">
+        A weboldal fejlesztés alatt áll.
+      </div>
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
