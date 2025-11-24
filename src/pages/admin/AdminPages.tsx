@@ -1,5 +1,6 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -193,6 +194,8 @@ type FieldTarget = {
 
 export default function AdminPages() {
   const { isLoading, session } = useAdminAuthGuard();
+  const navigate = useNavigate();
+  const { pageSlug } = useParams<{ pageSlug?: string }>();
   const [pageContent, setPageContent] = useState<Record<SectionKey, LocalizedSectionContent>>({});
   const [pageMetadata, setPageMetadata] = useState<Partial<Record<keyof typeof sectionGroups, PageContentMetadata>>>({});
   const [loading, setLoading] = useState(true);
@@ -214,6 +217,8 @@ export default function AdminPages() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [livePreviewKey, setLivePreviewKey] = useState(() => Date.now().toString());
 
+  const pageKeys = useMemo(() => Object.keys(sectionGroups) as Array<keyof typeof sectionGroups>, []);
+
   const sectionTabMap = useMemo(() => {
     const map: Record<string, keyof typeof sectionGroups> = {};
     (Object.keys(sectionGroups) as Array<keyof typeof sectionGroups>).forEach((tab) => {
@@ -223,6 +228,23 @@ export default function AdminPages() {
     });
     return map;
   }, []);
+
+  useEffect(() => {
+    if (!pageSlug) {
+      setSelectedPage(null);
+      setSelectedField(null);
+      return;
+    }
+
+    if (pageKeys.includes(pageSlug as keyof typeof sectionGroups)) {
+      setSelectedPage(pageSlug as keyof typeof sectionGroups);
+      setLivePreviewKey(Date.now().toString());
+      setSelectedField(null);
+      return;
+    }
+
+    navigate("/admin/pages", { replace: true });
+  }, [navigate, pageKeys, pageSlug]);
 
   const normalizePageMetadata = useCallback(
     (metadata?: Record<string, PageContentMetadata>) => {
@@ -295,12 +317,12 @@ export default function AdminPages() {
     (sectionKey: SectionKey, fieldKey: string) => {
       const targetTab = sectionTabMap[sectionKey];
       if (targetTab) {
-        setSelectedPage(targetTab);
+        navigate(`/admin/pages/${targetTab}`);
       }
       setSelectedField({ sectionKey, fieldKey });
       setTimeout(() => scrollToField(sectionKey, fieldKey), 50);
     },
-    [sectionTabMap],
+    [navigate, sectionTabMap],
   );
 
   useEffect(() => {
@@ -456,13 +478,12 @@ export default function AdminPages() {
   };
 
   const handleSelectPage = (pageKey: keyof typeof sectionGroups) => {
-    setSelectedPage(pageKey);
-    setLivePreviewKey(Date.now().toString());
+    navigate(`/admin/pages/${pageKey}`);
   };
 
   const handleBackToList = () => {
-    setSelectedPage(null);
     setSelectedField(null);
+    navigate("/admin/pages");
   };
 
   const handleUploadClick = (target: FieldTarget) => {
