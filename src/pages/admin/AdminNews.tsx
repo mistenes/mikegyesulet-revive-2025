@@ -39,7 +39,12 @@ import {
   updateNewsCategory,
   updateNews,
 } from "@/services/newsService";
-import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
+import {
+  listImageKitFiles,
+  uploadExternalImageToImageKit,
+  uploadToImageKit,
+  type ImageKitItem,
+} from "@/services/imageKitService";
 import { renderMarkdown } from "@/utils/markdown";
 import { translateNewsToEnglish } from "@/services/translationService";
 import type { NewsArticle, NewsCategory, NewsInput, NewsTranslation } from "@/types/news";
@@ -203,6 +208,52 @@ export default function AdminNews() {
     const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
 
     return { markdown, text };
+  };
+
+  const buildFileNameFromUrl = (url: string, fallback: string) => {
+    try {
+      const parsed = new URL(url, typeof window !== "undefined" ? window.location.origin : undefined);
+      const fileName = parsed.pathname.split("/").filter(Boolean).pop();
+      if (fileName) {
+        return fileName.split("?")[0];
+      }
+    } catch (error) {
+      console.error("Nem sikerült fájlnevet kiolvasni", error);
+    }
+
+    return fallback;
+  };
+
+  const uploadImportImages = async (candidate: ImportCandidate): Promise<ImportCandidate> => {
+    let coverUrl = candidate.imageUrl;
+
+    if (candidate.imageUrl) {
+      const coverFileName = buildFileNameFromUrl(candidate.imageUrl, `${candidate.slug || "hir"}-borito`);
+      coverUrl = await uploadExternalImageToImageKit(candidate.imageUrl, NEWS_FOLDER, coverFileName);
+    }
+
+    let updatedHtml = candidate.bodyHtml;
+    if (candidate.bodyHtml.trim()) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(candidate.bodyHtml, "text/html");
+      const images = Array.from(doc.querySelectorAll("img"));
+
+      for (const [index, image] of images.entries()) {
+        const src = image.getAttribute("src");
+        if (!src) continue;
+
+        const fileName = buildFileNameFromUrl(src, `${candidate.slug || "hir"}-${index + 1}`);
+        const uploadedUrl = await uploadExternalImageToImageKit(src, NEWS_FOLDER, fileName);
+        image.setAttribute("src", uploadedUrl);
+      }
+
+      updatedHtml = doc.body.innerHTML;
+    }
+
+    const { markdown, text } = convertHtmlToMarkdown(updatedHtml);
+    const updatedExcerpt = candidate.excerpt || createExcerpt(text || candidate.title);
+
+    return { ...candidate, imageUrl: coverUrl, bodyHtml: updatedHtml, markdown, excerpt: updatedExcerpt };
   };
 
   const parseCsv = (content: string) => {
@@ -900,22 +951,23 @@ export default function AdminNews() {
     try {
       const created: NewsArticle[] = [];
       for (const candidate of importPreview) {
+        const processed = await uploadImportImages(candidate);
         const payload: NewsInput = {
           categoryId: selectedCategory?.id || null,
           category: categoryTranslations.hu,
           categoryTranslations,
-          imageUrl: candidate.imageUrl || undefined,
-          imageAlt: candidate.imageAlt,
+          imageUrl: processed.imageUrl || undefined,
+          imageAlt: processed.imageAlt,
           sticky: false,
           date: todayIso(),
           languageAvailability: "hu",
           published: false,
           translations: {
             hu: {
-              title: candidate.title,
-              slug: candidate.slug || slugifyText(candidate.title) || `cikk-${candidate.row}`,
-              excerpt: candidate.excerpt || candidate.title,
-              content: candidate.markdown || candidate.bodyHtml || candidate.title,
+              title: processed.title,
+              slug: processed.slug || slugifyText(processed.title) || `cikk-${processed.row}`,
+              excerpt: processed.excerpt || processed.title,
+              content: processed.markdown || processed.bodyHtml || processed.title,
             },
             en: { ...emptyTranslation },
           },
