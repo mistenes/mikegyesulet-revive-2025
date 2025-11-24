@@ -1,5 +1,10 @@
 import { defaultPageContent } from "@/data/defaultPageContent";
-import { LocalizedSectionContent, PageContentStore } from "@/types/pageContent";
+import {
+  type LocalizedSectionContent,
+  type PageContentMetadata,
+  type PageContentResponse,
+  type PageContentStore,
+} from "@/types/pageContent";
 import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
@@ -53,28 +58,24 @@ export async function getSectionContent(sectionKey: string): Promise<LocalizedSe
   return store[sectionKey] || { hu: {}, en: {} };
 }
 
-export async function getAllSections(): Promise<PageContentStore> {
+export async function getAllSections(): Promise<PageContentResponse> {
   try {
     const response = await fetch(`${API_BASE}/api/page-content`, {
       credentials: "include",
     });
-    const data = await handleResponse<{ sections: PageContentStore }>(response);
+    const data = await handleResponse<{ sections?: PageContentStore; metadata?: Record<string, PageContentMetadata> }>(response);
     adminCache = {
       ...defaultPageContent,
       ...(data.sections || {}),
     };
+    return { sections: adminCache, metadata: data.metadata || {} };
   } catch (error) {
     adminCache = {
       ...defaultPageContent,
       ...(publicCache || {}),
     };
+    return { sections: adminCache, metadata: {} };
   }
-
-  return (
-    adminCache || {
-      ...defaultPageContent,
-    }
-  );
 }
 
 export async function saveSection(sectionKey: string, content: LocalizedSectionContent) {
@@ -85,7 +86,11 @@ export async function saveSection(sectionKey: string, content: LocalizedSectionC
     body: JSON.stringify({ translations: content }),
   });
 
-  const data = await handleResponse<{ sectionKey: string; translations: LocalizedSectionContent }>(response);
+  const data = await handleResponse<{
+    sectionKey: string;
+    translations: LocalizedSectionContent;
+    metadata?: PageContentMetadata;
+  }>(response);
 
   if (adminCache) {
     adminCache = {
@@ -106,7 +111,7 @@ export async function saveSection(sectionKey: string, content: LocalizedSectionC
   }
 
   broadcastUpdate(data.sectionKey);
-  return data.translations;
+  return { translations: data.translations, metadata: data.metadata };
 }
 
 export const PAGE_CONTENT_EVENT = STORAGE_EVENT;
