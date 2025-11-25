@@ -843,16 +843,23 @@ export default function AdminRegions() {
                     </Button>
                   </div>
 
+                  {form.organizations.length === 0 && (
+                    <Card className="p-4 border-dashed flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Nincs szervezet rögzítve</p>
+                        <p className="text-sm text-muted-foreground">Adj hozzá egy új szervezetet a régióhoz.</p>
+                      </div>
+                      <Button size="sm" onClick={addOrganization}>
+                        <Plus className="h-4 w-4 mr-1" /> Új szervezet
+                      </Button>
+                    </Card>
+                  )}
+
                   {form.organizations.map((org, index) => (
                     <Card key={index} className="p-4 space-y-3 border-dashed">
                       <div className="flex items-center justify-between">
                         <p className="font-medium">Szervezet #{index + 1}</p>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => removeOrganization(index)}
-                          disabled={form.organizations.length === 1}
-                        >
+                        <Button size="icon" variant="ghost" onClick={() => removeOrganization(index)}>
                           <Trash className="h-4 w-4 text-muted-foreground" />
                         </Button>
                       </div>
