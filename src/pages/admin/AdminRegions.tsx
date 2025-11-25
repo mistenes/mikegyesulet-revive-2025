@@ -41,6 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const REGIONS_FOLDER = "regiok";
+const REGION_COVER_FOLDER = "regions";
 const ORG_LOGO_FOLDER = "orglogo";
 
 const createEmptyOrganization = (): RegionOrganizationInput => ({
@@ -84,6 +85,15 @@ type ImportCandidate = {
   approved: boolean;
 };
 
+type RegionImportCandidate = {
+  row: number;
+  nameHu: string;
+  nameEn?: string;
+  imageUrl?: string;
+  slug: string;
+  approved: boolean;
+};
+
 export default function AdminRegions() {
   const { session } = useAdminAuthGuard();
   const [regions, setRegions] = useState<Region[]>([]);
@@ -103,8 +113,13 @@ export default function AdminRegions() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importSaving, setImportSaving] = useState(false);
+  const [regionImportPreview, setRegionImportPreview] = useState<RegionImportCandidate[]>([]);
+  const [regionImportError, setRegionImportError] = useState<string | null>(null);
+  const [regionImporting, setRegionImporting] = useState(false);
+  const [regionImportSaving, setRegionImportSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const regionImportFileInputRef = useRef<HTMLInputElement | null>(null);
   const hasSelectedInitial = useRef(false);
 
   const sortedRegions = useMemo(
@@ -117,7 +132,13 @@ export default function AdminRegions() {
     [importPreview],
   );
 
+  const approvedRegionImportCount = useMemo(
+    () => regionImportPreview.filter((item) => item.approved).length,
+    [regionImportPreview],
+  );
+
   const hasApprovedImport = approvedImportCount > 0;
+  const hasApprovedRegionImport = approvedRegionImportCount > 0;
 
   useEffect(() => {
     if (!session) return;
@@ -274,12 +295,53 @@ export default function AdminRegions() {
     }
   };
 
+  const handleRegionImportFile = async (file: File) => {
+    try {
+      setRegionImporting(true);
+      const text = await file.text();
+      const { candidates, errors } = parseRegionImportCsv(text);
+      setRegionImportPreview(candidates);
+      setRegionImportError(errors.length ? errors.join("\n") : null);
+      if (errors.length) {
+        toast.warning("Néhány régió kimaradt az import előnézetből. Ellenőrizd az üzenetet.");
+      } else {
+        toast.success("A régió import előnézete elkészült");
+      }
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült feldolgozni a régió CSV fájlt";
+      setRegionImportError(message);
+      setRegionImportPreview([]);
+      toast.error(message);
+    } finally {
+      setRegionImporting(false);
+      if (regionImportFileInputRef.current) {
+        regionImportFileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRegionImportInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await handleRegionImportFile(file);
+    }
+  };
+
   const toggleImportApproval = (row: number, approved: boolean) => {
     setImportPreview((prev) => prev.map((item) => (item.row === row ? { ...item, approved } : item)));
   };
 
   const toggleAllImportApprovals = (approved: boolean) => {
     setImportPreview((prev) => prev.map((item) => ({ ...item, approved })));
+  };
+
+  const toggleRegionImportApproval = (row: number, approved: boolean) => {
+    setRegionImportPreview((prev) => prev.map((item) => (item.row === row ? { ...item, approved } : item)));
+  };
+
+  const toggleAllRegionImportApprovals = (approved: boolean) => {
+    setRegionImportPreview((prev) => prev.map((item) => ({ ...item, approved })));
   };
 
   const handleImportSubmit = async () => {
@@ -362,6 +424,74 @@ export default function AdminRegions() {
       toast.error(message);
     } finally {
       setImportSaving(false);
+    }
+  };
+
+  const handleRegionImportSubmit = async () => {
+    if (!regionImportPreview.length) {
+      toast.error("Tölts fel egy CSV-t a régió importálásához");
+      return;
+    }
+
+    const approvedItems = regionImportPreview.filter((item) => item.approved);
+    if (!approvedItems.length) {
+      toast.error("Legalább egy régiót jóvá kell hagyni az importáláshoz");
+      return;
+    }
+
+    setRegionImportSaving(true);
+
+    try {
+      const existing = await getAdminRegions();
+      for (const region of existing) {
+        await deleteRegion(region.id);
+      }
+
+      const created: Region[] = [];
+
+      for (const candidate of approvedItems) {
+        let imageUrl = candidate.imageUrl || "";
+
+        if (candidate.imageUrl) {
+          try {
+            const coverName = `${candidate.slug}-cover`;
+            imageUrl = await uploadExternalImageToImageKit(candidate.imageUrl, REGION_COVER_FOLDER, coverName);
+          } catch (error) {
+            console.error(error);
+            throw new Error(`Nem sikerült feltölteni a borítóképet (${candidate.nameHu})`);
+          }
+        }
+
+        const regionInput: RegionInput = {
+          id: candidate.slug,
+          nameHu: candidate.nameHu,
+          nameEn: candidate.nameEn,
+          imageUrl,
+          organizations: [],
+        };
+
+        const saved = await createRegion(regionInput);
+        created.push(saved);
+      }
+
+      setRegions(created);
+      if (created.length) {
+        setSelectedId(created[0].id);
+        setForm({ ...created[0] });
+      } else {
+        resetForm();
+      }
+
+      setRegionImportPreview([]);
+      setRegionImportError(null);
+      toast.success(`Importálva: ${created.length} régió`);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült importálni a régiókat";
+      setRegionImportError(message);
+      toast.error(message);
+    } finally {
+      setRegionImportSaving(false);
     }
   };
 
@@ -527,6 +657,65 @@ export default function AdminRegions() {
     return { candidates, errors };
   };
 
+  const parseRegionImportCsv = (content: string) => {
+    const rows = parseCsv(content);
+    if (!rows.length) {
+      throw new Error("Az importfájl üresnek tűnik");
+    }
+
+    const headers = rows[0].map((header) => header.trim());
+    const normalizedHeaders = headers.map(normalizeKey);
+
+    const getValue = (row: string[], keys: string[]) => {
+      for (const key of keys) {
+        const normalizedKey = normalizeKey(key);
+        const index = normalizedHeaders.findIndex((header) => header === normalizedKey);
+        if (index !== -1) {
+          return row[index] || "";
+        }
+      }
+      return "";
+    };
+
+    const NAME_HU_HEADERS = ["a régió neve", "régió neve", "regio neve", "name", "region"];
+    const NAME_EN_HEADERS = ["[en] region name", "region name en", "region name", "name en"];
+    const IMAGE_HEADERS = ["régió borítókép", "borítókép", "cover", "cover image", "image"];
+
+    const candidates: RegionImportCandidate[] = [];
+    const errors: string[] = [];
+
+    for (let i = 1; i < rows.length; i += 1) {
+      const row = rows[i];
+      if (!row || row.every((cell) => !cell.trim())) continue;
+
+      const nameHu = getValue(row, NAME_HU_HEADERS).trim();
+      const nameEn = getValue(row, NAME_EN_HEADERS).trim();
+      const imageUrl = getValue(row, IMAGE_HEADERS).trim();
+
+      if (!nameHu) {
+        errors.push(`${i + 1}. sor: hiányzik a régió neve (A régió neve)`);
+        continue;
+      }
+
+      const slug = slugify(nameHu);
+      if (!slug) {
+        errors.push(`${i + 1}. sor: nem sikerült slugot képezni a régióhoz (${nameHu})`);
+        continue;
+      }
+
+      candidates.push({
+        row: i + 1,
+        nameHu,
+        nameEn: nameEn || undefined,
+        imageUrl: imageUrl || undefined,
+        slug,
+        approved: false,
+      });
+    }
+
+    return { candidates, errors };
+  };
+
   const handleSave = async () => {
     if (!form.nameHu.trim()) {
       toast.error("A magyar név megadása kötelező");
@@ -624,6 +813,112 @@ export default function AdminRegions() {
             </Button>
           </div>
         </div>
+
+        <Card className="p-6 space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm text-muted-foreground">CSV import</p>
+                <h2 className="text-lg font-semibold">Régiók betöltése</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                A feltöltés előtt minden jelenlegi régió törlődik. A CSV tartalmazza az "A régió neve", "Régió Borítókép"
+                és "[EN] Region Name" oszlopokat. A borítóképek letöltve, majd a /regions mappába feltöltve kerülnek
+                mentésre.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => toggleAllRegionImportApprovals(true)}
+                disabled={!regionImportPreview.length}
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" /> Összes jóváhagyása
+              </Button>
+              <Button
+                onClick={handleRegionImportSubmit}
+                type="button"
+                disabled={
+                  !hasApprovedRegionImport || regionImportSaving || regionImporting || !regionImportPreview.length
+                }
+                className="gap-2"
+              >
+                {regionImportSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importálás
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => regionImportFileInputRef.current?.click()}
+                disabled={regionImporting}
+              >
+                {regionImporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />} CSV feltöltés
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4 items-center justify-between text-sm">
+            <div className="text-muted-foreground">
+              Jóváhagyva: {approvedRegionImportCount}/{regionImportPreview.length || 0}. Legalább egy régiót jóvá kell hagynod az importáláshoz.
+            </div>
+            <Badge variant={hasApprovedRegionImport && regionImportPreview.length ? "default" : "outline"}>
+              {hasApprovedRegionImport && regionImportPreview.length ? "Importálásra kész" : "Jóváhagyás szükséges"}
+            </Badge>
+          </div>
+
+          {regionImportError && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 whitespace-pre-line">
+              {regionImportError}
+            </div>
+          )}
+
+          {regionImportPreview.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              Tölts fel egy CSV fájlt a régiókhoz. A sorok előnézetben jelennek meg, a kiválasztottakat jóváhagyás után tudod importálni.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {regionImportPreview.map((item) => (
+                <div key={item.row} className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <Badge variant="outline">Sor {item.row}</Badge>
+                      <Badge variant="secondary">{item.slug}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Switch
+                        checked={item.approved}
+                        onCheckedChange={(checked) => toggleRegionImportApproval(item.row, checked)}
+                      />
+                      <span>Jóváhagyva</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold">{item.nameHu}</h3>
+                    {item.nameEn && <p className="text-xs text-muted-foreground">EN: {item.nameEn}</p>}
+                  </div>
+
+                  {item.imageUrl ? (
+                    <img src={item.imageUrl} alt={item.nameHu} className="h-28 w-full object-cover rounded-md" />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Nincs borítókép</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <input
+            ref={regionImportFileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleRegionImportInputChange}
+          />
+        </Card>
 
         <Card className="p-6 space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
