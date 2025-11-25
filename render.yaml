@@ -29,11 +29,11 @@ services:
       - key: IMAGEKIT_GALLERY_FOLDER
         value: ""
       - key: VITE_BUNNY_STORAGE_ZONE
-        value: ""
+        value: "your-storage-zone-name"
       - key: VITE_BUNNY_STORAGE_KEY
-        value: ""
+        value: "your-storage-access-key"
       - key: VITE_BUNNY_CDN_HOSTNAME
-        value: ""
+        value: "example.b-cdn.net"
       - key: VITE_BUNNY_STORAGE_HOST
         value: "storage.bunnycdn.com"
       - key: OPENAI_API_KEY

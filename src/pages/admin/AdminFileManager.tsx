@@ -122,6 +122,39 @@ export default function AdminFileManager() {
 
         <Card>
           <CardHeader>
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle>Környezeti változók kitöltése</CardTitle>
+                <CardDescription>Gyors útmutató a Bunny.net értékek beszerzéséhez.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ul className="list-disc space-y-2 pl-6 text-sm text-muted-foreground">
+              <li>
+                <span className="font-medium text-foreground">VITE_BUNNY_STORAGE_ZONE</span>: a storage zóna neve (pl.
+                <code className="ml-1">your-storage-zone-name</code>), amit a Bunny.net Storage menüben találsz.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">VITE_BUNNY_STORAGE_KEY</span>: a Storage zónához tartozó
+                <em>Access Key</em>, ami a <em>FTP &amp; API Access</em> panelen jelenik meg.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">VITE_BUNNY_CDN_HOSTNAME</span>: a kiadási/pull zóna host neve
+                (pl. <code className="ml-1">example.b-cdn.net</code> vagy a saját domain), ahonnan a fájlok publikusak.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">VITE_BUNNY_STORAGE_HOST</span>: régiótól függő storage host
+                (alapértelmezés: <code className="ml-1">storage.bunnycdn.com</code>). Csak akkor módosítsd, ha külön régiót
+                használsz.
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <div className="flex flex-wrap items-center gap-3">
               <FileStack className="h-5 w-5 text-primary" />
               <div>
