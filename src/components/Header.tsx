@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X, Globe } from "lucide-react";
 import mikLogo from "@/assets/mik-logo.svg";
 import {
@@ -9,11 +9,29 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getSettings, type SettingsStore } from "@/services/settingsService";
+import { getLocalizedPath, stripLocalePrefix } from "@/lib/localePaths";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { language, setLanguage, t } = useLanguage();
+  const [showDevBanner, setShowDevBanner] = useState<boolean>(() => {
+    const settings = getSettings();
+    return settings.general.dev_banner_enabled?.value !== false;
+  });
+
+  useEffect(() => {
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsStore>).detail;
+      const latest = detail ?? getSettings();
+      setShowDevBanner(latest.general.dev_banner_enabled?.value !== false);
+    };
+
+    window.addEventListener("mik-settings-updated", handleSettingsUpdate);
+    return () => window.removeEventListener("mik-settings-updated", handleSettingsUpdate);
+  }, []);
 
   const navItems = [
     { label: t('nav.about'), href: "/rolunk" },
@@ -24,19 +42,45 @@ export const Header = () => {
     { label: t('nav.contact'), href: "/kapcsolat" },
   ];
 
+  const buildPath = (path: string) => getLocalizedPath(path, language);
+
   const isActive = (href: string) => {
+    const localized = buildPath(href);
     if (href.startsWith('/#')) {
       return location.pathname === '/' && location.hash === href.substring(1);
     }
-    return location.pathname === href;
+    return location.pathname === localized;
+  };
+
+  const switchLanguage = (target: 'hu' | 'en') => {
+    if (target === language) return;
+
+    const fullPath = `${location.pathname}${location.search}${location.hash}`;
+    const isAdmin = fullPath.startsWith('/admin');
+
+    setLanguage(target);
+
+    if (isAdmin) {
+      return;
+    }
+
+    const normalized = stripLocalePrefix(fullPath || '/');
+    const nextPath = target === 'en' ? getLocalizedPath(normalized, 'en') : stripLocalePrefix(fullPath || '/');
+
+    navigate(nextPath || '/', { replace: true });
   };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
+      {showDevBanner && (
+        <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4">
+          A weboldal fejlesztés alatt áll.
+        </div>
+      )}
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
+          <Link to={buildPath('/')} className="flex items-center gap-3 group">
             <img src={mikLogo} alt="MIK Logo" className="h-16 w-auto transition-transform duration-300 group-hover:scale-105" />
             <span className="text-xl font-semibold tracking-wide text-foreground group-hover:text-primary transition-colors">
               MIK
@@ -59,7 +103,7 @@ export const Header = () => {
               ) : (
                 <Link
                   key={item.label}
-                  to={item.href}
+                  to={buildPath(item.href)}
                   className={`px-4 py-2 text-sm font-medium transition-colors duration-200 ${
                     isActive(item.href) ? 'text-primary' : 'text-foreground hover:text-primary'
                   }`}
@@ -76,14 +120,14 @@ export const Header = () => {
                 <span>{language === 'hu' ? 'Magyar' : 'English'}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-card border-border z-[100]">
-                <DropdownMenuItem 
-                  onClick={() => setLanguage('hu')}
+                <DropdownMenuItem
+                  onClick={() => switchLanguage('hu')}
                   className={`cursor-pointer ${language === 'hu' ? 'bg-accent' : ''}`}
                 >
                   Magyar
                 </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => setLanguage('en')}
+                <DropdownMenuItem
+                  onClick={() => switchLanguage('en')}
                   className={`cursor-pointer ${language === 'en' ? 'bg-accent' : ''}`}
                 >
                   English
@@ -111,8 +155,8 @@ export const Header = () => {
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 text-sm font-medium transition-all ${
-                    isActive(item.href) 
-                      ? 'text-primary bg-accent/50' 
+                    isActive(item.href)
+                      ? 'text-primary bg-accent/50'
                       : 'text-foreground hover:text-primary hover:bg-muted/50'
                   }`}
                 >
@@ -121,11 +165,11 @@ export const Header = () => {
               ) : (
                 <Link
                   key={item.label}
-                  to={item.href}
+                  to={buildPath(item.href)}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 text-sm font-medium transition-all ${
-                    isActive(item.href) 
-                      ? 'text-primary bg-accent/50' 
+                    isActive(item.href)
+                      ? 'text-primary bg-accent/50'
                       : 'text-foreground hover:text-primary hover:bg-muted/50'
                   }`}
                 >
@@ -142,7 +186,7 @@ export const Header = () => {
               </div>
               <button
                 onClick={() => {
-                  setLanguage('hu');
+                  switchLanguage('hu');
                   setMobileMenuOpen(false);
                 }}
                 className={`block w-full text-left px-3 py-2 text-sm rounded ${
@@ -153,7 +197,7 @@ export const Header = () => {
               </button>
               <button
                 onClick={() => {
-                  setLanguage('en');
+                  switchLanguage('en');
                   setMobileMenuOpen(false);
                 }}
                 className={`block w-full text-left px-3 py-2 text-sm rounded ${

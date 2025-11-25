@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent } from "react";
+import type { ChangeEvent, DragEvent } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import {
   Calendar,
   Eye,
   Folder,
+  FileSpreadsheet,
   GripVertical,
   Image as ImageIcon,
   Loader2,
@@ -22,6 +23,7 @@ import {
   Plus,
   Save,
   Search,
+  ShieldCheck,
   Trash,
   Upload,
 } from "lucide-react";
@@ -37,7 +39,12 @@ import {
   updateNewsCategory,
   updateNews,
 } from "@/services/newsService";
-import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
+import {
+  listImageKitFiles,
+  uploadExternalImageToImageKit,
+  uploadToImageKit,
+  type ImageKitItem,
+} from "@/services/imageKitService";
 import { renderMarkdown } from "@/utils/markdown";
 import { translateNewsToEnglish } from "@/services/translationService";
 import type { NewsArticle, NewsCategory, NewsInput, NewsTranslation } from "@/types/news";
@@ -47,6 +54,18 @@ const NEWS_FOLDER = "hirek";
 
 type LanguageAvailability = "hu" | "en" | "both";
 type NewsFormState = NewsInput & { languageAvailability: LanguageAvailability; categoryTranslations: { hu: string; en: string } };
+
+type ImportCandidate = {
+  row: number;
+  title: string;
+  slug: string;
+  imageUrl: string;
+  imageAlt: string;
+  bodyHtml: string;
+  markdown: string;
+  excerpt: string;
+  approved: boolean;
+};
 
 const emptyTranslation: NewsTranslation = { title: "", slug: "", excerpt: "", content: "" };
 
@@ -90,6 +109,11 @@ export default function AdminNews() {
     excerpt: false,
     content: false,
   });
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState<ImportCandidate[]>([]);
+  const [importCategoryId, setImportCategoryId] = useState<string>("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSaving, setImportSaving] = useState(false);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [newCategoryHu, setNewCategoryHu] = useState("");
@@ -97,6 +121,7 @@ export default function AdminNews() {
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const slugifyText = (value: string) =>
     value
@@ -108,6 +133,274 @@ export default function AdminNews() {
       .replace(/^-+|-+$/g, "")
       .toLowerCase();
 
+  const normalizeKey = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const createExcerpt = (text: string, limit = 240) => {
+    const clean = text.replace(/\s+/g, " ").trim();
+    if (!clean) return "";
+    return clean.length > limit ? `${clean.slice(0, limit - 3)}...` : clean;
+  };
+
+  const convertHtmlToMarkdown = (html: string) => {
+    if (typeof window === "undefined" || !html.trim()) {
+      return { markdown: html.trim(), text: html.trim() };
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    const walk = (node: Node): string => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return (node.textContent || "").replace(/\s+/g, " ");
+      }
+
+      if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+      const element = node as HTMLElement;
+      const children = Array.from(element.childNodes)
+        .map((child) => walk(child))
+        .filter(Boolean);
+      const content = children.join("");
+
+      switch (element.tagName.toLowerCase()) {
+        case "br":
+          return "\n";
+        case "p":
+          return `${content}\n\n`;
+        case "strong":
+        case "b":
+          return `**${content}**`;
+        case "em":
+        case "i":
+          return `*${content}*`;
+        case "ul":
+          return `${Array.from(element.children)
+            .map((child) => `- ${walk(child)}`)
+            .join("\n")}\n\n`;
+        case "ol":
+          return `${Array.from(element.children)
+            .map((child, index) => `${index + 1}. ${walk(child)}`)
+            .join("\n")}\n\n`;
+        case "li":
+          return `${content}\n`;
+        case "a": {
+          const href = element.getAttribute("href") || "";
+          return href ? `[${content}](${href})` : content;
+        }
+        case "img": {
+          const src = element.getAttribute("src") || "";
+          const alt = element.getAttribute("alt") || content || "";
+          return src ? `![${alt}](${src})` : alt;
+        }
+        default:
+          return content;
+      }
+    };
+
+    const markdown = walk(doc.body).replace(/\n{3,}/g, "\n\n").trim();
+    const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+
+    return { markdown, text };
+  };
+
+  const buildFileNameFromUrl = (url: string, fallback: string) => {
+    try {
+      const parsed = new URL(url, typeof window !== "undefined" ? window.location.origin : undefined);
+      const fileName = parsed.pathname.split("/").filter(Boolean).pop();
+      if (fileName) {
+        return fileName.split("?")[0];
+      }
+    } catch (error) {
+      console.error("Nem sikerült fájlnevet kiolvasni", error);
+    }
+
+    return fallback;
+  };
+
+  const uploadImportImages = async (candidate: ImportCandidate): Promise<ImportCandidate> => {
+    let coverUrl = candidate.imageUrl;
+
+    if (candidate.imageUrl) {
+      const coverFileName = buildFileNameFromUrl(candidate.imageUrl, `${candidate.slug || "hir"}-borito`);
+      coverUrl = await uploadExternalImageToImageKit(candidate.imageUrl, NEWS_FOLDER, coverFileName);
+    }
+
+    let updatedHtml = candidate.bodyHtml;
+    if (candidate.bodyHtml.trim()) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(candidate.bodyHtml, "text/html");
+      const images = Array.from(doc.querySelectorAll("img"));
+
+      for (const [index, image] of images.entries()) {
+        const src = image.getAttribute("src");
+        if (!src) continue;
+
+        const fileName = buildFileNameFromUrl(src, `${candidate.slug || "hir"}-${index + 1}`);
+        const uploadedUrl = await uploadExternalImageToImageKit(src, NEWS_FOLDER, fileName);
+        image.setAttribute("src", uploadedUrl);
+      }
+
+      updatedHtml = doc.body.innerHTML;
+    }
+
+    const { markdown, text } = convertHtmlToMarkdown(updatedHtml);
+    const updatedExcerpt = candidate.excerpt || createExcerpt(text || candidate.title);
+
+    return { ...candidate, imageUrl: coverUrl, bodyHtml: updatedHtml, markdown, excerpt: updatedExcerpt };
+  };
+
+  const parseCsv = (content: string) => {
+    const rows: string[][] = [];
+    const clean = content.replace(/\r\n?/g, "\n");
+    let current: string[] = [];
+    let value = "";
+    let inQuotes = false;
+
+    for (let i = 0; i <= clean.length; i += 1) {
+      const char = clean[i] ?? "";
+      const isLast = i === clean.length;
+
+      if (inQuotes) {
+        if (char === '"') {
+          const next = clean[i + 1];
+          if (next === '"') {
+            value += '"';
+            i += 1;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          value += char;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inQuotes = true;
+        continue;
+      }
+
+      if (char === "," || char === "\n" || isLast) {
+        current.push(value);
+        value = "";
+
+        if (char === "\n" || isLast) {
+          rows.push(current);
+          current = [];
+        }
+
+        continue;
+      }
+
+      value += char;
+    }
+
+    return rows.filter((row) => row.length && row.some((cell) => cell.trim() !== ""));
+  };
+
+  const parseWebflowCsv = (content: string) => {
+    const rows = parseCsv(content);
+    if (!rows.length) {
+      throw new Error("Az importfájl üresnek tűnik");
+    }
+
+    const headers = rows[0].map((header) => header.trim());
+    const normalizedHeaders = headers.map(normalizeKey);
+
+    const getValue = (row: string[], keys: string[]) => {
+      for (const key of keys) {
+        const normalizedKey = normalizeKey(key);
+        const index = normalizedHeaders.findIndex((header) => header === normalizedKey);
+        if (index !== -1) {
+          return row[index] || "";
+        }
+      }
+      return "";
+    };
+
+    const TITLE_HEADERS = ["✍️ Cikk Címe", "Cikk Címe", "Cikk Cime", "Title"];
+    const IMAGE_HEADERS = ["Nagy Kép", "Nagy Kep", "Cover Image", "Image", "Main Image"];
+    const BODY_HEADERS = ["Post Body", "Body", "Tartalom", "Post Content", "Rich Text"];
+
+    const candidates: ImportCandidate[] = [];
+    const errors: string[] = [];
+
+    for (let i = 1; i < rows.length; i += 1) {
+      const row = rows[i];
+      if (!row || row.every((cell) => !cell.trim())) continue;
+
+      const title = getValue(row, TITLE_HEADERS).trim();
+      const imageUrl = getValue(row, IMAGE_HEADERS).trim();
+      const bodyHtml = getValue(row, BODY_HEADERS).trim();
+
+      if (!title) {
+        errors.push(`${i + 1}. sor: hiányzik a cím (✍️ Cikk Címe)`);
+        continue;
+      }
+
+      if (!bodyHtml) {
+        errors.push(`${i + 1}. sor: hiányzik a hír szövege (Post Body)`);
+        continue;
+      }
+
+      const { markdown, text } = convertHtmlToMarkdown(bodyHtml);
+      const slug = slugifyText(title) || `cikk-${i}`;
+      const excerpt = createExcerpt(text || title);
+
+      candidates.push({
+        row: i + 1,
+        title,
+        slug,
+        imageUrl,
+        imageAlt: title,
+        bodyHtml,
+        markdown,
+        excerpt,
+        approved: false,
+      });
+    }
+
+    return { candidates, errors };
+  };
+
+  const handleImportFile = async (file: File) => {
+    setImportError(null);
+    setImporting(true);
+
+    try {
+      const content = await file.text();
+      const { candidates, errors } = parseWebflowCsv(content);
+
+      if (errors.length) {
+        setImportError(errors.join(" | "));
+      }
+
+      if (!candidates.length) {
+        throw new Error("Nem találtunk importálható híreket a fájlban");
+      }
+
+      setImportPreview(candidates);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült feldolgozni a fájlt";
+      setImportPreview([]);
+      setImportError(message);
+      toast.error(message);
+    } finally {
+      setImporting(false);
+      if (importFileInputRef.current) {
+        importFileInputRef.current.value = "";
+      }
+    }
+  };
+
   useEffect(() => {
     if (!session) return;
 
@@ -115,6 +408,9 @@ export default function AdminNews() {
       try {
         const items = await getNewsCategories();
         setCategories(items);
+        if (items.length && !importCategoryId) {
+          setImportCategoryId(items[0].id);
+        }
       } catch (error: unknown) {
         console.error(error);
         const message = error instanceof Error ? error.message : "Nem sikerült betölteni a kategóriákat";
@@ -138,7 +434,7 @@ export default function AdminNews() {
 
     void loadCategories();
     void loadNews();
-  }, [session]);
+  }, [importCategoryId, session]);
 
   useEffect(() => {
     if (form.imageUrl) {
@@ -403,6 +699,9 @@ export default function AdminNews() {
     both: "HU & EN",
   };
 
+  const approvedImportCount = useMemo(() => importPreview.filter((item) => item.approved).length, [importPreview]);
+  const allImportsApproved = importPreview.length > 0 && approvedImportCount === importPreview.length;
+
   const handleSubmit = async () => {
     setSaving(true);
     const hu = form.translations.hu;
@@ -617,6 +916,80 @@ export default function AdminNews() {
     fileInputRef.current?.click();
   };
 
+  const handleImportInputChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await handleImportFile(file);
+    }
+  };
+
+  const toggleImportApproval = (row: number, approved: boolean) => {
+    setImportPreview((prev) => prev.map((item) => (item.row === row ? { ...item, approved } : item)));
+  };
+
+  const toggleAllImportApprovals = (approved: boolean) => {
+    setImportPreview((prev) => prev.map((item) => ({ ...item, approved })));
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importPreview.length) {
+      toast.error("Tölts fel egy Webflow CSV fájlt az importáláshoz");
+      return;
+    }
+
+    const notApproved = importPreview.filter((item) => !item.approved);
+    if (notApproved.length) {
+      toast.error("Minden importált sort jóvá kell hagyni a mentés előtt");
+      return;
+    }
+
+    const selectedCategory = categories.find((item) => item.id === importCategoryId);
+    const categoryTranslations = selectedCategory?.name || { hu: "Importált", en: "Imported" };
+
+    setImportSaving(true);
+
+    try {
+      const created: NewsArticle[] = [];
+      for (const candidate of importPreview) {
+        const processed = await uploadImportImages(candidate);
+        const payload: NewsInput = {
+          categoryId: selectedCategory?.id || null,
+          category: categoryTranslations.hu,
+          categoryTranslations,
+          imageUrl: processed.imageUrl || undefined,
+          imageAlt: processed.imageAlt,
+          sticky: false,
+          date: todayIso(),
+          languageAvailability: "hu",
+          published: false,
+          translations: {
+            hu: {
+              title: processed.title,
+              slug: processed.slug || slugifyText(processed.title) || `cikk-${processed.row}`,
+              excerpt: processed.excerpt || processed.title,
+              content: processed.markdown || processed.bodyHtml || processed.title,
+            },
+            en: { ...emptyTranslation },
+          },
+        };
+
+        const saved = await createNews(payload);
+        created.push(saved);
+      }
+
+      setArticles((prev) => [...created, ...prev]);
+      setImportPreview([]);
+      setImportError(null);
+      toast.success(`Sikeres import: ${created.length} hír vázlatként mentve`);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült importálni a híreket";
+      toast.error(message);
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
@@ -647,6 +1020,154 @@ export default function AdminNews() {
               <Plus className="h-4 w-4" /> Új hír
             </Button>
           </div>
+
+          <Card className="p-6 space-y-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-primary/10 p-2 text-primary">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="text-xl font-semibold">Webflow hír import</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Töltsd fel a Webflow CSV exportot (oszlopok: ✍️ Cikk Címe, Nagy Kép, Post Body). Mentés előtt minden sor
+                    kap előnézetet és jóváhagyást igényel.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
+                {importPreview.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="gap-2"
+                    onClick={() => toggleAllImportApprovals(!allImportsApproved)}
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    {allImportsApproved ? "Összes visszavonása" : "Összes jóváhagyása"}
+                  </Button>
+                )}
+                <Button
+                  onClick={() => importFileInputRef.current?.click()}
+                  variant="outline"
+                  className="gap-2"
+                  disabled={importing}
+                  type="button"
+                >
+                  {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} CSV feltöltése
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3 items-end">
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="import-category">Kategória az importált hírekhez</Label>
+                <select
+                  id="import-category"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                  value={importCategoryId}
+                  onChange={(event) => setImportCategoryId(event.target.value)}
+                >
+                  {categories.length === 0 && <option value="">(Nincs kategória)</option>}
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name.hu}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  A hírek vázlatként mentődnek ebbe a kategóriába, publikálásig nem jelennek meg.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Jóváhagyott tételek</Label>
+                <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>{approvedImportCount} / {importPreview.length || 0} sor</span>
+                  <Badge variant={allImportsApproved ? "default" : "outline"}>{allImportsApproved ? "Kész" : "Folyamatban"}</Badge>
+                </div>
+              </div>
+            </div>
+
+            {importError && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                <Calendar className="h-4 w-4" />
+                <span>{importError}</span>
+              </div>
+            )}
+
+            {importPreview.length === 0 ? (
+              <div className="flex flex-col items-start gap-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Upload className="h-4 w-4" />
+                  <span>Válaszd ki a Webflow exportot, hogy láthasd a hír előnézeteket és jóváhagyd őket.</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {approvedImportCount}/{importPreview.length} sor jóváhagyva. Minden sort jóvá kell hagyni a mentéshez.
+                  </p>
+                  <Button
+                    onClick={handleImportSubmit}
+                    className="gap-2"
+                    disabled={!allImportsApproved || importSaving}
+                    type="button"
+                  >
+                    {importSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Importálás és jóváhagyás
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {importPreview.map((item) => (
+                    <div key={item.row} className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <Badge variant="outline">Sor {item.row}</Badge>
+                          <Badge variant="secondary">HU</Badge>
+                          {item.imageUrl && <Badge variant="outline">Borítókép</Badge>}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Switch
+                            checked={item.approved}
+                            onCheckedChange={(checked) => toggleImportApproval(item.row, checked)}
+                          />
+                          <span>Jóváhagyva</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold" style={{ fontFamily: "'Sora', sans-serif" }}>
+                          {item.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{item.excerpt}</p>
+                      </div>
+
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.imageAlt} className="w-full h-40 object-cover rounded-md" />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Nincs borítókép megadva</p>
+                      )}
+
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(item.markdown || item.bodyHtml) }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleImportInputChange}
+            />
+          </Card>
 
           <Card className="p-6 space-y-6">
             <div className="flex items-center gap-3">

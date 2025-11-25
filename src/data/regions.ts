@@ -1,26 +1,11 @@
-export type RegionOrganization = {
-  name: string;
-  nameEn: string;
-  description: string;
-  descriptionEn: string;
-  email?: string;
-  website?: string;
-};
-
-export type Region = {
-  id: string;
-  nameHu: string;
-  nameEn: string;
-  image: string;
-  organizations: RegionOrganization[];
-};
+import type { Region } from "@/types/region";
 
 export const regionsData: Region[] = [
   {
     id: 'bansag',
     nameHu: 'Bánság és Regát',
     nameEn: 'Banat and Regat',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/61a610f7d539a19844406366_mik-regio-n9.jpg',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/61a610f7d539a19844406366_mik-regio-n9.jpg',
     organizations: [
       {
         name: 'Moldvai Csángómagyarok Szövetsége',
@@ -42,7 +27,7 @@ export const regionsData: Region[] = [
     id: 'burgenland',
     nameHu: 'Burgenland',
     nameEn: 'Burgenland',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76e73bc74d9b4b0688_burgenland.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76e73bc74d9b4b0688_burgenland.png',
     organizations: [
       {
         name: 'Burgenlandi Magyarok Népfőiskolája',
@@ -57,7 +42,7 @@ export const regionsData: Region[] = [
     id: 'erdely',
     nameHu: 'Erdély',
     nameEn: 'Transylvania',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/61a61114090b302be2db2c66_mik-regio-n2.jpg',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/61a61114090b302be2db2c66_mik-regio-n2.jpg',
     organizations: [
       {
         name: 'Centrum Studiorum Egyesület',
@@ -135,7 +120,7 @@ export const regionsData: Region[] = [
     id: 'felvidek',
     nameHu: 'Felvidék',
     nameEn: 'Highlands',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc769bf41c13a6a4a7ca_felvidek.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc769bf41c13a6a4a7ca_felvidek.png',
     organizations: [
       {
         name: 'Diákhálózat',
@@ -213,7 +198,7 @@ export const regionsData: Region[] = [
     id: 'horvat',
     nameHu: 'Horvátország',
     nameEn: 'Croatia',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc762a3e8e77bf8e01bc_horvatorszag.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc762a3e8e77bf8e01bc_horvatorszag.png',
     organizations: [
       {
         name: 'Horvátországi Magyarok Demokratikus Közössége',
@@ -228,7 +213,7 @@ export const regionsData: Region[] = [
     id: 'karpatalja',
     nameHu: 'Kárpátalja',
     nameEn: 'Transcarpathia',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76afbfce55f57c62f1_karpatalja.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76afbfce55f57c62f1_karpatalja.png',
     organizations: [
       {
         name: 'Görögkatolikus Ifjúsági Szervezet',
@@ -292,7 +277,7 @@ export const regionsData: Region[] = [
     id: 'magyarorszag',
     nameHu: 'Magyarország',
     nameEn: 'Hungary',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76afbfce2e987c62f2_magyarorszag.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76afbfce2e987c62f2_magyarorszag.png',
     organizations: [
       {
         name: 'Doktoranduszok Országos Egyesülete',
@@ -384,7 +369,7 @@ export const regionsData: Region[] = [
     id: 'muravidek',
     nameHu: 'Muravidék',
     nameEn: 'Muravidék',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76e73bc759884b0689_muravidek.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76e73bc759884b0689_muravidek.png',
     organizations: [
       {
         name: 'Muravidéki Magyar Ifjúsági Szervezet',
@@ -399,7 +384,7 @@ export const regionsData: Region[] = [
     id: 'nyugat',
     nameHu: 'Nyugati Diaszpóra',
     nameEn: 'Western Diaspora',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76afbfce4aa67c62f3_nyugati_diasznora.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76afbfce4aa67c62f3_nyugati_diasznora.png',
     organizations: [
       {
         name: 'Hungarian Youth Association',
@@ -414,7 +399,7 @@ export const regionsData: Region[] = [
     id: 'vajdasag',
     nameHu: 'Vajdaság',
     nameEn: 'Vojvodina',
-    image: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76e73bc70aa24b068a_vajdasag.png',
+    imageUrl: 'https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5eb1dc76e73bc70aa24b068a_vajdasag.png',
     organizations: [
       {
         name: 'Vajdasági Ifjúsági Fórum',

@@ -6,6 +6,7 @@ import umbrellaImage from "@/assets/umbrella-person.jpg";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 type AboutContent = {
   badge?: string;
@@ -13,10 +14,12 @@ type AboutContent = {
   subtitle: string;
   description: string;
   buttonText: string;
+  buttonUrl?: string;
   ctaBadge?: string;
   ctaTitle?: string;
   ctaDescription?: string;
   ctaButton?: string;
+  ctaButtonUrl?: string;
   imageUrl?: string;
 };
 
@@ -69,10 +72,25 @@ export const About = () => {
                 className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold px-8 py-6 text-base transition-all duration-300"
                 asChild
               >
-                <Link to="/rolunk">
-                  {content?.buttonText}
-                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                {content?.buttonUrl?.startsWith("http") ? (
+                  <a
+                    href={content.buttonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center"
+                  >
+                    {content?.buttonText}
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                ) : (
+                  <Link
+                    to={getLocalizedPath(content?.buttonUrl || "/rolunk", language)}
+                    className="inline-flex items-center"
+                  >
+                    {content?.buttonText}
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                )}
               </Button>
             )}
           </div>
@@ -114,9 +132,19 @@ export const About = () => {
                   <Button
                     variant="ghost"
                     className="text-primary hover:text-primary-glow p-0 h-auto font-semibold group"
+                    asChild
                   >
-                    {content?.ctaButton}
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                    {content?.ctaButtonUrl?.startsWith("http") ? (
+                      <a href={content.ctaButtonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
+                        {content?.ctaButton}
+                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                      </a>
+                    ) : (
+                      <Link to={content?.ctaButtonUrl || "#"} className="inline-flex items-center">
+                        {content?.ctaButton}
+                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                      </Link>
+                    )}
                   </Button>
                 </>
               )}

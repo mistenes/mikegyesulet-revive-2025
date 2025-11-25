@@ -9,11 +9,12 @@ import type { NewsArticle } from "@/types/news";
 import { renderMarkdown } from "@/utils/markdown";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 const EmptyState = ({ message }: { message: string }) => (
   <div className="min-h-[60vh] flex flex-col items-center justify-center text-center space-y-4">
     <p className="text-lg text-muted-foreground">{message}</p>
-    <Link to="/">
+    <Link to={getLocalizedPath('/', language)}>
       <Button variant="outline" className="gap-2">
         <ArrowLeft className="h-4 w-4" />
         Vissza a főoldalra
@@ -89,7 +90,7 @@ export default function NewsArticlePage() {
       <main className="container px-4 pt-32 pb-16 lg:pb-20">
         <div className="max-w-5xl mx-auto space-y-8">
           <div className="flex items-center justify-between gap-4">
-            <Link to="/news">
+            <Link to={getLocalizedPath('/news', language)}>
               <Button variant="ghost" className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 {language === "hu" ? "Vissza a hírekhez" : "Back to news"}

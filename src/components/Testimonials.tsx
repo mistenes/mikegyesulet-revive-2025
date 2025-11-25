@@ -1,53 +1,94 @@
-import { useRef } from "react";
+import type React from "react";
+import { useMemo, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Quote } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { defaultPageContent } from "@/data/defaultPageContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+
+type Testimonial = {
+  quote: string;
+  author: string;
+  role?: string;
+  region?: string;
+  image?: string;
+};
+
+type TestimonialsContent = {
+  badge?: string;
+  title?: string;
+  description?: string;
+  testimonials?: Testimonial[];
+};
 
 export const Testimonials = () => {
   const sectionRef = useRef<HTMLElement>(null);
   const isVisible = useScrollAnimation(sectionRef);
+  const { language } = useLanguage();
+  const adminPreview = isAdminPreview();
+  const { content: sectionContent } = useSectionContent("testimonials_section");
 
-  const testimonials = [
-    {
-      quote: "A MIK megmutatta, hogy mennyire erős lehet egy közösség, ha együtt dolgozunk céljainkért. Itt találtam meg az igazi társakat, akikkel közösen alakíthatjuk a jövőnket.",
-      author: "Kovács Anna",
-      role: "Tagszervező",
-      region: "Erdély",
-      image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop",
-    },
-    {
-      quote: "Évek óta aktív tagja vagyok a MIK-nek, és minden alkalommal megtapasztalom, milyen fontos, hogy legyen egy olyan platform, ahol a fiatalok hangja számít és meghallgatásra talál.",
-      author: "Nagy Péter",
-      role: "Közgyűlési Tag",
-      region: "Felvidék",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop",
-    },
-    {
-      quote: "A konferenciákon való részvétel megváltoztatta az életemet. Rengeteg motivált fiatallal találkoztam, akik ugyanúgy hittek a közös célokban, mint én.",
-      author: "Szabó Júlia",
-      role: "Projektkoordinátor",
-      region: "Kárpátalja",
-      image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop",
-    },
-  ];
+  const content = useMemo<TestimonialsContent>(() => {
+    const localized = (sectionContent?.[language] || sectionContent?.hu) as TestimonialsContent | undefined;
+    const fallback = (defaultPageContent.testimonials_section?.[language] || defaultPageContent.testimonials_section?.hu) as
+      | TestimonialsContent
+      | undefined;
+    return localized || fallback || {};
+  }, [language, sectionContent]);
+
+  const testimonials = useMemo<Testimonial[]>(() => {
+    const localized = (sectionContent?.[language]?.testimonials || sectionContent?.hu?.testimonials) as
+      | Testimonial[]
+      | undefined;
+    const fallback =
+      (defaultPageContent.testimonials_section?.[language]?.testimonials ||
+        defaultPageContent.testimonials_section?.hu?.testimonials) as Testimonial[] | undefined;
+
+    return localized || fallback || [];
+  }, [language, sectionContent]);
+
+  const handleClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("testimonials_section", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   return (
     <section ref={sectionRef} className="py-24 bg-background">
       <div className="container px-4">
         <div className="text-center mb-16">
-          <div 
+          <div
             className={`transition-all duration-700 ${
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
             }`}
           >
-            <p className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">
-              Közösségünk
+            <p
+              className={`text-sm font-semibold text-primary uppercase tracking-wider mb-3 ${adminPreview ? "cursor-pointer" : ""}`}
+              onClick={(event) => handleClick(event, "badge")}
+              role={adminPreview ? "button" : undefined}
+              tabIndex={adminPreview ? 0 : undefined}
+            >
+              {content.badge}
             </p>
-            <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Mit Mondanak Tagjaink
+            <h2
+              className={`text-4xl md:text-5xl font-bold text-foreground mb-4 ${adminPreview ? "cursor-pointer" : ""}`}
+              style={{ fontFamily: "'Sora', sans-serif" }}
+              onClick={(event) => handleClick(event, "title")}
+              role={adminPreview ? "button" : undefined}
+              tabIndex={adminPreview ? 0 : undefined}
+            >
+              {content.title}
             </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              A MIK közösségének tagjai osztják meg tapasztalataikat és élményeiket
+            <p
+              className={`text-lg text-muted-foreground max-w-2xl mx-auto ${adminPreview ? "cursor-pointer" : ""}`}
+              onClick={(event) => handleClick(event, "description")}
+              role={adminPreview ? "button" : undefined}
+              tabIndex={adminPreview ? 0 : undefined}
+            >
+              {content.description}
             </p>
           </div>
         </div>
@@ -55,7 +96,7 @@ export const Testimonials = () => {
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {testimonials.map((testimonial, index) => (
             <Card
-              key={index}
+              key={`${testimonial.author}-${index}`}
               className={`p-8 bg-card border-border hover:shadow-2xl transition-all duration-700 hover:-translate-y-2 ${
                 isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
               }`}
@@ -63,28 +104,45 @@ export const Testimonials = () => {
             >
               <div className="space-y-6">
                 {/* Quote Icon */}
-                <div className="inline-flex p-3 bg-primary/10 rounded-xl">
+                <div
+                  className={`inline-flex p-3 bg-primary/10 rounded-xl ${adminPreview ? "cursor-pointer" : ""}`}
+                  onClick={(event) => handleClick(event, "testimonials")}
+                  role={adminPreview ? "button" : undefined}
+                  tabIndex={adminPreview ? 0 : undefined}
+                >
                   <Quote className="h-6 w-6 text-primary" />
                 </div>
 
                 {/* Testimonial Text */}
-                <p className="text-muted-foreground leading-relaxed italic">
+                <p
+                  className={`text-muted-foreground leading-relaxed italic ${adminPreview ? "cursor-pointer" : ""}`}
+                  onClick={(event) => handleClick(event, "testimonials")}
+                  role={adminPreview ? "button" : undefined}
+                  tabIndex={adminPreview ? 0 : undefined}
+                >
                   "{testimonial.quote}"
                 </p>
 
                 {/* Author Info */}
                 <div className="flex items-center gap-4 pt-4 border-t border-border">
-                  <img 
-                    src={testimonial.image}
-                    alt={testimonial.author}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-primary/20"
-                  />
+                  {testimonial.image && (
+                    <img
+                      src={testimonial.image}
+                      alt={testimonial.author}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-primary/20"
+                    />
+                  )}
                   <div>
-                    <h4 className="font-bold text-foreground">
+                    <h4
+                      className={`font-bold text-foreground ${adminPreview ? "cursor-pointer" : ""}`}
+                      onClick={(event) => handleClick(event, "testimonials")}
+                      role={adminPreview ? "button" : undefined}
+                      tabIndex={adminPreview ? 0 : undefined}
+                    >
                       {testimonial.author}
                     </h4>
                     <p className="text-sm text-muted-foreground">
-                      {testimonial.role} · {testimonial.region}
+                      {[testimonial.role, testimonial.region].filter(Boolean).join(" · ")}
                     </p>
                   </div>
                 </div>

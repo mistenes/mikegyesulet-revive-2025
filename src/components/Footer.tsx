@@ -1,8 +1,14 @@
 import { Facebook, Instagram, Twitter, Youtube } from "lucide-react";
 import { Link } from "react-router-dom";
 import mikLogo from "@/assets/mik-logo.svg";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 export const Footer = () => {
+  const { language } = useLanguage();
+
+  const buildPath = (path: string) => getLocalizedPath(path, language);
+
   return (
     <footer className="bg-muted/30 py-16">
       <div className="container px-4">
@@ -65,32 +71,32 @@ export const Footer = () => {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm">OLDALAK</h4>
             <ul className="space-y-3 text-sm text-muted-foreground">
               <li>
-                <Link to="/" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/')} className="hover:text-primary transition-colors">
                   Nyitóoldal
                 </Link>
               </li>
               <li>
-                <Link to="/regiok" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/regiok')} className="hover:text-primary transition-colors">
                   Régiók
                 </Link>
               </li>
               <li>
-                <Link to="/projektek" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/projektek')} className="hover:text-primary transition-colors">
                   Projektek
                 </Link>
               </li>
               <li>
-                <Link to="/rolunk" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/rolunk')} className="hover:text-primary transition-colors">
                   Rólunk
                 </Link>
               </li>
               <li>
-                <Link to="/kapcsolat" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/kapcsolat')} className="hover:text-primary transition-colors">
                   Kapcsolat
                 </Link>
               </li>
               <li>
-                <Link to="/galeria" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/galeria')} className="hover:text-primary transition-colors">
                   Galéria
                 </Link>
               </li>
@@ -102,32 +108,32 @@ export const Footer = () => {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm">DOKUMENTUMOK</h4>
             <ul className="space-y-3 text-sm text-muted-foreground">
               <li>
-                <Link to="/dokumentumok" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/dokumentumok')} className="hover:text-primary transition-colors">
                   MIK alapszabály
                 </Link>
               </li>
               <li>
-                <Link to="/dokumentumok" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/dokumentumok')} className="hover:text-primary transition-colors">
                   Alapító nyilatkozat
                 </Link>
               </li>
               <li>
-                <Link to="/dokumentumok" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/dokumentumok')} className="hover:text-primary transition-colors">
                   Zárónyilatkozatok
                 </Link>
               </li>
               <li>
-                <Link to="/dokumentumok" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/dokumentumok')} className="hover:text-primary transition-colors">
                   Beszámolók
                 </Link>
               </li>
               <li>
-                <Link to="/dokumentumok" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/dokumentumok')} className="hover:text-primary transition-colors">
                   Jegyzőkönyvek
                 </Link>
               </li>
               <li>
-                <Link to="/dokumentumok" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/dokumentumok')} className="hover:text-primary transition-colors">
                   Közlemények
                 </Link>
               </li>
@@ -139,12 +145,12 @@ export const Footer = () => {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm">HYCA BLOG</h4>
             <ul className="space-y-3 text-sm text-muted-foreground">
               <li>
-                <Link to="/news" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/news')} className="hover:text-primary transition-colors">
                   Összes hír
                 </Link>
               </li>
               <li>
-                <Link to="/news" className="hover:text-primary transition-colors">
+                <Link to={buildPath('/news')} className="hover:text-primary transition-colors">
                   Legfrissebb bejegyzések
                 </Link>
               </li>

@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, FileText, Settings, FileEdit, FolderKanban, Images, Folders, UsersRound } from "lucide-react";
+import { LayoutDashboard, FileText, Settings, FileEdit, FolderKanban, Images, Folders, UsersRound, MapPin } from "lucide-react";
 
 const menuItems = [
   {
@@ -22,6 +22,11 @@ const menuItems = [
     title: "Oldal tartalmak",
     url: "/admin/pages",
     icon: FileEdit,
+  },
+  {
+    title: "Régiók",
+    url: "/admin/regions",
+    icon: MapPin,
   },
   {
     title: "Hírek",

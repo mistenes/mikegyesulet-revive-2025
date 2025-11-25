@@ -1,9 +1,13 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { defaultPageContent } from "@/data/defaultPageContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
 interface Region {
   name: string;
@@ -95,46 +99,29 @@ export const RegionsMap = () => {
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const adminPreview = isAdminPreview();
+  const { content: mapSection, isLoading: mapContentLoading } = useSectionContent("map_section");
 
-  useEffect(() => {
-    const loadToken = async () => {
-      setIsLoading(true);
-      setLoadError(null);
+  const mapContent = useMemo(() => {
+    const localized = (mapSection?.[language] || mapSection?.hu) as
+      | { title?: string; description?: string }
+      | undefined;
+    const fallback = (defaultPageContent.map_section?.[language] || defaultPageContent.map_section?.hu) as
+      | { title?: string; description?: string }
+      | undefined;
 
-      try {
-        const envToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
-        if (envToken) {
-          setMapboxToken(envToken);
-          setTimeout(() => initializeMap(envToken), 100);
-          return;
-        }
+    return localized || fallback || {};
+  }, [language, mapSection]);
 
-        const response = await fetch("/api/public/mapbox-token");
-        if (!response.ok) {
-          throw new Error("Mapbox token not configured");
-        }
+  const handleMapTextClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("map_section", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
-        const data = await response.json();
-        if (!data?.token) {
-          throw new Error("Missing token");
-        }
-
-        setMapboxToken(data.token);
-        setTimeout(() => initializeMap(data.token), 100);
-      } catch (error) {
-        console.error("Failed to load Mapbox token", error);
-        setLoadError(
-          "A Mapbox token nincs beállítva a környezetben. Add meg a MAPBOX_TOKEN értékét a Render környezeti változók között.",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadToken();
-  }, []);
-
-  const initializeMap = (token?: string) => {
+  const initializeMap = useCallback((token?: string) => {
     const tokenToUse = token || mapboxToken;
     if (!mapContainer.current || !tokenToUse) return;
 
@@ -301,7 +288,47 @@ export const RegionsMap = () => {
       toast.error("Hiba a térkép betöltésekor. Ellenőrizd a token-t!");
       console.error(error);
     }
-  };
+  }, [mapboxToken]);
+
+  useEffect(() => {
+    const loadToken = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const envToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+        if (envToken) {
+          setMapboxToken(envToken);
+          setTimeout(() => initializeMap(envToken), 100);
+          return;
+        }
+
+        const response = await fetch("/api/public/mapbox-token");
+        if (!response.ok) {
+          throw new Error("Mapbox token not configured");
+        }
+
+        const data = await response.json();
+        if (!data?.token) {
+          throw new Error("Missing token");
+        }
+
+        setMapboxToken(data.token);
+        setTimeout(() => initializeMap(data.token), 100);
+      } catch (error) {
+        console.error("Failed to load Mapbox token", error);
+        setLoadError(
+          "A Mapbox token nincs beállítva a környezetben. Add meg a MAPBOX_TOKEN értékét a Render környezeti változók között.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadToken();
+  }, [initializeMap]);
+
+
 
   useEffect(() => {
     return () => {
@@ -345,12 +372,22 @@ export const RegionsMap = () => {
           <h2
             className="text-4xl md:text-5xl font-bold text-foreground leading-tight mb-4"
             style={{ fontFamily: "'Sora', sans-serif" }}
+            onClick={(event) => handleMapTextClick(event, "title")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
           >
-            Kárpát-medencei jelenlétünk
+            {mapContentLoading ? "" : mapContent.title || "Térkép"}
           </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit.
-            Kattints a jelölőkre a részletes információkért!
+          <p
+            className="text-lg text-muted-foreground max-w-2xl mx-auto"
+            onClick={(event) => handleMapTextClick(event, "description")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {mapContentLoading
+              ? ""
+              : mapContent.description ||
+                "Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit."}
           </p>
         </div>
 

@@ -5,6 +5,7 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getLocalizedPath } from "@/lib/localePaths";
 import { getPublicProjectBySlug } from "@/services/projectsService";
 import type { Project } from "@/types/project";
 import { ArrowLeft, Calendar, ExternalLink, MapPin } from "lucide-react";
@@ -46,7 +47,7 @@ const ProjectPage = () => {
         <div className="container mx-auto px-4 max-w-5xl">
           <div className="mb-8 flex items-center gap-3">
             <Button asChild variant="ghost" size="sm" className="gap-2">
-              <Link to="/projektek">
+              <Link to={getLocalizedPath('/projektek', language)}>
                 <ArrowLeft className="h-4 w-4" /> Vissza a projektekhez
               </Link>
             </Button>
@@ -59,7 +60,7 @@ const ProjectPage = () => {
               <p className="text-xl font-semibold">A projekt nem található</p>
               <p className="text-muted-foreground">Lehet, hogy átkerült vagy a kiválasztott nyelven nem érhető el.</p>
               <Button asChild>
-                <Link to="/projektek">Vissza a projektekhez</Link>
+                <Link to={getLocalizedPath('/projektek', language)}>Vissza a projektekhez</Link>
               </Button>
             </Card>
           ) : (

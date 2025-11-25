@@ -93,6 +93,25 @@ export async function uploadToImageKit(file: File, folder?: string): Promise<str
   return data.url;
 }
 
+export async function uploadExternalImageToImageKit(
+  url: string,
+  folder?: string,
+  filenameHint?: string,
+): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Nem sikerült letölteni a képet a megadott címről");
+  }
+
+  const blob = await response.blob();
+  const extension = blob.type?.split("/")[1] || "jpg";
+  const fallbackName = filenameHint || "kép";
+  const fileName = fallbackName.includes(".") ? fallbackName : `${fallbackName}.${extension}`;
+  const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
+
+  return uploadToImageKit(file, folder);
+}
+
 export type ImageKitBrowseResult = {
   items: ImageKitItem[];
   folder: string;

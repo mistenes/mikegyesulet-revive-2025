@@ -1,3 +1,4 @@
+import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Header } from "@/components/Header";
@@ -5,12 +6,39 @@ import { Footer } from "@/components/Footer";
 import { Card } from "@/components/ui/card";
 import { getPublicGallery } from "@/services/galleryService";
 import type { GalleryAlbum } from "@/types/gallery";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { defaultPageContent } from "@/data/defaultPageContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
 
 export default function Galeria() {
   const [albums, setAlbums] = useState<GalleryAlbum[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const { content: galleryIntroContent } = useSectionContent("gallery_intro");
+  const adminPreview = isAdminPreview();
+
+  const handleHeroClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("gallery_intro", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const heroContent = useMemo(() => {
+    const fallback = defaultPageContent.gallery_intro;
+    const localized = (galleryIntroContent?.[language] || galleryIntroContent?.hu || fallback?.[language] || fallback?.hu || {}) as {
+      title?: string;
+      description?: string;
+    };
+
+    return {
+      title: localized.title || "GALÉRIA",
+      description: localized.description || "Tekintse meg eseményeink és tevékenységeink fotóit",
+    };
+  }, [galleryIntroContent, language]);
 
   useEffect(() => {
     let active = true;
@@ -47,11 +75,21 @@ export default function Galeria() {
       {/* Hero Section */}
       <section className="pt-32 pb-16 px-4 bg-gradient-to-b from-primary/5 to-background">
         <div className="container mx-auto max-w-7xl">
-          <h1 className="text-5xl md:text-6xl font-bold mb-6 text-foreground">
-            GALÉRIA
+          <h1
+            className={`text-5xl md:text-6xl font-bold mb-6 text-foreground ${adminPreview ? "cursor-pointer" : ""}`}
+            onClick={(event) => handleHeroClick(event, "title")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {heroContent.title}
           </h1>
-          <p className="text-xl text-muted-foreground max-w-3xl">
-            Tekintse meg eseményeink és tevékenységeink fotóit
+          <p
+            className={`text-xl text-muted-foreground max-w-3xl ${adminPreview ? "cursor-pointer" : ""}`}
+            onClick={(event) => handleHeroClick(event, "description")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {heroContent.description}
           </p>
         </div>
       </section>
