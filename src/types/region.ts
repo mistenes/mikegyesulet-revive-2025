@@ -6,6 +6,8 @@ export type RegionOrganizationInput = {
   email?: string;
   logoUrl?: string;
   website?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
 };
 
 export type RegionInput = {

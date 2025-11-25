@@ -8,8 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   listImageKitFiles,
+  uploadExternalImageToImageKit,
   uploadToImageKit,
   type ImageKitItem,
 } from "@/services/imageKitService";
@@ -30,6 +32,7 @@ import {
   MapPin,
   Plus,
   RefreshCcw,
+  ShieldCheck,
   Save,
   Trash,
   Upload,
@@ -38,6 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const REGIONS_FOLDER = "regiok";
+const ORG_LOGO_FOLDER = "orglogo";
 
 const createEmptyOrganization = (): RegionOrganizationInput => ({
   name: "",
@@ -47,6 +51,8 @@ const createEmptyOrganization = (): RegionOrganizationInput => ({
   email: "",
   logoUrl: "",
   website: "",
+  facebookUrl: "",
+  instagramUrl: "",
 });
 
 const createEmptyRegion = (): RegionInput => ({
@@ -60,6 +66,23 @@ const createEmptyRegion = (): RegionInput => ({
 type ImageTarget =
   | { type: "region" }
   | { type: "organization"; index: number };
+
+type ImportCandidate = {
+  row: number;
+  regionId: string;
+  regionName: string;
+  regionNameEn?: string;
+  regionImage?: string;
+  orgName: string;
+  orgDescription: string;
+  orgDescriptionEn?: string;
+  email?: string;
+  website?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  logoUrl?: string;
+  approved: boolean;
+};
 
 export default function AdminRegions() {
   const { session } = useAdminAuthGuard();
@@ -76,13 +99,25 @@ export default function AdminRegions() {
   const [browserBasePath, setBrowserBasePath] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [imageTarget, setImageTarget] = useState<ImageTarget | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportCandidate[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importSaving, setImportSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const hasSelectedInitial = useRef(false);
 
   const sortedRegions = useMemo(
     () => [...regions].sort((a, b) => a.nameHu.localeCompare(b.nameHu, "hu")),
     [regions],
   );
+
+  const approvedImportCount = useMemo(
+    () => importPreview.filter((item) => item.approved).length,
+    [importPreview],
+  );
+
+  const allImportsApproved = importPreview.length > 0 && approvedImportCount === importPreview.length;
 
   useEffect(() => {
     if (!session) return;
@@ -206,6 +241,130 @@ export default function AdminRegions() {
     }
   };
 
+  const handleImportFile = async (file: File) => {
+    try {
+      setImporting(true);
+      const text = await file.text();
+      const { candidates, errors } = parseImportCsv(text);
+      setImportPreview(candidates);
+      setImportError(errors.length ? errors.join("\n") : null);
+      if (errors.length) {
+        toast.warning("Néhány sor kimaradt az importból. Ellenőrizd az üzenetet.");
+      } else {
+        toast.success("Az import adatok előnézete elkészült");
+      }
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült feldolgozni a CSV fájlt";
+      setImportError(message);
+      setImportPreview([]);
+      toast.error(message);
+    } finally {
+      setImporting(false);
+      if (importFileInputRef.current) {
+        importFileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleImportInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await handleImportFile(file);
+    }
+  };
+
+  const toggleImportApproval = (row: number, approved: boolean) => {
+    setImportPreview((prev) => prev.map((item) => (item.row === row ? { ...item, approved } : item)));
+  };
+
+  const toggleAllImportApprovals = (approved: boolean) => {
+    setImportPreview((prev) => prev.map((item) => ({ ...item, approved })));
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importPreview.length) {
+      toast.error("Tölts fel egy CSV-t az importáláshoz");
+      return;
+    }
+
+    const notApproved = importPreview.filter((item) => !item.approved);
+    if (notApproved.length) {
+      toast.error("Minden sort jóvá kell hagyni a mentéshez");
+      return;
+    }
+
+    setImportSaving(true);
+
+    try {
+      const existing = await getAdminRegions();
+      for (const region of existing) {
+        await deleteRegion(region.id);
+      }
+
+      const regionMap = new Map<string, RegionInput>();
+
+      for (const candidate of importPreview) {
+        const regionKey = candidate.regionId || slugify(candidate.regionName);
+        const region = regionMap.get(regionKey) || {
+          id: regionKey,
+          nameHu: candidate.regionName,
+          nameEn: candidate.regionNameEn,
+          imageUrl: candidate.regionImage || "",
+          organizations: [],
+        };
+
+        let logoUrl = candidate.logoUrl;
+        if (candidate.logoUrl) {
+          try {
+            const logoName = `${slugify(candidate.orgName || "logo")}-${candidate.row}`;
+            logoUrl = await uploadExternalImageToImageKit(candidate.logoUrl, ORG_LOGO_FOLDER, logoName);
+          } catch (error) {
+            console.error(error);
+            throw new Error(`Nem sikerült feltölteni a logót (${candidate.orgName || "ismeretlen"})`);
+          }
+        }
+
+        region.organizations.push({
+          name: candidate.orgName,
+          description: candidate.orgDescription || candidate.orgName,
+          descriptionEn: candidate.orgDescriptionEn,
+          email: candidate.email,
+          logoUrl,
+          website: candidate.website,
+          facebookUrl: candidate.facebookUrl,
+          instagramUrl: candidate.instagramUrl,
+        });
+
+        regionMap.set(regionKey, region);
+      }
+
+      const created: Region[] = [];
+      for (const region of regionMap.values()) {
+        const saved = await createRegion(region);
+        created.push(saved);
+      }
+
+      setRegions(created);
+      if (created.length) {
+        setSelectedId(created[0].id);
+        setForm({ ...created[0] });
+      } else {
+        resetForm();
+      }
+
+      setImportPreview([]);
+      setImportError(null);
+      toast.success(`Importálva: ${created.length} régió`);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült importálni a régiókat";
+      toast.error(message);
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
   const slugify = (value: string) =>
     value
       .toString()
@@ -215,6 +374,158 @@ export default function AdminRegions() {
       .replace(/-{2,}/g, "-")
       .replace(/^-+|-+$/g, "")
       .toLowerCase();
+
+  const normalizeKey = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const parseCsv = (content: string) => {
+    const rows: string[][] = [];
+    const clean = content.replace(/\r\n?/g, "\n");
+    let current: string[] = [];
+    let value = "";
+    let inQuotes = false;
+
+    for (let i = 0; i <= clean.length; i += 1) {
+      const char = clean[i] ?? "";
+      const isLast = i === clean.length;
+
+      if (inQuotes) {
+        if (char === '"') {
+          const next = clean[i + 1];
+          if (next === '"') {
+            value += '"';
+            i += 1;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          value += char;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inQuotes = true;
+        continue;
+      }
+
+      if (char === "," || char === "\n" || isLast) {
+        current.push(value);
+        value = "";
+
+        if (char === "\n" || isLast) {
+          rows.push(current);
+          current = [];
+        }
+
+        continue;
+      }
+
+      value += char;
+    }
+
+    return rows.filter((row) => row.length && row.some((cell) => cell.trim() !== ""));
+  };
+
+  const matchRegion = (label: string) => {
+    const normalized = normalizeKey(label);
+    return regions.find(
+      (item) =>
+        normalizeKey(item.id) === normalized ||
+        normalizeKey(item.nameHu) === normalized ||
+        normalizeKey(item.nameEn || "") === normalized,
+    );
+  };
+
+  const parseImportCsv = (content: string) => {
+    const rows = parseCsv(content);
+    if (!rows.length) {
+      throw new Error("Az importfájl üresnek tűnik");
+    }
+
+    const headers = rows[0].map((header) => header.trim());
+    const normalizedHeaders = headers.map(normalizeKey);
+
+    const getValue = (row: string[], keys: string[]) => {
+      for (const key of keys) {
+        const normalizedKey = normalizeKey(key);
+        const index = normalizedHeaders.findIndex((header) => header === normalizedKey);
+        if (index !== -1) {
+          return row[index] || "";
+        }
+      }
+      return "";
+    };
+
+    const NAME_HEADERS = ["név", "name", "szervezet neve"];
+    const EMAIL_HEADERS = ["e-mail cím", "e mail cím", "email", "mail"];
+    const REGION_HEADERS = ["melyik régióhoz tartozik?", "régió", "regio", "regio neve"];
+    const DESCRIPTION_HEADERS = ["rövid bemutatkozó szöveg", "leírás", "leiras (hu)"];
+    const DESCRIPTION_EN_HEADERS = ["[en] brief", "leírás (en)", "leiras (en)", "brief en"];
+    const LOGO_HEADERS = ["logó", "logo", "logokep"];
+    const WEBSITE_HEADERS = ["weboldal", "website", "url"];
+    const FACEBOOK_HEADERS = ["facebook url", "facebook"];
+    const INSTAGRAM_HEADERS = ["instagram", "instagram url"];
+
+    const candidates: ImportCandidate[] = [];
+    const errors: string[] = [];
+
+    for (let i = 1; i < rows.length; i += 1) {
+      const row = rows[i];
+      if (!row || row.every((cell) => !cell.trim())) continue;
+
+      const orgName = getValue(row, NAME_HEADERS).trim();
+      const regionLabel = getValue(row, REGION_HEADERS).trim();
+      const email = getValue(row, EMAIL_HEADERS).trim();
+      const description = getValue(row, DESCRIPTION_HEADERS).trim();
+      const descriptionEn = getValue(row, DESCRIPTION_EN_HEADERS).trim();
+      const logoUrl = getValue(row, LOGO_HEADERS).trim();
+      const website = getValue(row, WEBSITE_HEADERS).trim();
+      const facebookUrl = getValue(row, FACEBOOK_HEADERS).trim();
+      const instagramUrl = getValue(row, INSTAGRAM_HEADERS).trim();
+
+      if (!orgName) {
+        errors.push(`${i + 1}. sor: hiányzik a szervezet neve (Név)`);
+        continue;
+      }
+
+      if (!regionLabel) {
+        errors.push(`${i + 1}. sor: nincs megadva régió (Melyik régióhoz tartozik?)`);
+        continue;
+      }
+
+      const matchedRegion = matchRegion(regionLabel);
+      if (!matchedRegion) {
+        errors.push(`${i + 1}. sor: a megadott régió nem található: ${regionLabel}`);
+        continue;
+      }
+
+      candidates.push({
+        row: i + 1,
+        regionId: matchedRegion.id,
+        regionName: matchedRegion.nameHu || regionLabel,
+        regionNameEn: matchedRegion.nameEn,
+        regionImage: matchedRegion.imageUrl,
+        orgName,
+        orgDescription: description,
+        orgDescriptionEn: descriptionEn,
+        email,
+        website,
+        facebookUrl,
+        instagramUrl,
+        logoUrl,
+        approved: false,
+      });
+    }
+
+    return { candidates, errors };
+  };
 
   const handleSave = async () => {
     if (!form.nameHu.trim()) {
@@ -313,6 +624,119 @@ export default function AdminRegions() {
             </Button>
           </div>
         </div>
+
+        <Card className="p-6 space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">CSV import</p>
+              <h2 className="text-lg font-semibold">Régiók és szervezetek betöltése</h2>
+              <p className="text-sm text-muted-foreground">
+                A feltöltés előtt minden jelenlegi régió törlődik. A CSV-ben legyen benne a Név, Melyik régióhoz tartozik?,
+                Rövid bemutatkozó szöveg, Leírás (EN), E-mail cím, Logó, weboldal és közösségi linkek.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => toggleAllImportApprovals(true)}
+                disabled={!importPreview.length}
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" /> Összes jóváhagyása
+              </Button>
+              <Button
+                onClick={handleImportSubmit}
+                type="button"
+                disabled={!allImportsApproved || importSaving || importing || !importPreview.length}
+                className="gap-2"
+              >
+                {importSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importálás
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => importFileInputRef.current?.click()}
+                disabled={importing}
+              >
+                {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />} CSV feltöltés
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4 items-center justify-between text-sm">
+            <div className="text-muted-foreground">
+              Jóváhagyva: {approvedImportCount}/{importPreview.length || 0}. Minden sort jóvá kell hagyni a mentéshez.
+            </div>
+            <Badge variant={allImportsApproved && importPreview.length ? "default" : "outline"}>
+              {allImportsApproved && importPreview.length ? "Kész" : "Jóváhagyás szükséges"}
+            </Badge>
+          </div>
+
+          {importError && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 whitespace-pre-line">
+              {importError}
+            </div>
+          )}
+
+          {importPreview.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              Tölts fel egy CSV fájlt a Webflow exportból. A sorok előnézetben jelennek meg, mindegyiket jóvá kell hagynod.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {importPreview.map((item) => (
+                <div key={item.row} className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <Badge variant="outline">Sor {item.row}</Badge>
+                      <Badge variant="secondary">{item.regionName}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Switch
+                        checked={item.approved}
+                        onCheckedChange={(checked) => toggleImportApproval(item.row, checked)}
+                      />
+                      <span>Jóváhagyva</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold">{item.orgName}</h3>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {item.orgDescription || "Nincs leírás megadva"}
+                    </p>
+                    {item.orgDescriptionEn && (
+                      <p className="text-xs text-muted-foreground">EN: {item.orgDescriptionEn}</p>
+                    )}
+                  </div>
+
+                  {item.logoUrl ? (
+                    <img src={item.logoUrl} alt={item.orgName} className="h-24 w-full object-contain bg-white rounded-md" />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Nincs logó</p>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+                    {item.email && <span>Email: {item.email}</span>}
+                    {item.website && <span>Web: {item.website}</span>}
+                    {item.facebookUrl && <span>Facebook: {item.facebookUrl}</span>}
+                    {item.instagramUrl && <span>Instagram: {item.instagramUrl}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleImportInputChange}
+          />
+        </Card>
 
         <div className="grid md:grid-cols-[260px,1fr] gap-5">
           <Card className="p-4 space-y-3">
@@ -472,7 +896,7 @@ export default function AdminRegions() {
                           <Label>Email</Label>
                           <Input
                             type="email"
-                            value={org.email}
+                            value={org.email || ""}
                             onChange={(event) => handleOrgChange(index, "email", event.target.value)}
                             placeholder="kapcsolat@example.com"
                           />
@@ -480,9 +904,25 @@ export default function AdminRegions() {
                         <div className="space-y-2">
                           <Label>Weboldal</Label>
                           <Input
-                            value={org.website}
+                            value={org.website || ""}
                             onChange={(event) => handleOrgChange(index, "website", event.target.value)}
                             placeholder="https://"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Facebook</Label>
+                          <Input
+                            value={org.facebookUrl || ""}
+                            onChange={(event) => handleOrgChange(index, "facebookUrl", event.target.value)}
+                            placeholder="https://facebook.com/..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Instagram</Label>
+                          <Input
+                            value={org.instagramUrl || ""}
+                            onChange={(event) => handleOrgChange(index, "instagramUrl", event.target.value)}
+                            placeholder="https://instagram.com/..."
                           />
                         </div>
                       </div>
