@@ -277,6 +277,7 @@ export default function AdminPages() {
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<FieldTarget | null>(null);
   const fieldRefs = useRef<Record<string, HTMLInputElement | HTMLTextAreaElement | null>>({});
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [imageBrowserOpen, setImageBrowserOpen] = useState(false);
   const [imageBrowserItems, setImageBrowserItems] = useState<ImageKitItem[]>([]);
@@ -378,11 +379,22 @@ export default function AdminPages() {
     fieldRefs.current[`${sectionKey}.${fieldKey}`] = el;
   };
 
+  const registerSectionRef = (sectionKey: SectionKey) => (el: HTMLDivElement | null) => {
+    sectionRefs.current[sectionKey] = el;
+  };
+
   const scrollToField = (sectionKey: SectionKey, fieldKey: string) => {
     const ref = fieldRefs.current[`${sectionKey}.${fieldKey}`];
     if (ref) {
       ref.scrollIntoView({ behavior: "smooth", block: "center" });
       ref.focus();
+    }
+  };
+
+  const scrollToSection = (sectionKey: SectionKey) => {
+    const ref = sectionRefs.current[sectionKey];
+    if (ref) {
+      ref.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -393,7 +405,10 @@ export default function AdminPages() {
         navigate(`/admin/pages/${targetTab}`);
       }
       setSelectedField({ sectionKey, fieldKey });
-      setTimeout(() => scrollToField(sectionKey, fieldKey), 50);
+      setTimeout(() => {
+        scrollToSection(sectionKey);
+        scrollToField(sectionKey, fieldKey);
+      }, 50);
     },
     [navigate, sectionTabMap],
   );
@@ -953,18 +968,26 @@ export default function AdminPages() {
     </div>
   );
 
-  const renderSectionEditor = (sectionKey: SectionKey) => {
+  const renderSectionEditor = (sectionKey: SectionKey, options?: { wrapInCard?: boolean; isActive?: boolean }) => {
+    const { wrapInCard = true, isActive = false } = options || {};
     const section = ensureSection(sectionKey);
     const content = section[activeLanguage] || {};
     const isSaving = savingSection === sectionKey;
     const definition = sectionDefinitions[sectionKey];
     const fields = definition?.fields || Object.keys(content).map((key) => ({ key, label: key, type: typeof content[key] === "string" ? "text" : "json" }));
 
-    return (
-      <Card className="p-6 space-y-6">
+    const editorContent = (
+      <div className="space-y-6">
         <div className="space-y-4">
           {fields.map((field) => (
-            <div key={field.key} className={cn("space-y-2", selectedField?.sectionKey === sectionKey && selectedField?.fieldKey === field.key && "ring-1 ring-primary rounded-md p-2")}
+            <div
+              key={field.key}
+              className={cn(
+                "space-y-2 rounded-md transition-all",
+                selectedField?.sectionKey === sectionKey && selectedField?.fieldKey === field.key
+                  ? "ring-2 ring-primary/70 bg-primary/5 p-2"
+                  : "hover:bg-muted/40 p-2",
+              )}
             >
               <Label>{field.label}</Label>
               {renderFieldInput(sectionKey, field.key, (content as Record<string, unknown>)[field.key], field.type, field.description)}
@@ -983,6 +1006,73 @@ export default function AdminPages() {
             </>
           )}
         </Button>
+      </div>
+    );
+
+    if (!wrapInCard) return editorContent;
+
+    return (
+      <Card
+        className={cn(
+          "p-6 space-y-6 transition-all border-dashed bg-card/70",
+          isActive ? "ring-2 ring-primary border-primary shadow-lg" : "hover:border-primary/40",
+        )}
+      >
+        {editorContent}
+      </Card>
+    );
+  };
+
+  const renderBlockNavigator = () => {
+    if (!selectedPage) return null;
+
+    return (
+      <Card className="p-4 bg-muted/50 border-dashed">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Blokk navigáció</p>
+            <h3 className="font-semibold">Szekciók gyors elérése</h3>
+            <p className="text-sm text-muted-foreground">Kattints egy blokkra a bal oldali szerkesztő fókuszálásához.</p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3 pt-4">
+          {sectionGroups[selectedPage].map((section, index) => {
+            const isActive = selectedField?.sectionKey === section.key;
+            const firstField = sectionDefinitions[section.key]?.fields?.[0]?.key;
+
+            return (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => {
+                  if (firstField) {
+                    setSelectedField({ sectionKey: section.key, fieldKey: firstField });
+                    scrollToField(section.key, firstField);
+                  }
+                  scrollToSection(section.key);
+                }}
+                className={cn(
+                  "w-full rounded-lg border px-3 py-2 text-left transition-all flex items-center justify-between gap-3",
+                  isActive
+                    ? "border-primary bg-primary/10 text-primary-foreground"
+                    : "border-border hover:border-primary/50 hover:bg-muted/60",
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold">
+                    {index + 1}
+                  </span>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
+                    <p className="font-medium leading-tight">{section.label}</p>
+                  </div>
+                </div>
+                <span className="text-xs text-muted-foreground">Ugrás</span>
+              </button>
+            );
+          })}
+        </div>
       </Card>
     );
   };
@@ -1124,15 +1214,39 @@ export default function AdminPages() {
                 </div>
               </Card>
 
-              <div className="space-y-6">
-                {sectionGroups[selectedPage].map((section) => (
-                  <div key={section.key} className="space-y-3">
-                    <h3 className="text-lg font-semibold">{section.label}</h3>
-                    {renderSectionEditor(section.key)}
-                  </div>
-                ))}
+                <div className="space-y-6">
+                  {renderBlockNavigator()}
+                  {sectionGroups[selectedPage].map((section, index) => {
+                    const isActive = selectedField?.sectionKey === section.key;
+                    return (
+                      <div
+                        key={section.key}
+                        ref={registerSectionRef(section.key)}
+                        className={cn(
+                          "rounded-2xl border bg-card/70 shadow-sm transition-all overflow-hidden",
+                          isActive ? "ring-2 ring-primary border-primary shadow-lg" : "hover:border-primary/40",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-muted/40">
+                          <div className="flex items-center gap-3">
+                            <span className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold text-sm flex items-center justify-center">
+                              {index + 1}
+                            </span>
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
+                              <h3 className="text-lg font-semibold">{section.label}</h3>
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground">Kattints az élő előnézetre a blokk kiemeléséhez</div>
+                        </div>
+                        <div className="p-4 md:p-6">
+                          {renderSectionEditor(section.key, { wrapInCard: false, isActive })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
 
             {renderPreview()}
           </div>
