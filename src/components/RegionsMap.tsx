@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { toast } from "sonner";
@@ -96,45 +96,7 @@ export const RegionsMap = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadToken = async () => {
-      setIsLoading(true);
-      setLoadError(null);
-
-      try {
-        const envToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
-        if (envToken) {
-          setMapboxToken(envToken);
-          setTimeout(() => initializeMap(envToken), 100);
-          return;
-        }
-
-        const response = await fetch("/api/public/mapbox-token");
-        if (!response.ok) {
-          throw new Error("Mapbox token not configured");
-        }
-
-        const data = await response.json();
-        if (!data?.token) {
-          throw new Error("Missing token");
-        }
-
-        setMapboxToken(data.token);
-        setTimeout(() => initializeMap(data.token), 100);
-      } catch (error) {
-        console.error("Failed to load Mapbox token", error);
-        setLoadError(
-          "A Mapbox token nincs beállítva a környezetben. Add meg a MAPBOX_TOKEN értékét a Render környezeti változók között.",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadToken();
-  }, []);
-
-  const initializeMap = (token?: string) => {
+  const initializeMap = useCallback((token?: string) => {
     const tokenToUse = token || mapboxToken;
     if (!mapContainer.current || !tokenToUse) return;
 
@@ -301,7 +263,47 @@ export const RegionsMap = () => {
       toast.error("Hiba a térkép betöltésekor. Ellenőrizd a token-t!");
       console.error(error);
     }
-  };
+  }, [mapboxToken]);
+
+  useEffect(() => {
+    const loadToken = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const envToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+        if (envToken) {
+          setMapboxToken(envToken);
+          setTimeout(() => initializeMap(envToken), 100);
+          return;
+        }
+
+        const response = await fetch("/api/public/mapbox-token");
+        if (!response.ok) {
+          throw new Error("Mapbox token not configured");
+        }
+
+        const data = await response.json();
+        if (!data?.token) {
+          throw new Error("Missing token");
+        }
+
+        setMapboxToken(data.token);
+        setTimeout(() => initializeMap(data.token), 100);
+      } catch (error) {
+        console.error("Failed to load Mapbox token", error);
+        setLoadError(
+          "A Mapbox token nincs beállítva a környezetben. Add meg a MAPBOX_TOKEN értékét a Render környezeti változók között.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadToken();
+  }, [initializeMap]);
+
+
 
   useEffect(() => {
     return () => {
