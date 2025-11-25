@@ -49,8 +49,6 @@ const sectionGroups = {
   ],
   regiok: [
     { key: "regions_intro", label: "Bevezető Szekció" },
-    { key: "regions_map", label: "Térkép Szekció" },
-    { key: "regions_list", label: "Régiók Lista" },
   ],
   rolunk: [
     { key: "about_section", label: "Bevezető" },
@@ -75,7 +73,7 @@ const pageDefinitions: Record<keyof typeof sectionGroups, { title: string; descr
   },
   regiok: {
     title: "Régiók",
-    description: "Régiós bevezető, térkép és lista tartalmak kezelése",
+    description: "Régiós bevezető tartalmak kezelése",
   },
   rolunk: {
     title: "Rólunk",
@@ -188,19 +186,6 @@ const sectionDefinitions: Record<
   regions_intro: {
     fields: [
       { key: "eyebrow", label: "Felső címke" },
-      { key: "title", label: "Cím" },
-      { key: "description", label: "Leírás", type: "textarea" },
-      { key: "imageUrl", label: "Borítókép", type: "image" },
-    ],
-  },
-  regions_map: {
-    fields: [
-      { key: "title", label: "Cím" },
-      { key: "description", label: "Leírás", type: "textarea" },
-    ],
-  },
-  regions_list: {
-    fields: [
       { key: "title", label: "Cím" },
       { key: "description", label: "Leírás", type: "textarea" },
     ],

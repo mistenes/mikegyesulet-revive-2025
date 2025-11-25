@@ -17,6 +17,7 @@ import AdminProjects from "./pages/admin/AdminProjects";
 import AdminGallery from "./pages/admin/AdminGallery";
 import AdminMedia from "./pages/admin/AdminMedia";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminRegions from "./pages/admin/AdminRegions";
 import AcceptInvite from "./pages/admin/AcceptInvite";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
@@ -70,6 +71,7 @@ const App = () => {
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/pages" element={<AdminPages />} />
               <Route path="/admin/pages/:pageSlug" element={<AdminPages />} />
+              <Route path="/admin/regions" element={<AdminRegions />} />
               <Route path="/admin/news" element={<AdminNews />} />
               <Route path="/admin/projects" element={<AdminProjects />} />
               <Route path="/admin/gallery" element={<AdminGallery />} />
