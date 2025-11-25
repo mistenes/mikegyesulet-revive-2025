@@ -93,7 +93,7 @@ const sectionDefinitions: Record<
     fields: Array<{
       key: string;
       label: string;
-      type?: "text" | "textarea" | "json" | "image";
+      type?: "text" | "textarea" | "json" | "image" | "imageList";
       placeholder?: string;
       description?: string;
     }>;
@@ -154,6 +154,12 @@ const sectionDefinitions: Record<
         label: "Kiemelt régiók",
         type: "json",
         description: "JSON tömb régió nevekkel",
+      },
+      {
+        key: "scrollImages",
+        label: "Mozgó képek a régióknál",
+        type: "imageList",
+        description: "Válaszd ki vagy töltsd fel a gördülő képeket a régiós szekcióhoz",
       },
     ],
   },
@@ -256,6 +262,7 @@ type SectionKey = string;
 type FieldTarget = {
   sectionKey: SectionKey;
   fieldKey: string;
+  itemIndex?: number;
 };
 
 export default function AdminPages() {
@@ -430,6 +437,23 @@ export default function AdminPages() {
     });
   };
 
+  const applyImageValue = (target: FieldTarget, imageUrl: string) => {
+    const { sectionKey, fieldKey, itemIndex } = target;
+    if (typeof itemIndex !== "number") {
+      handleFieldChange(sectionKey, fieldKey, imageUrl);
+      return;
+    }
+
+    const section = ensureSection(sectionKey);
+    const currentLanguageContent = (section[activeLanguage] || {}) as SectionContent;
+    const currentImages = Array.isArray(currentLanguageContent[fieldKey])
+      ? [...(currentLanguageContent[fieldKey] as Array<{ imageUrl?: string; alt?: string }>)]
+      : [];
+
+    currentImages[itemIndex] = { ...(currentImages[itemIndex] || {}), imageUrl };
+    handleFieldChange(sectionKey, fieldKey, currentImages);
+  };
+
   const handleSave = async (sectionKey: SectionKey) => {
     const section = pageContent[sectionKey] || ensureSection(sectionKey);
     setSavingSection(sectionKey);
@@ -500,7 +524,7 @@ export default function AdminPages() {
       return;
     }
 
-    handleFieldChange(imageTarget.sectionKey, imageTarget.fieldKey, url);
+    applyImageValue(imageTarget, url);
     toast.success("Kép kiválasztva az ImageKitből");
     setImageBrowserOpen(false);
   };
@@ -519,7 +543,7 @@ export default function AdminPages() {
     try {
       setImageUploading(true);
       const uploadedUrl = await uploadToImageKit(file, PAGE_CONTENT_FOLDER);
-      handleFieldChange(uploadTarget.sectionKey, uploadTarget.fieldKey, uploadedUrl);
+      applyImageValue(uploadTarget, uploadedUrl);
       toast.success("Kép feltöltve és hozzárendelve");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nem sikerült feltölteni a képet";
@@ -674,6 +698,149 @@ export default function AdminPages() {
           rows={5}
           onFocus={commonFocus}
         />
+      );
+    }
+
+    if (type === "imageList") {
+      const images = Array.isArray(value)
+        ? (value as Array<{ imageUrl?: string; alt?: string }>)
+        : [];
+
+      const updateImages = (updater: (current: Array<{ imageUrl?: string; alt?: string }>) => Array<{ imageUrl?: string; alt?: string }>) => {
+        const nextValue = updater(images);
+        handleFieldChange(sectionKey, fieldKey, nextValue);
+      };
+
+      return (
+        <div className="space-y-3">
+          <input
+            ref={registerFieldRef(sectionKey, fieldKey)}
+            value=""
+            readOnly
+            className="sr-only"
+            aria-hidden
+          />
+
+          <div className="grid gap-3">
+            {images.map((image, index) => {
+              const imageUrl = image?.imageUrl || "";
+              const isUploadingTarget =
+                imageUploading &&
+                uploadTarget?.sectionKey === sectionKey &&
+                uploadTarget?.fieldKey === fieldKey &&
+                uploadTarget?.itemIndex === index;
+
+              return (
+                <div key={index} className="border rounded-lg bg-muted/30 p-3 space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-3 items-start">
+                    <div
+                      className={cn(
+                        "w-full sm:w-1/2 rounded-lg border border-dashed bg-background/60 overflow-hidden cursor-pointer transition hover:border-primary/60",
+                        imageUrl ? "p-0" : "p-6 flex items-center justify-center",
+                      )}
+                      onClick={() => {
+                        commonFocus();
+                        openImageBrowser({ sectionKey, fieldKey, itemIndex: index });
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      {imageUrl ? (
+                        <img src={imageUrl} alt={image?.alt || "Kép"} className="w-full h-48 object-cover" />
+                      ) : (
+                        <div className="text-center space-y-2 text-muted-foreground">
+                          <ImageIcon className="h-6 w-6 mx-auto" />
+                          <p className="text-sm">Kattints egy kép kiválasztásához vagy feltöltéséhez</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-2 w-full sm:w-1/2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="gap-2"
+                        onClick={() => {
+                          commonFocus();
+                          openImageBrowser({ sectionKey, fieldKey, itemIndex: index });
+                        }}
+                      >
+                        <Search className="h-4 w-4" /> Kép kiválasztása
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        disabled={isUploadingTarget}
+                        onClick={() => {
+                          commonFocus();
+                          handleUploadClick({ sectionKey, fieldKey, itemIndex: index });
+                        }}
+                      >
+                        {isUploadingTarget ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        Kép feltöltése
+                      </Button>
+                      {imageUrl && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="gap-2"
+                          onClick={() =>
+                            updateImages((current) => {
+                              const next = [...current];
+                              next[index] = { ...next[index], imageUrl: "" };
+                              return next;
+                            })
+                          }
+                        >
+                          <ChevronLeft className="h-4 w-4" /> Kép törlése
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-2"
+                        onClick={() => updateImages((current) => current.filter((_, i) => i !== index))}
+                      >
+                        <ChevronLeft className="h-4 w-4" /> Diakép eltávolítása
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor={`${sectionKey}.${fieldKey}.alt-${index}`}>Alternatív szöveg</Label>
+                    <Input
+                      id={`${sectionKey}.${fieldKey}.alt-${index}`}
+                      placeholder="Pl. Régiók kép"
+                      value={image?.alt || ""}
+                      onChange={(e) =>
+                        updateImages((current) => {
+                          const next = [...current];
+                          next[index] = { ...next[index], alt: e.target.value };
+                          return next;
+                        })
+                      }
+                      onFocus={commonFocus}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() =>
+              updateImages((current) => [...current, { imageUrl: "", alt: "" }])
+            }
+          >
+            <Upload className="h-4 w-4" /> Új diakép hozzáadása
+          </Button>
+
+          {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        </div>
       );
     }
 

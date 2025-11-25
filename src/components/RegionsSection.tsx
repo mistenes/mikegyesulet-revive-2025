@@ -15,7 +15,7 @@ import vajdasagImg from "@/assets/region-vajdasag.jpg";
 import youthImg from "@/assets/region-youth-1.jpg";
 import cultureImg from "@/assets/region-culture.jpg";
 
-const scrollImages = [
+const defaultScrollImages = [
   { src: erdelyImg, alt: "Erdély" },
   { src: felvidekImg, alt: "Felvidék" },
   { src: karpataljaImg, alt: "Kárpátalja" },
@@ -31,6 +31,12 @@ type RegionsContent = {
   buttonText?: string;
   buttonUrl?: string;
   chips?: string[];
+  scrollImages?: ScrollImage[];
+};
+
+type ScrollImage = {
+  imageUrl?: string;
+  alt?: string;
 };
 
 const regionAnchors: Record<string, string> = {
@@ -53,6 +59,21 @@ export const RegionsSection = () => {
     return (regionsSection[language] || regionsSection.hu || null) as RegionsContent | null;
   }, [language, regionsSection]);
 
+  const scrollingImages = useMemo(() => {
+    const customImages = (content?.scrollImages as ScrollImage[] | undefined)
+      ?.filter((image) => Boolean(image?.imageUrl))
+      .map((image, index) => ({
+        src: image.imageUrl as string,
+        alt: image.alt || `Régió kép ${index + 1}`,
+      }));
+
+    if (customImages && customImages.length > 0) {
+      return customImages;
+    }
+
+    return defaultScrollImages;
+  }, [content?.scrollImages]);
+
   return (
     <section ref={sectionRef} className="py-24 bg-background relative overflow-hidden">
       {/* Background decoration */}
@@ -70,7 +91,7 @@ export const RegionsSection = () => {
               <div className="relative overflow-hidden rounded-3xl">
                 <div className="animate-scroll-up">
                   {/* Duplicate images for seamless loop */}
-                  {[...scrollImages, ...scrollImages].map((image, i) => (
+                  {[...scrollingImages, ...scrollingImages].map((image, i) => (
                     <div key={i} className="mb-4">
                       <img
                         src={image.src}
@@ -86,7 +107,7 @@ export const RegionsSection = () => {
               <div className="relative overflow-hidden rounded-3xl mt-12">
                 <div className="animate-scroll-down">
                   {/* Duplicate images for seamless loop */}
-                  {[...scrollImages, ...scrollImages].map((image, i) => (
+                  {[...scrollingImages, ...scrollingImages].map((image, i) => (
                     <div key={i} className="mb-4">
                       <img
                         src={image.src}

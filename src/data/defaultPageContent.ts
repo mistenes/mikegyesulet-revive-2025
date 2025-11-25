@@ -2,6 +2,12 @@ import heroDefaultImage from "@/assets/mik-team.jpg";
 import aboutDefaultImage from "@/assets/umbrella-person.jpg";
 import galleryDefaultImage from "@/assets/regions-collage.jpg";
 import workspaceImage from "@/assets/workspace.jpg";
+import erdelyImg from "@/assets/region-erdely.jpg";
+import felvidekImg from "@/assets/region-felvidek.jpg";
+import karpataljaImg from "@/assets/region-karpattalja.jpg";
+import vajdasagImg from "@/assets/region-vajdasag.jpg";
+import youthImg from "@/assets/region-youth-1.jpg";
+import cultureImg from "@/assets/region-culture.jpg";
 import { PageContentStore } from "@/types/pageContent";
 
 export const defaultPageContent: PageContentStore = {
@@ -89,6 +95,14 @@ export const defaultPageContent: PageContentStore = {
       buttonText: "Fedezd fel a régiókat",
       buttonUrl: "/regiok",
       chips: ["Erdély", "Felvidék", "Kárpátalja", "Vajdaság", "Horvátország", "Szlovénia"],
+      scrollImages: [
+        { imageUrl: erdelyImg, alt: "Erdély" },
+        { imageUrl: felvidekImg, alt: "Felvidék" },
+        { imageUrl: karpataljaImg, alt: "Kárpátalja" },
+        { imageUrl: vajdasagImg, alt: "Vajdaság" },
+        { imageUrl: youthImg, alt: "Magyar ifjúság" },
+        { imageUrl: cultureImg, alt: "Magyar kultúra" },
+      ],
     },
     en: {
       eyebrow: "REGIONS",
@@ -97,6 +111,14 @@ export const defaultPageContent: PageContentStore = {
       buttonText: "Discover the regions",
       buttonUrl: "/regiok",
       chips: ["Transylvania", "Upper Hungary", "Transcarpathia", "Vojvodina", "Croatia", "Slovenia"],
+      scrollImages: [
+        { imageUrl: erdelyImg, alt: "Transylvania" },
+        { imageUrl: felvidekImg, alt: "Upper Hungary" },
+        { imageUrl: karpataljaImg, alt: "Transcarpathia" },
+        { imageUrl: vajdasagImg, alt: "Vojvodina" },
+        { imageUrl: youthImg, alt: "Hungarian youth" },
+        { imageUrl: cultureImg, alt: "Hungarian culture" },
+      ],
     },
   },
   about_section: {
