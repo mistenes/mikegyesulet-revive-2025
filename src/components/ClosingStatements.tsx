@@ -9,6 +9,7 @@ import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 type ClosingContent = {
   badge?: string;
@@ -104,7 +105,10 @@ export const ClosingStatements = () => {
             <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
           </a>
         ) : (
-          <Link to={content.buttonUrl || "/dokumentumok"} className="inline-flex items-center gap-2">
+          <Link
+            to={getLocalizedPath(content.buttonUrl || "/dokumentumok", language)}
+            className="inline-flex items-center gap-2"
+          >
             {content.buttonText}
             <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
           </Link>

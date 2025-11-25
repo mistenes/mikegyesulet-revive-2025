@@ -6,6 +6,7 @@ import umbrellaImage from "@/assets/umbrella-person.jpg";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 type AboutContent = {
   badge?: string;
@@ -82,7 +83,10 @@ export const About = () => {
                     <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                   </a>
                 ) : (
-                  <Link to={content?.buttonUrl || "/rolunk"} className="inline-flex items-center">
+                  <Link
+                    to={getLocalizedPath(content?.buttonUrl || "/rolunk", language)}
+                    className="inline-flex items-center"
+                  >
                     {content?.buttonText}
                     <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                   </Link>

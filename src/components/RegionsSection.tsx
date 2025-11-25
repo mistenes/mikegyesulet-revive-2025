@@ -8,6 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 // Import region images
 import erdelyImg from "@/assets/region-erdely.jpg";
@@ -217,7 +218,7 @@ export const RegionsSection = () => {
                     </a>
                   ) : (
                     <Link
-                      to={content?.buttonUrl || "/regiok"}
+                      to={getLocalizedPath(content?.buttonUrl || "/regiok", language)}
                       className="inline-flex items-center"
                       onClick={(event) => handleAdminFocus(event, "buttonText")}
                     >

@@ -11,6 +11,7 @@ import { useSectionContent } from "@/hooks/useSectionContent";
 import type { NewsArticle } from "@/types/news";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 interface NewsSectionContent {
   subtitle: string;
@@ -157,7 +158,7 @@ export const NewsSection = () => {
                     </a>
                   ) : (
                     <Link
-                      to={sectionContent?.buttonUrl || "/news"}
+                      to={getLocalizedPath(sectionContent?.buttonUrl || "/news", language)}
                       className="inline-flex items-center"
                       onClick={(event) => handleAdminFocus(event, "buttonText")}
                     >

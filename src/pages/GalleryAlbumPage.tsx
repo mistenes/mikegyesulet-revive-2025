@@ -5,10 +5,13 @@ import { Footer } from "@/components/Footer";
 import { LightGallery } from "@/components/LightGallery";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getLocalizedPath } from "@/lib/localePaths";
 import { getPublicGalleryAlbum } from "@/services/galleryService";
 import type { GalleryAlbum } from "@/types/gallery";
 
 export default function GalleryAlbumPage() {
+  const { language } = useLanguage();
   const { slug = "" } = useParams();
   const [album, setAlbum] = useState<GalleryAlbum | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,7 +71,7 @@ export default function GalleryAlbumPage() {
       <section className="pt-32 pb-12 px-4 bg-gradient-to-b from-primary/5 to-background">
         <div className="container mx-auto max-w-7xl flex flex-col gap-4">
           <div className="text-sm text-muted-foreground">
-            <Link to="/galeria" className="text-primary hover:underline">
+            <Link to={getLocalizedPath('/galeria', language)} className="text-primary hover:underline">
               Galéria
             </Link>
             <span className="mx-2">/</span>
