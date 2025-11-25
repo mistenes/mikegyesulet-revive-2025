@@ -20,6 +20,7 @@ import AdminMedia from "./pages/admin/AdminMedia";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminRegions from "./pages/admin/AdminRegions";
 import AcceptInvite from "./pages/admin/AcceptInvite";
+import AdminFileManager from "./pages/admin/AdminFileManager";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -100,6 +101,7 @@ const App = () => {
               <Route path="/admin/news" element={<AdminNews />} />
               <Route path="/admin/projects" element={<AdminProjects />} />
               <Route path="/admin/gallery" element={<AdminGallery />} />
+              <Route path="/admin/file-manager" element={<AdminFileManager />} />
               <Route path="/admin/media" element={<AdminMedia />} />
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/accept-invite" element={<AcceptInvite />} />
