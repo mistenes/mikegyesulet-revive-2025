@@ -15,21 +15,33 @@ export const getLocalizedPath = (path: string, language: Language) => {
     return path;
   }
 
-  if (language === "en") {
-    if (path === EN_PREFIX || path === `${EN_PREFIX}/`) {
-      return EN_PREFIX;
+  const [pathname, hash = ""] = path.split("#");
+  const normalizedPath = pathname || "/";
+
+  const localizedPath = (() => {
+    if (language === "en") {
+      if (normalizedPath === EN_PREFIX || normalizedPath === `${EN_PREFIX}/`) {
+        return EN_PREFIX;
+      }
+
+      if (normalizedPath.startsWith(EN_PREFIX)) {
+        return normalizedPath;
+      }
+
+      if (normalizedPath === "/") {
+        return EN_PREFIX;
+      }
+
+      return `${EN_PREFIX}${normalizedPath.startsWith("/") ? "" : "/"}${normalizedPath.replace(/^\//, "")}`;
     }
 
-    if (path.startsWith(EN_PREFIX)) {
-      return path;
-    }
+    return stripLocalePrefix(normalizedPath);
+  })();
 
-    if (path === "/") {
-      return EN_PREFIX;
-    }
-
-    return `${EN_PREFIX}${path.startsWith("/") ? "" : "/"}${path.replace(/^\//, "")}`;
+  if (hash) {
+    const separator = localizedPath.endsWith("/") ? "" : "/";
+    return `${localizedPath}${separator}#${hash}`;
   }
 
-  return stripLocalePrefix(path);
+  return localizedPath;
 };

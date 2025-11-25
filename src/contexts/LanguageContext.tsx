@@ -94,7 +94,9 @@ const translations = {
 };
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>('hu');
+  const [language, setLanguage] = useState<Language>(() =>
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/en') ? 'en' : 'hu'
+  );
 
   const t = (key: string): string => {
     return translations[language][key as keyof typeof translations['hu']] || key;
