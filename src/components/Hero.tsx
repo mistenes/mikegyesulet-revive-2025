@@ -72,7 +72,7 @@ export const Hero = () => {
   const loading = heroLoading || statsLoading;
 
   return (
-    <section className="relative min-h-screen flex items-center pt-20 overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
+    <section className="relative min-h-screen flex items-center pt-32 sm:pt-28 md:pt-24 overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl animate-float" />
