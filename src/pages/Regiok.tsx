@@ -14,12 +14,16 @@ import { regionsData } from "@/data/regions";
 import { getPublicRegions, REGIONS_EVENT } from "@/services/regionsService";
 import type { Region } from "@/types/region";
 
+function sortRegions(items: Region[]): Region[] {
+  return [...items].sort((a, b) => a.nameHu.localeCompare(b.nameHu, "hu", { sensitivity: "base" }));
+}
+
 export default function Regiok() {
   const { language, t } = useLanguage();
   const location = useLocation();
   const { content: regionsIntroContent } = useSectionContent("regions_intro");
   const adminPreview = isAdminPreview();
-  const [regions, setRegions] = useState<Region[]>(regionsData);
+  const [regions, setRegions] = useState<Region[]>(() => sortRegions(regionsData));
 
   const handleEditableClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
     if (notifyAdminFocus("regions_intro", fieldKey)) {
@@ -63,7 +67,7 @@ export default function Regiok() {
       try {
         const items = await getPublicRegions();
         if (!active) return;
-        setRegions(items);
+        setRegions(sortRegions(items));
       } catch (error) {
         console.error("Failed to load regions", error);
       }
