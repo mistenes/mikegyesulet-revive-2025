@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Globe } from "lucide-react";
 import mikLogo from "@/assets/mik-logo.svg";
@@ -9,11 +9,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getSettings, type SettingsStore } from "@/services/settingsService";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const { language, setLanguage, t } = useLanguage();
+  const [showDevBanner, setShowDevBanner] = useState<boolean>(() => {
+    const settings = getSettings();
+    return settings.general.dev_banner_enabled?.value !== false;
+  });
+
+  useEffect(() => {
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsStore>).detail;
+      const latest = detail ?? getSettings();
+      setShowDevBanner(latest.general.dev_banner_enabled?.value !== false);
+    };
+
+    window.addEventListener("mik-settings-updated", handleSettingsUpdate);
+    return () => window.removeEventListener("mik-settings-updated", handleSettingsUpdate);
+  }, []);
 
   const navItems = [
     { label: t('nav.about'), href: "/rolunk" },
@@ -33,9 +49,11 @@ export const Header = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
-      <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4">
-        A weboldal fejlesztés alatt áll.
-      </div>
+      {showDevBanner && (
+        <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4">
+          A weboldal fejlesztés alatt áll.
+        </div>
+      )}
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-20">
           {/* Logo */}

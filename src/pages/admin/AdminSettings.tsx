@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Settings, Save, Loader2, ShieldCheck, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { getSettings, updateSetting } from "@/services/settingsService";
@@ -21,7 +22,7 @@ import {
 
 export default function AdminSettings() {
   const { isLoading: authLoading, session } = useAdminAuthGuard();
-  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<Record<string, string | boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [security, setSecurity] = useState<SecurityStatus | null>(null);
@@ -40,7 +41,7 @@ export default function AdminSettings() {
 
   useEffect(() => {
     const settings = getSettings();
-    const initial: Record<string, string> = {};
+    const initial: Record<string, string | boolean> = {};
     Object.entries(settings.general).forEach(([key, setting]) => {
       initial[key] = setting.value;
     });
@@ -224,6 +225,20 @@ export default function AdminSettings() {
 
         <Card className="p-6 bg-gradient-to-br from-background to-muted/20">
           <div className="space-y-6">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-background/60 p-4">
+              <div className="space-y-1">
+                <Label className="text-base">Fejlesztési figyelmeztetés</Label>
+                <p className="text-sm text-muted-foreground">
+                  Kapcsolja ki, ha nem szeretné megjeleníteni az „A weboldal fejlesztés alatt áll.” fejléc sávot.
+                </p>
+              </div>
+              <Switch
+                checked={Boolean(formData.dev_banner_enabled ?? true)}
+                onCheckedChange={(checked) => setFormData({ ...formData, dev_banner_enabled: checked })}
+                aria-label="Fejlesztési figyelmeztetés bekapcsolása"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label>Oldal neve</Label>
               <Input
