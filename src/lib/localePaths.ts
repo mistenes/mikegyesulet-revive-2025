@@ -32,7 +32,8 @@ export const getLocalizedPath = (path: string, language: Language) => {
         return EN_PREFIX;
       }
 
-      return `${EN_PREFIX}${normalizedPath.startsWith("/") ? "" : "/"}${normalizedPath.replace(/^\//, "")}`;
+      const trimmedPath = normalizedPath.replace(/^\/+/, "");
+      return trimmedPath ? `${EN_PREFIX}/${trimmedPath}` : EN_PREFIX;
     }
 
     return stripLocalePrefix(normalizedPath);
