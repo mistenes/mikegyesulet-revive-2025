@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import workspaceImage from "@/assets/workspace.jpg";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -14,6 +15,7 @@ type ClosingContent = {
   title?: string;
   description?: string;
   buttonText?: string;
+  buttonUrl?: string;
   imageUrl?: string;
 };
 
@@ -85,15 +87,29 @@ export const ClosingStatements = () => {
               {content.description}
             </p>
 
-            <Button
-              size="lg"
-              variant="outline"
-              className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold px-8 py-6 text-base transition-all duration-300"
-              onClick={(event) => handleClick(event, "buttonText")}
-            >
-              {content.buttonText}
-              <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-            </Button>
+      <Button
+        size="lg"
+        variant="outline"
+        className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold px-8 py-6 text-base transition-all duration-300"
+        onClick={(event) => handleClick(event, "buttonText")}
+      >
+        {content.buttonUrl?.startsWith("http") ? (
+          <a
+            href={content.buttonUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2"
+          >
+            {content.buttonText}
+            <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+          </a>
+        ) : (
+          <Link to={content.buttonUrl || "/dokumentumok"} className="inline-flex items-center gap-2">
+            {content.buttonText}
+            <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+          </Link>
+        )}
+      </Button>
           </div>
         </div>
       </div>

@@ -36,6 +36,7 @@ export const defaultPageContent: PageContentStore = {
       primaryButtonText: "TAGSZERVEZETI PORTÁL",
       primaryButtonUrl: "https://dashboard.mikegyesulet.hu",
       secondaryButtonText: "TUDJ MEG TÖBBET",
+      secondaryButtonUrl: "/rolunk",
       imageUrl: heroDefaultImage,
     },
     en: {
@@ -44,6 +45,7 @@ export const defaultPageContent: PageContentStore = {
       primaryButtonText: "MEMBER PORTAL",
       primaryButtonUrl: "https://dashboard.mikegyesulet.hu",
       secondaryButtonText: "LEARN MORE",
+      secondaryButtonUrl: "/rolunk",
       imageUrl: heroDefaultImage,
     },
   },
@@ -69,12 +71,14 @@ export const defaultPageContent: PageContentStore = {
       title: "TÁJÉKOZÓDJ SZÜLŐFÖLDÜNKRŐL!",
       description: "Olvasd el legfrissebb híreinket a magyar fiatalokról a Kárpát-medencében.",
       buttonText: "MINDEN HÍR",
+      buttonUrl: "/news",
     },
     en: {
       subtitle: "OUR LATEST UPDATES",
       title: "STAY INFORMED ABOUT HUNGARIAN COMMUNITIES",
       description: "Read the latest stories about Hungarian youth living across the Carpathian Basin.",
       buttonText: "VIEW ALL NEWS",
+      buttonUrl: "/news",
     },
   },
   regions_section: {
@@ -83,6 +87,7 @@ export const defaultPageContent: PageContentStore = {
       title: "Közösségeink a Kárpát-medencében",
       description: "Több mint 10 régióban képviseljük a magyar fiatalokat.",
       buttonText: "Fedezd fel a régiókat",
+      buttonUrl: "/regiok",
       chips: ["Erdély", "Felvidék", "Kárpátalja", "Vajdaság", "Horvátország", "Szlovénia"],
     },
     en: {
@@ -90,6 +95,7 @@ export const defaultPageContent: PageContentStore = {
       title: "Our communities across the Carpathian Basin",
       description: "We represent young Hungarians in more than 10 regions.",
       buttonText: "Discover the regions",
+      buttonUrl: "/regiok",
       chips: ["Transylvania", "Upper Hungary", "Transcarpathia", "Vojvodina", "Croatia", "Slovenia"],
     },
   },
@@ -101,10 +107,12 @@ export const defaultPageContent: PageContentStore = {
       description:
         "Kattints, hogy megtudd, kik alkotják a MIK-et, hogyan oszlik meg a munka, és ismerd meg szervezeti struktúránkat.",
       buttonText: "Magunkról",
+      buttonUrl: "/rolunk",
       ctaBadge: "ALAPÍTÓ NYILATKOZAT",
       ctaTitle: "Célkitűzéseink",
       ctaDescription: "Alapítóink világosan leírták, miért kell a magyar fiataloknak közös egyeztető fórum.",
       ctaButton: "Megnyitás",
+      ctaButtonUrl: "#", 
       imageUrl: aboutDefaultImage,
     },
     en: {
@@ -113,11 +121,25 @@ export const defaultPageContent: PageContentStore = {
       subtitle: "Uniting Hungarian youth",
       description: "Learn who keeps HYCA running, how we work together and how the organisation is structured.",
       buttonText: "About us",
+      buttonUrl: "/rolunk",
       ctaBadge: "FOUNDERS' STATEMENT",
       ctaTitle: "Our mission",
       ctaDescription: "The founders outlined why Hungarian youth needs a shared platform across the world.",
       ctaButton: "Open",
+      ctaButtonUrl: "#",
       imageUrl: aboutDefaultImage,
+    },
+  },
+  map_section: {
+    hu: {
+      title: "Kárpát-medencei jelenlétünk",
+      description:
+        "Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit. Kattints a jelölőkre a részletes információkért!",
+    },
+    en: {
+      title: "Our presence across the Carpathian Basin",
+      description:
+        "Explore the map to see where we represent Hungarian youth. Click the markers for more information about each region!",
     },
   },
   testimonials_section: {
@@ -247,6 +269,7 @@ export const defaultPageContent: PageContentStore = {
       description:
         "A Magyar Ifjúsági Konferencia mindent ülése végén elfogad egy zárónyilatkozatot, ami reflektál az utóbbi fél év történéseire. Ezzel nem csak egy dokumentumot hozunk létre, hanem egy krónikát is, hiszen a zárónyilatkozatok visszaolvasásával nyomon követhetők a Kárpát-medence magyarságát érintő történések.",
       buttonText: "ZÁRÓNYILATKOZATOK",
+      buttonUrl: "/dokumentumok",
       imageUrl: workspaceImage,
     },
     en: {
@@ -255,6 +278,7 @@ export const defaultPageContent: PageContentStore = {
       description:
         "After each assembly, HYCA adopts a closing statement that reflects on the previous half year. These statements are chronicles too, showing what affected Hungarian communities across the Carpathian Basin.",
       buttonText: "CLOSING STATEMENTS",
+      buttonUrl: "/dokumentumok",
       imageUrl: workspaceImage,
     },
   },

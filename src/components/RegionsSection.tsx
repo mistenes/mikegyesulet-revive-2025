@@ -29,6 +29,7 @@ type RegionsContent = {
   title: string;
   description: string;
   buttonText?: string;
+  buttonUrl?: string;
   chips?: string[];
 };
 
@@ -158,10 +159,22 @@ export const RegionsSection = () => {
                 className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl mt-6"
                 asChild
               >
-                <Link to="/regiok">
-                  {content?.buttonText || "Fedezd fel a régiókat"}
-                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                {content?.buttonUrl?.startsWith("http") ? (
+                  <a
+                    href={content.buttonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center"
+                  >
+                    {content?.buttonText || "Fedezd fel a régiókat"}
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                ) : (
+                  <Link to={content?.buttonUrl || "/regiok"} className="inline-flex items-center">
+                    {content?.buttonText || "Fedezd fel a régiókat"}
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                )}
               </Button>
             )}
           </div>

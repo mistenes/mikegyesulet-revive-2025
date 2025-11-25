@@ -15,6 +15,7 @@ interface NewsSectionContent {
   title: string;
   description: string;
   buttonText: string;
+  buttonUrl?: string;
 }
 
 export const NewsSection = () => {
@@ -113,10 +114,22 @@ export const NewsSection = () => {
                 variant="outline"
                 className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300"
               >
-                <Link to="/news" className="inline-flex items-center">
-                  {sectionContent?.buttonText}
-                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                {sectionContent?.buttonUrl?.startsWith("http") ? (
+                  <a
+                    href={sectionContent.buttonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center"
+                  >
+                    {sectionContent.buttonText}
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                ) : (
+                  <Link to={sectionContent?.buttonUrl || "/news"} className="inline-flex items-center">
+                    {sectionContent?.buttonText}
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                )}
               </Button>
             </>
           )}

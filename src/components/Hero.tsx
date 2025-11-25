@@ -13,8 +13,9 @@ type HeroContent = {
   title: string;
   description: string;
   primaryButtonText: string;
-  primaryButtonUrl: string;
+  primaryButtonUrl?: string;
   secondaryButtonText: string;
+  secondaryButtonUrl?: string;
   imageUrl?: string;
 };
 
@@ -42,6 +43,11 @@ export const Hero = () => {
       event.preventDefault();
       event.stopPropagation();
     }
+  };
+
+  const resolveUrl = (url?: string, fallback: string = "#") => {
+    if (!url) return fallback;
+    return url.startsWith("http") ? url : url.startsWith("/") ? url : fallback;
   };
 
   const handleStatsClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -125,7 +131,11 @@ export const Hero = () => {
                     asChild
                     onClick={(event) => handleHeroClick(event, "primaryButtonText")}
                   >
-                    <a href={content?.primaryButtonUrl || "#"} target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={resolveUrl(content?.primaryButtonUrl, "#")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       {content?.primaryButtonText}
                       <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                     </a>
@@ -137,9 +147,19 @@ export const Hero = () => {
                     asChild
                     onClick={(event) => handleHeroClick(event, "secondaryButtonText")}
                   >
-                    <Link to="/rolunk">
-                      {content?.secondaryButtonText}
-                    </Link>
+                    {resolveUrl(content?.secondaryButtonUrl, "/rolunk").startsWith("http") ? (
+                      <a
+                        href={resolveUrl(content?.secondaryButtonUrl, "/rolunk")}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {content?.secondaryButtonText}
+                      </a>
+                    ) : (
+                      <Link to={resolveUrl(content?.secondaryButtonUrl, "/rolunk")}>
+                        {content?.secondaryButtonText}
+                      </Link>
+                    )}
                   </Button>
                 </>
               )}

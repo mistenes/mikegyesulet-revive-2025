@@ -1,9 +1,13 @@
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { toast } from "sonner";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useSectionContent } from "@/hooks/useSectionContent";
+import { defaultPageContent } from "@/data/defaultPageContent";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
 interface Region {
   name: string;
@@ -95,6 +99,27 @@ export const RegionsMap = () => {
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const adminPreview = isAdminPreview();
+  const { content: mapSection, isLoading: mapContentLoading } = useSectionContent("map_section");
+
+  const mapContent = useMemo(() => {
+    const localized = (mapSection?.[language] || mapSection?.hu) as
+      | { title?: string; description?: string }
+      | undefined;
+    const fallback = (defaultPageContent.map_section?.[language] || defaultPageContent.map_section?.hu) as
+      | { title?: string; description?: string }
+      | undefined;
+
+    return localized || fallback || {};
+  }, [language, mapSection]);
+
+  const handleMapTextClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
+    if (notifyAdminFocus("map_section", fieldKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   const initializeMap = useCallback((token?: string) => {
     const tokenToUse = token || mapboxToken;
@@ -347,12 +372,22 @@ export const RegionsMap = () => {
           <h2
             className="text-4xl md:text-5xl font-bold text-foreground leading-tight mb-4"
             style={{ fontFamily: "'Sora', sans-serif" }}
+            onClick={(event) => handleMapTextClick(event, "title")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
           >
-            Kárpát-medencei jelenlétünk
+            {mapContentLoading ? "" : mapContent.title || "Térkép"}
           </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit.
-            Kattints a jelölőkre a részletes információkért!
+          <p
+            className="text-lg text-muted-foreground max-w-2xl mx-auto"
+            onClick={(event) => handleMapTextClick(event, "description")}
+            role={adminPreview ? "button" : undefined}
+            tabIndex={adminPreview ? 0 : undefined}
+          >
+            {mapContentLoading
+              ? ""
+              : mapContent.description ||
+                "Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit."}
           </p>
         </div>
 

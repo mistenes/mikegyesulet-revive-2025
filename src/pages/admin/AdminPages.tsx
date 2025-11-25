@@ -41,6 +41,7 @@ const sectionGroups = {
     { key: "impact_section", label: "Hatás Szekció" },
     { key: "news_section", label: "Hírek Szekció" },
     { key: "regions_section", label: "Régiók Szekció" },
+    { key: "map_section", label: "Térkép Szekció" },
     { key: "about_section", label: "Rólunk Röviden" },
     { key: "testimonials_section", label: "Visszajelzések" },
     { key: "closing_section", label: "Zárónyilatkozatok" },
@@ -118,6 +119,7 @@ const sectionDefinitions: Record<
       { key: "primaryButtonText", label: "Elsődleges gomb szövege" },
       { key: "primaryButtonUrl", label: "Elsődleges gomb link" },
       { key: "secondaryButtonText", label: "Másodlagos gomb szövege" },
+      { key: "secondaryButtonUrl", label: "Másodlagos gomb link" },
       { key: "imageUrl", label: "Háttérkép / fotó", type: "image", description: "Válaszd ki a hero képet az ImageKitből" },
     ],
   },
@@ -137,6 +139,7 @@ const sectionDefinitions: Record<
       { key: "title", label: "Cím", type: "textarea" },
       { key: "description", label: "Leírás", type: "textarea" },
       { key: "buttonText", label: "Gomb szöveg" },
+      { key: "buttonUrl", label: "Gomb link" },
     ],
   },
   regions_section: {
@@ -145,6 +148,7 @@ const sectionDefinitions: Record<
       { key: "title", label: "Cím", type: "textarea" },
       { key: "description", label: "Leírás", type: "textarea" },
       { key: "buttonText", label: "Gomb szöveg" },
+      { key: "buttonUrl", label: "Gomb link" },
       {
         key: "chips",
         label: "Kiemelt régiók",
@@ -160,11 +164,19 @@ const sectionDefinitions: Record<
       { key: "subtitle", label: "Alcím" },
       { key: "description", label: "Leírás", type: "textarea" },
       { key: "buttonText", label: "Gomb szöveg" },
+      { key: "buttonUrl", label: "Gomb link" },
       { key: "ctaBadge", label: "CTA badge" },
       { key: "ctaTitle", label: "CTA cím" },
       { key: "ctaDescription", label: "CTA leírás", type: "textarea" },
       { key: "ctaButton", label: "CTA gomb szöveg" },
+      { key: "ctaButtonUrl", label: "CTA gomb link" },
       { key: "imageUrl", label: "Kép", type: "image", description: "Rólunk kép kiválasztása" },
+    ],
+  },
+  map_section: {
+    fields: [
+      { key: "title", label: "Cím" },
+      { key: "description", label: "Leírás", type: "textarea" },
     ],
   },
   regions_intro: {
@@ -220,6 +232,7 @@ const sectionDefinitions: Record<
       { key: "title", label: "Cím", type: "textarea" },
       { key: "description", label: "Leírás", type: "textarea" },
       { key: "buttonText", label: "Gomb szöveg" },
+      { key: "buttonUrl", label: "Gomb link" },
       { key: "imageUrl", label: "Kép", type: "image" },
     ],
   },
@@ -666,40 +679,63 @@ export default function AdminPages() {
 
     if (type === "image") {
       const imageUrl = typeof value === "string" ? value : "";
+      const isUploadingTarget = imageUploading && uploadTarget?.sectionKey === sectionKey && uploadTarget?.fieldKey === fieldKey;
       return (
         <div className="space-y-3">
-          <Input
+          <input
             ref={registerFieldRef(sectionKey, fieldKey)}
             value={imageUrl}
-            onChange={(e) => handleFieldChange(sectionKey, fieldKey, e.target.value)}
-            placeholder="ImageKit URL"
-            onFocus={commonFocus}
+            readOnly
+            className="sr-only"
+            aria-hidden
           />
+          <div
+            className={cn(
+              "rounded-lg border border-dashed bg-muted/30 overflow-hidden cursor-pointer transition hover:border-primary/60",
+              imageUrl ? "p-0" : "p-6 flex items-center justify-center",
+            )}
+            onClick={() => {
+              commonFocus();
+              openImageBrowser({ sectionKey, fieldKey });
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            {imageUrl ? (
+              <img src={imageUrl} alt="Előnézet" className="w-full h-48 object-cover" />
+            ) : (
+              <div className="text-center space-y-2 text-muted-foreground">
+                <ImageIcon className="h-6 w-6 mx-auto" />
+                <p className="text-sm">Kattints egy kép kiválasztásához vagy feltöltéséhez</p>
+              </div>
+            )}
+          </div>
           <div className="flex gap-2 flex-wrap">
             <Button type="button" variant="secondary" className="gap-2" onClick={() => openImageBrowser({ sectionKey, fieldKey })}>
-              <Search className="h-4 w-4" /> Kiválasztás az ImageKitből
+              <Search className="h-4 w-4" /> Vizuális választó megnyitása
             </Button>
             <Button
               type="button"
               variant="outline"
               className="gap-2"
-              disabled={imageUploading && uploadTarget?.sectionKey === sectionKey && uploadTarget?.fieldKey === fieldKey}
+              disabled={isUploadingTarget}
               onClick={() => handleUploadClick({ sectionKey, fieldKey })}
             >
-              {imageUploading && uploadTarget?.sectionKey === sectionKey && uploadTarget?.fieldKey === fieldKey ? (
+              {isUploadingTarget ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Upload className="h-4 w-4" />
               )}
               Kép feltöltése
             </Button>
+            {imageUrl && (
+              <Button type="button" variant="ghost" className="gap-2" onClick={() => handleFieldChange(sectionKey, fieldKey, "")}>
+                <ChevronLeft className="h-4 w-4" /> Kép törlése
+              </Button>
+            )}
           </div>
           {description && <p className="text-xs text-muted-foreground">{description}</p>}
-          {imageUrl && (
-            <div className="rounded-md overflow-hidden border bg-muted/30">
-              <img src={imageUrl} alt="Előnézet" className="w-full h-48 object-cover" />
-            </div>
-          )}
+          {imageUrl && <p className="text-xs text-muted-foreground break-all">{imageUrl}</p>}
         </div>
       );
     }
