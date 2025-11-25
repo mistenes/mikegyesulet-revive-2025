@@ -8,6 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+import { getLocalizedPath } from "@/lib/localePaths";
 
 type HeroContent = {
   title: string;
@@ -46,8 +47,19 @@ export const Hero = () => {
   };
 
   const resolveUrl = (url?: string, fallback: string = "#") => {
-    if (!url) return fallback;
-    return url.startsWith("http") ? url : url.startsWith("/") ? url : fallback;
+    const candidate = url?.trim() || fallback;
+
+    if (candidate === "#") return candidate;
+    if (
+      candidate.startsWith("http") ||
+      candidate.startsWith("mailto:") ||
+      candidate.startsWith("#")
+    ) {
+      return candidate;
+    }
+
+    const normalized = candidate.startsWith("/") ? candidate : `/${candidate}`;
+    return getLocalizedPath(normalized, language);
   };
 
   const handleStatsClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -68,6 +80,13 @@ export const Hero = () => {
       (statsSection[language]?.stats || statsSection.hu?.stats || []) as HeroStats["stats"]
     ).filter(Boolean);
   }, [language, statsSection]);
+
+  const primaryButtonUrl = resolveUrl(content?.primaryButtonUrl, "#");
+  const secondaryButtonUrl = resolveUrl(content?.secondaryButtonUrl, "/rolunk");
+  const isSecondaryExternal =
+    secondaryButtonUrl.startsWith("http") ||
+    secondaryButtonUrl.startsWith("mailto:") ||
+    secondaryButtonUrl.startsWith("#");
 
   const loading = heroLoading || statsLoading;
 
@@ -132,7 +151,7 @@ export const Hero = () => {
                     onClick={(event) => handleHeroClick(event, "primaryButtonText")}
                   >
                     <a
-                      href={resolveUrl(content?.primaryButtonUrl, "#")}
+                      href={primaryButtonUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -147,16 +166,16 @@ export const Hero = () => {
                     asChild
                     onClick={(event) => handleHeroClick(event, "secondaryButtonText")}
                   >
-                    {resolveUrl(content?.secondaryButtonUrl, "/rolunk").startsWith("http") ? (
+                    {isSecondaryExternal ? (
                       <a
-                        href={resolveUrl(content?.secondaryButtonUrl, "/rolunk")}
+                        href={secondaryButtonUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
                         {content?.secondaryButtonText}
                       </a>
                     ) : (
-                      <Link to={resolveUrl(content?.secondaryButtonUrl, "/rolunk")}>
+                      <Link to={secondaryButtonUrl}>
                         {content?.secondaryButtonText}
                       </Link>
                     )}
