@@ -117,7 +117,7 @@ export default function AdminRegions() {
     [importPreview],
   );
 
-  const allImportsApproved = importPreview.length > 0 && approvedImportCount === importPreview.length;
+  const hasApprovedImport = approvedImportCount > 0;
 
   useEffect(() => {
     if (!session) return;
@@ -288,9 +288,9 @@ export default function AdminRegions() {
       return;
     }
 
-    const notApproved = importPreview.filter((item) => !item.approved);
-    if (notApproved.length) {
-      toast.error("Minden sort jóvá kell hagyni a mentéshez");
+    const approvedItems = importPreview.filter((item) => item.approved);
+    if (!approvedItems.length) {
+      toast.error("Legalább egy sort jóvá kell hagyni az importáláshoz");
       return;
     }
 
@@ -304,7 +304,7 @@ export default function AdminRegions() {
 
       const regionMap = new Map<string, RegionInput>();
 
-      for (const candidate of importPreview) {
+      for (const candidate of approvedItems) {
         const regionKey = candidate.regionId || slugify(candidate.regionName);
         const region = regionMap.get(regionKey) || {
           id: regionKey,
@@ -648,7 +648,7 @@ export default function AdminRegions() {
               <Button
                 onClick={handleImportSubmit}
                 type="button"
-                disabled={!allImportsApproved || importSaving || importing || !importPreview.length}
+                disabled={!hasApprovedImport || importSaving || importing || !importPreview.length}
                 className="gap-2"
               >
                 {importSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importálás
@@ -667,10 +667,10 @@ export default function AdminRegions() {
 
           <div className="flex flex-wrap gap-4 items-center justify-between text-sm">
             <div className="text-muted-foreground">
-              Jóváhagyva: {approvedImportCount}/{importPreview.length || 0}. Minden sort jóvá kell hagyni a mentéshez.
+              Jóváhagyva: {approvedImportCount}/{importPreview.length || 0}. Legalább egy sort jóvá kell hagynod az importáláshoz.
             </div>
-            <Badge variant={allImportsApproved && importPreview.length ? "default" : "outline"}>
-              {allImportsApproved && importPreview.length ? "Kész" : "Jóváhagyás szükséges"}
+            <Badge variant={hasApprovedImport && importPreview.length ? "default" : "outline"}>
+              {hasApprovedImport && importPreview.length ? "Importálásra kész" : "Jóváhagyás szükséges"}
             </Badge>
           </div>
 
@@ -681,9 +681,10 @@ export default function AdminRegions() {
           )}
 
           {importPreview.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              Tölts fel egy CSV fájlt a Webflow exportból. A sorok előnézetben jelennek meg, mindegyiket jóvá kell hagynod.
-            </div>
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Tölts fel egy CSV fájlt a Webflow exportból. A sorok előnézetben jelennek meg, a kiválasztottakat jóváhagyás
+                után tudod importálni.
+              </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {importPreview.map((item) => (
