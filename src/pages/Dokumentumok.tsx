@@ -17,7 +17,8 @@ export default function Dokumentumok() {
     { id: "all", label: language === 'hu' ? "Összes" : "All" },
     { id: "statute", label: language === 'hu' ? "Alapszabály" : "Charter" },
     { id: "founding", label: language === 'hu' ? "Alapító Nyilatkozat" : "Founding Declaration" },
-    { id: "closing-statement", label: language === 'hu' ? "Zárónyilatkozatok" : "Closing Statements" }
+    { id: "closing-statement", label: language === 'hu' ? "Zárónyilatkozatok" : "Closing Statements" },
+    { id: "other", label: language === 'hu' ? "Egyéb" : "Other" }
   ];
 
   const charterDocs = useMemo(() => {
@@ -55,6 +56,12 @@ export default function Dokumentumok() {
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [searchQuery, selectedCategory, language]);
+
+  const otherDocs = useMemo(() => {
+    return documentsData
+      .filter(doc => doc.category === "other")
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, []);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -244,6 +251,70 @@ export default function Dokumentumok() {
                         </div>
 
                         <Button 
+                          className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                          variant="outline"
+                          asChild
+                        >
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                            <Download className="h-4 w-4 mr-2" />
+                            {language === 'hu' ? 'Letöltés' : 'Download'}
+                          </a>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+
+      {(selectedCategory === "all" || selectedCategory === "other") && otherDocs.length > 0 && (
+        <section className="py-12 px-4">
+          <div className="container mx-auto max-w-4xl">
+            <Card className="border-border/50 shadow-lg">
+              <CardContent className="p-8 space-y-6">
+                <div>
+                  <h2
+                    className="text-2xl font-bold text-foreground mb-4"
+                    style={{ fontFamily: "'Sora', sans-serif" }}
+                  >
+                    {language === 'hu' ? 'Egyéb' : 'Other'}
+                  </h2>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {language === 'hu'
+                      ? 'A Magyar Ifjúsági Konferencia működéséhez kapcsolódó egyéb dokumentumok.'
+                      : 'Additional documents related to the operation of the Hungarian Youth Conference.'}
+                  </p>
+                </div>
+
+                <div className="grid gap-4 pt-4">
+                  {otherDocs.map((doc, index) => (
+                    <Card
+                      key={index}
+                      className="hover:shadow-lg transition-all duration-300 border-border/50 group"
+                    >
+                      <CardContent className="p-6 space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <FileText className="h-6 w-6 text-primary" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-bold text-foreground">
+                                {language === 'hu' ? doc.title : doc.titleEn}
+                              </h3>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" />
+                          <span>{formatDate(doc.date)}</span>
+                        </div>
+
+                        <Button
                           className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
                           variant="outline"
                           asChild
