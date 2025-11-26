@@ -187,10 +187,6 @@ export default function Auth() {
           )}
         </form>
 
-        <div className="text-sm text-muted-foreground text-center">
-          Az alapértelmezett belépési adatokat a projekt gyökerében található <code>.env.example</code> fájl tartalmazza.
-        </div>
-
         <Button
           variant="ghost"
           onClick={() => navigate("/")}
