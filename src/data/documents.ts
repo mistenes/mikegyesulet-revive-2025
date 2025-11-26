@@ -63,7 +63,7 @@ export const documentsData: Document[] = [
     title: "Felügyelőbizottsági állásfoglalás",
     titleEn: "Supervisory Committee Position Statement",
     date: "2025-11-25",
-    url: "https://mikegyesulet.b-cdn.net/egyeb/Mik%20FEB%C3%81ll%C3%A1sfoglal%C3%A1s.pdf",
+    url: "https://mikegyesulet.b-cdn.net/egyeb/Mik%20FEBA%CC%81lla%CC%81sfoglala%CC%81s.pdf",
     category: "other"
   },
   {
