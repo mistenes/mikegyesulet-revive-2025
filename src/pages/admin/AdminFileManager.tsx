@@ -33,6 +33,8 @@ const bunnyStorageKey = import.meta.env.VITE_BUNNY_STORAGE_KEY || "";
 const bunnyCdnHostname = import.meta.env.VITE_BUNNY_CDN_HOSTNAME || "";
 const bunnyStorageHost = import.meta.env.VITE_BUNNY_STORAGE_HOST || "storage.bunnycdn.com";
 
+const encodedRoot = encodeURIComponent("/");
+
 type StorageEntry = {
   objectName: string;
   isDirectory: boolean;
@@ -74,13 +76,13 @@ export default function AdminFileManager() {
     if (!hasConfig) return "";
     const trimmedHost = bunnyStorageHost.replace(/\/+$/g, "");
     const trimmedZone = bunnyStorageZone.replace(/^\/+|\/+$/g, "");
-    return `https://${trimmedHost}/${trimmedZone}`;
+    return `https://${trimmedHost}/${encodeURIComponent(trimmedZone)}`;
   }, [hasConfig, bunnyStorageHost, bunnyStorageZone]);
 
   const buildPath = useCallback(
     (target?: string, opts?: { directory?: boolean }) => {
       const parts = [currentPath, target].filter(Boolean).join("/").replace(/\/+$/g, "");
-      const encoded = encodePath(parts);
+      const encoded = parts ? encodePath(parts) : encodedRoot;
       const suffix = opts?.directory ? "/" : "";
       const prefix = encoded ? `/${encoded}` : "";
       return `${baseStorageUrl}${prefix}${suffix}`;
@@ -96,6 +98,7 @@ export default function AdminFileManager() {
       const response = await fetch(buildPath(undefined, { directory: true }), {
         headers: {
           AccessKey: bunnyStorageKey,
+          accept: "application/json",
         },
       });
 
