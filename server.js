@@ -1794,6 +1794,62 @@ app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) 
   }
 });
 
+app.delete('/api/gallery/imagekit-files/:id', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const fileId = (req.params.id || '').toString().trim();
+  const baseFolder = ensureFolderPath(IMAGEKIT_GALLERY_FOLDER || '/');
+
+  if (!fileId) {
+    return res.status(400).json({ message: 'Hiányzó fájlazonosító' });
+  }
+
+  const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
+
+  try {
+    const detailResponse = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(fileId)}/details`, {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!detailResponse.ok) {
+      const message = `ImageKit file detail hiba: ${detailResponse.status}`;
+      console.error(message, await detailResponse.text());
+      return res.status(502).json({ message: 'Nem sikerült lekérni a fájl részleteit' });
+    }
+
+    const details = await detailResponse.json();
+    const filePath = ensureFolderPath(details.filePath || details.folderPath || '/');
+
+    if (baseFolder !== '/' && !filePath.startsWith(`${baseFolder}/`) && filePath !== baseFolder) {
+      return res.status(403).json({ message: 'A fájl nem törölhető ebből a mappából' });
+    }
+
+    const deleteResponse = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!deleteResponse.ok) {
+      const message = `ImageKit delete hiba: ${deleteResponse.status}`;
+      console.error(message, await deleteResponse.text());
+      return res.status(502).json({ message: 'Nem sikerült törölni a fájlt az ImageKitből' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('ImageKit delete error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a fájlt az ImageKitből' });
+  }
+});
+
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   try {

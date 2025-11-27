@@ -118,6 +118,32 @@ export type ImageKitBrowseResult = {
   baseFolder: string;
 };
 
+export async function deleteImageKitFile(fileId: string): Promise<void> {
+  if (!fileId.trim()) {
+    throw new Error("Hiányzó fájlazonosító a törléshez");
+  }
+
+  const response = await fetch(new URL(`/api/gallery/imagekit-files/${encodeURIComponent(fileId)}`, defaultBase).toString(), {
+    method: "DELETE",
+    headers: withCsrfHeader({ Accept: "application/json" }),
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    let message = "Nem sikerült törölni a fájlt";
+    try {
+      const payload = await response.json();
+      if (payload?.message) {
+        message = payload.message as string;
+      }
+    } catch (error) {
+      // ignore
+    }
+
+    throw new Error(message);
+  }
+}
+
 export async function listImageKitFiles(search?: string, path?: string): Promise<ImageKitBrowseResult> {
   const params = new URLSearchParams();
   if (search?.trim()) {
