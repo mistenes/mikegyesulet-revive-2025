@@ -29,11 +29,11 @@ services:
       - key: IMAGEKIT_GALLERY_FOLDER
         value: ""
       - key: VITE_BUNNY_STORAGE_ZONE
-        value: "your-storage-zone-name"
+        value: "miksite"
       - key: VITE_BUNNY_STORAGE_KEY
-        value: "your-storage-access-key"
+        value: "<your-bunny-storage-access-key>"
       - key: VITE_BUNNY_CDN_HOSTNAME
-        value: "example.b-cdn.net"
+        value: "mikegyesulet.b-cdn.net"
       - key: VITE_BUNNY_STORAGE_HOST
         value: "storage.bunnycdn.com"
       - key: OPENAI_API_KEY

@@ -74,7 +74,7 @@ export default function AdminFileManager() {
 
   const baseStorageUrl = useMemo(() => {
     if (!hasConfig) return "";
-    const trimmedHost = bunnyStorageHost.replace(/\/+$/g, "");
+    const trimmedHost = bunnyStorageHost.replace(/^https?:\/\//i, "").replace(/\/+$/g, "");
     const trimmedZone = bunnyStorageZone.replace(/^\/+|\/+$/g, "");
     return `https://${trimmedHost}/${encodeURIComponent(trimmedZone)}`;
   }, [hasConfig, bunnyStorageHost, bunnyStorageZone]);
@@ -84,7 +84,7 @@ export default function AdminFileManager() {
       const parts = [currentPath, target].filter(Boolean).join("/").replace(/\/+$/g, "");
       const encoded = parts ? encodePath(parts) : encodedRoot;
       const suffix = opts?.directory ? "/" : "";
-      const prefix = encoded ? `/${encoded}` : "";
+      const prefix = `/${encoded}`;
       return `${baseStorageUrl}${prefix}${suffix}`;
     },
     [baseStorageUrl, currentPath],
@@ -96,6 +96,7 @@ export default function AdminFileManager() {
     setError(null);
     try {
       const response = await fetch(buildPath(undefined, { directory: true }), {
+        method: "GET",
         headers: {
           AccessKey: bunnyStorageKey,
           accept: "application/json",
