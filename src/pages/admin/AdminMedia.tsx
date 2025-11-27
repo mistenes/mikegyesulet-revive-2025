@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FolderPlus, RefreshCw, Upload, Search, Folder, Image as ImageIcon } from "lucide-react";
+import { FolderPlus, RefreshCw, Upload, Search, Folder, Image as ImageIcon, Loader2, Trash } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
   createImageKitFolder,
+  deleteImageKitFile,
   listImageKitFiles,
   uploadToImageKit,
   type ImageKitItem,
@@ -28,6 +29,7 @@ export default function AdminMedia() {
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [selectedItem, setSelectedItem] = useState<ImageKitItem | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const currentPath = path || basePath || "";
@@ -126,6 +128,41 @@ export default function AdminMedia() {
     }
   };
 
+  const handleDeleteFile = async (item: ImageKitItem) => {
+    if (item.isFolder) {
+      toast.error("Mappák törlése jelenleg nem támogatott");
+      return;
+    }
+
+    if (!item.id) {
+      toast.error("Ismeretlen fájl nem törölhető");
+      return;
+    }
+
+    const confirmed = window.confirm(`Biztosan törlöd a(z) "${item.name}" fájlt?`);
+    if (!confirmed) return;
+
+    setDeletingIds((prev) => new Set(prev).add(item.id));
+    try {
+      await deleteImageKitFile(item.id);
+      toast.success("Fájl törölve az ImageKitből");
+      if (selectedItem?.id === item.id) {
+        setSelectedItem(null);
+      }
+      await loadFiles(searchTerm, currentPath);
+    } catch (err) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : "Nem sikerült törölni a fájlt";
+      toast.error(message);
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  };
+
   const renderItemCard = (item: ImageKitItem) => {
     if (item.isFolder) {
       return (
@@ -149,35 +186,52 @@ export default function AdminMedia() {
     }
 
     return (
-      <button
-        key={item.id}
-        type="button"
-        onClick={() => handleOpenItem(item)}
-        className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 text-left hover:border-primary/50 hover:shadow"
-      >
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-muted p-2">
-            {item.thumbnailUrl ? (
-              <img
-                src={item.thumbnailUrl}
-                alt={item.name}
-                className="h-10 w-10 rounded object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <ImageIcon className="h-5 w-5 text-muted-foreground" />
-            )}
+      <div className="relative">
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => handleOpenItem(item)}
+          className="flex w-full flex-col gap-2 rounded-lg border border-border bg-card p-4 text-left hover:border-primary/50 hover:shadow"
+        >
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-muted p-2">
+              {item.thumbnailUrl ? (
+                <img
+                  src={item.thumbnailUrl}
+                  alt={item.name}
+                  className="h-10 w-10 rounded object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <ImageIcon className="h-5 w-5 text-muted-foreground" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium truncate" title={item.name}>
+                {item.name}
+              </p>
+              <p className="text-xs text-muted-foreground break-all" title={item.path}>
+                {item.path}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="font-medium truncate" title={item.name}>
-              {item.name}
-            </p>
-            <p className="text-xs text-muted-foreground break-all" title={item.path}>
-              {item.path}
-            </p>
-          </div>
+        </button>
+        <div className="absolute right-2 top-2 flex gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-destructive"
+            title="Fájl törlése"
+            disabled={deletingIds.has(item.id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleDeleteFile(item);
+            }}
+          >
+            {deletingIds.has(item.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash className="h-4 w-4" />}
+          </Button>
         </div>
-      </button>
+      </div>
     );
   };
 
@@ -325,22 +379,35 @@ export default function AdminMedia() {
                 <p className="text-sm text-muted-foreground">Elérési út</p>
                 <p className="break-all font-medium">{selectedItem.path}</p>
               </div>
-              {selectedItem.url && (
-                <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
+                {selectedItem.url && (
                   <Button asChild>
                     <a href={selectedItem.url} target="_blank" rel="noreferrer">
                       Megnyitás új lapon
                     </a>
                   </Button>
-                  {selectedItem.thumbnailUrl && selectedItem.thumbnailUrl !== selectedItem.url && (
-                    <Button variant="secondary" asChild>
-                      <a href={selectedItem.thumbnailUrl} target="_blank" rel="noreferrer">
-                        Bélyegkép megnyitása
-                      </a>
-                    </Button>
+                )}
+                {selectedItem.thumbnailUrl && selectedItem.thumbnailUrl !== selectedItem.url && (
+                  <Button variant="secondary" asChild>
+                    <a href={selectedItem.thumbnailUrl} target="_blank" rel="noreferrer">
+                      Bélyegkép megnyitása
+                    </a>
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  className="gap-2"
+                  disabled={deletingIds.has(selectedItem.id)}
+                  onClick={() => void handleDeleteFile(selectedItem)}
+                >
+                  {deletingIds.has(selectedItem.id) ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash className="h-4 w-4" />
                   )}
-                </div>
-              )}
+                  Fájl törlése
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
