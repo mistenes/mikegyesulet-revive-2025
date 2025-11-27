@@ -19,7 +19,6 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [recoveryCode, setRecoveryCode] = useState("");
   const [requiresMfa, setRequiresMfa] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -59,7 +58,7 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      await login(email, password, requiresMfa ? { mfaCode: otp, recoveryCode } : undefined);
+      await login(email, password, requiresMfa ? { mfaCode: otp } : undefined);
       toast.success("Sikeres bejelentkezés!");
       navigate("/admin");
     } catch (error: unknown) {
@@ -151,17 +150,6 @@ export default function Auth() {
                 </InputOTP>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="recovery">Vagy helyreállító kód</Label>
-                <Input
-                  id="recovery"
-                  value={recoveryCode}
-                  onChange={(e) => setRecoveryCode(e.target.value)}
-                  placeholder="XXXXX-XXXXX"
-                  disabled={isLoading}
-                />
-                <p className="text-xs text-muted-foreground">Használhatod, ha nincs kéznél a TOTP alkalmazás.</p>
-              </div>
             </div>
           )}
 
@@ -177,7 +165,6 @@ export default function Auth() {
               onClick={() => {
                 setRequiresMfa(false);
                 setOtp("");
-                setRecoveryCode("");
               }}
               disabled={isLoading}
             >
