@@ -6,7 +6,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { getSettings } from "@/services/settingsService";
-import mikLogo from "@/assets/mik-logo.svg";
 import { getLocalizedPath } from "@/lib/localePaths";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -40,16 +39,19 @@ const queryClient = new QueryClient();
 const App = () => {
   useEffect(() => {
     const settings = getSettings();
-    const faviconUrl =
-      settings.general.site_favicon?.value || settings.general.site_logo?.value || mikLogo;
-    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
-    if (!link) {
-      link = document.createElement("link");
+    const faviconUrl = (settings.general.site_favicon?.value as string | undefined)?.trim();
+    const existingLink = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+
+    if (faviconUrl) {
+      const link = existingLink || document.createElement("link");
       link.rel = "icon";
-      document.head.appendChild(link);
+      link.href = faviconUrl;
+      if (!existingLink) {
+        document.head.appendChild(link);
+      }
+    } else if (existingLink) {
+      document.head.removeChild(existingLink);
     }
-    link.type = "image/svg+xml";
-    link.href = faviconUrl;
   }, []);
 
   const publicRoutes = useMemo(
