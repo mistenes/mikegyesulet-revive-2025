@@ -81,7 +81,8 @@ export default function AdminFileManager() {
   const buildTargetPath = useCallback(
     (target?: string) => {
       const combined = [currentPath, target].filter(Boolean).join("/").replace(/\/+$/g, "");
-      return combined || "/";
+      const normalized = combined ? `/${combined}` : "/";
+      return normalized;
     },
     [currentPath],
   );
@@ -102,10 +103,18 @@ export default function AdminFileManager() {
       ? payload
       : Array.isArray((payload as { Items?: RawStorageEntry[] })?.Items)
         ? ((payload as { Items?: RawStorageEntry[] }).Items as RawStorageEntry[])
-        : [];
+        : Array.isArray((payload as { items?: RawStorageEntry[] })?.items)
+          ? ((payload as { items?: RawStorageEntry[] }).items as RawStorageEntry[])
+          : [];
 
     return items.map((item) => ({
-      objectName: item.objectName || item.ObjectName || item.path?.split("/").filter(Boolean).pop() || "",
+      objectName:
+        item.ObjectName ||
+        item.objectName ||
+        (typeof item === "object" && item !== null ? (item as { Name?: string }).Name : undefined) ||
+        item.path?.split("/").filter(Boolean).pop() ||
+        item.Path?.split("/").filter(Boolean).pop() ||
+        "",
       isDirectory: Boolean(item.isDirectory ?? item.IsDirectory),
       size: typeof item.size === "number" ? item.size : typeof item.Length === "number" ? item.Length : 0,
       lastChanged: item.lastChanged || item.LastChanged || new Date().toISOString(),
