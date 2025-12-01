@@ -3,7 +3,6 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -31,9 +30,7 @@ import { toast } from "sonner";
 const bunnyStorageZone = (import.meta.env.VITE_BUNNY_STORAGE_ZONE || "").trim();
 const bunnyStorageKey = (import.meta.env.VITE_BUNNY_STORAGE_KEY || "").trim();
 const bunnyCdnHostname = (import.meta.env.VITE_BUNNY_CDN_HOSTNAME || "").trim();
-const bunnyStorageHost = (import.meta.env.VITE_BUNNY_STORAGE_HOST || "storage.bunnycdn.com").trim() || "storage.bunnycdn.com";
-
-const encodedRoot = encodeURIComponent("/");
+const storageApiBase = "/api/bunny/storage";
 
 type StorageEntry = {
   objectName: string;
@@ -72,33 +69,33 @@ export default function AdminFileManager() {
 
   const hasConfig = Boolean(bunnyStorageZone && bunnyStorageKey);
 
-  const baseStorageUrl = useMemo(() => {
-    if (!hasConfig) return "";
-    const trimmedHost = bunnyStorageHost.replace(/^https?:\/\//i, "").replace(/\/+$/g, "");
-    const trimmedZone = bunnyStorageZone.replace(/^\/+|\/+$/g, "");
-    return `https://${trimmedHost}/${encodeURIComponent(trimmedZone)}`;
-  }, [hasConfig, bunnyStorageHost, bunnyStorageZone]);
-
-  const buildPath = useCallback(
-    (target?: string, opts?: { directory?: boolean }) => {
-      const parts = [currentPath, target].filter(Boolean).join("/").replace(/\/+$/g, "");
-      const encoded = parts ? encodePath(parts) : encodedRoot;
-      const suffix = opts?.directory ? "/" : "";
-      const prefix = `/${encoded}`;
-      return `${baseStorageUrl}${prefix}${suffix}`;
+  const buildTargetPath = useCallback(
+    (target?: string) => {
+      const combined = [currentPath, target].filter(Boolean).join("/").replace(/\/+$/g, "");
+      return combined || "/";
     },
-    [baseStorageUrl, currentPath],
+    [currentPath],
+  );
+
+  const buildApiUrl = useCallback(
+    (target?: string, opts?: { directory?: boolean }) => {
+      const params = new URLSearchParams({ path: buildTargetPath(target) });
+      if (opts?.directory) {
+        params.set("directory", "true");
+      }
+      return `${storageApiBase}?${params.toString()}`;
+    },
+    [buildTargetPath],
   );
 
   const fetchEntries = useCallback(async () => {
-    if (!hasConfig || !baseStorageUrl) return;
+    if (!hasConfig) return;
     setIsFetching(true);
     setError(null);
     try {
-      const response = await fetch(buildPath(undefined, { directory: true }), {
+      const response = await fetch(buildApiUrl(undefined, { directory: true }), {
         method: "GET",
         headers: {
-          AccessKey: bunnyStorageKey,
           accept: "application/json",
         },
       });
@@ -116,7 +113,7 @@ export default function AdminFileManager() {
     } finally {
       setIsFetching(false);
     }
-  }, [baseStorageUrl, buildPath, hasConfig]);
+  }, [buildApiUrl, hasConfig]);
 
   useEffect(() => {
     fetchEntries();
@@ -139,11 +136,8 @@ export default function AdminFileManager() {
 
     setIsCreatingFolder(true);
     try {
-      const response = await fetch(buildPath(folderName, { directory: true }), {
+      const response = await fetch(buildApiUrl(folderName, { directory: true }), {
         method: "PUT",
-        headers: {
-          AccessKey: bunnyStorageKey,
-        },
         body: "",
       });
 
@@ -173,10 +167,9 @@ export default function AdminFileManager() {
 
     try {
       for (const file of files) {
-        const response = await fetch(buildPath(file.name), {
+        const response = await fetch(buildApiUrl(file.name), {
           method: "PUT",
           headers: {
-            AccessKey: bunnyStorageKey,
             "Content-Type": file.type || "application/octet-stream",
           },
           body: file,
@@ -202,11 +195,8 @@ export default function AdminFileManager() {
 
     setDeleting(entry.objectName);
     try {
-      const response = await fetch(buildPath(entry.objectName, { directory: entry.isDirectory }), {
+      const response = await fetch(buildApiUrl(entry.objectName, { directory: entry.isDirectory }), {
         method: "DELETE",
-        headers: {
-          AccessKey: bunnyStorageKey,
-        },
       });
 
       if (!response.ok) {

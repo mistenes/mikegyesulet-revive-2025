@@ -44,6 +44,9 @@ const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
 const PASSWORD_HISTORY_LIMIT = 5;
 const PASSWORD_MIN_LENGTH = 12;
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
+const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
+const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
 
 const brevoClient = BREVO_API_KEY ? new SibApiV3Sdk.TransactionalEmailsApi() : null;
 
@@ -3129,11 +3132,117 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
   } catch (error) {
     console.error('Update news error', error);
     const status = error.status || 500;
-    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a hírt' });
+  return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a hírt' });
   } finally {
     client.release();
   }
 });
+
+function encodeBunnyPath(pathname = '/') {
+  return pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/') || encodeURIComponent('/');
+}
+
+function buildBunnyUrl(pathname = '/', { directory = false } = {}) {
+  const trimmedHost = BUNNY_STORAGE_HOST.replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+  const trimmedZone = BUNNY_STORAGE_ZONE.replace(/^\/+|\/+$/g, '');
+  const encodedPath = encodeBunnyPath(pathname);
+  const suffix = directory ? '/' : '';
+
+  return `https://${trimmedHost}/${encodeURIComponent(trimmedZone)}/${encodedPath}${suffix}`;
+}
+
+const bunnyStorageRouter = express.Router();
+
+bunnyStorageRouter.use(express.raw({ type: '*/*', limit: '200mb' }));
+
+bunnyStorageRouter.use((req, res, next) => {
+  if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_KEY) {
+    return res.status(503).json({ message: 'A Bunny storage nincs konfigurálva.' });
+  }
+
+  return next();
+});
+
+bunnyStorageRouter.get('/', async (req, res) => {
+  try {
+    const pathname = typeof req.query.path === 'string' && req.query.path.trim() ? req.query.path.trim() : '/';
+    const url = buildBunnyUrl(pathname, { directory: true });
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        AccessKey: BUNNY_STORAGE_KEY,
+        accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: 'Nem sikerült betölteni a tárolót.' });
+    }
+
+    const payload = await response.json();
+    return res.status(200).json(payload);
+  } catch (error) {
+    console.error('Bunny list error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a tároló tartalmát.' });
+  }
+});
+
+bunnyStorageRouter.put('/', async (req, res) => {
+  try {
+    const pathname = typeof req.query.path === 'string' && req.query.path.trim() ? req.query.path.trim() : '/';
+    const isDirectory = req.query.directory === 'true';
+    const url = buildBunnyUrl(pathname, { directory: isDirectory });
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        AccessKey: BUNNY_STORAGE_KEY,
+        'content-type': req.headers['content-type'] || 'application/octet-stream',
+      },
+      body: req.body,
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: 'Nem sikerült létrehozni vagy feltölteni az elemet.' });
+    }
+
+    const payload = await response.text();
+    return res.status(200).send(payload);
+  } catch (error) {
+    console.error('Bunny upload error', error);
+    return res.status(500).json({ message: 'Nem sikerült menteni az elemet.' });
+  }
+});
+
+bunnyStorageRouter.delete('/', async (req, res) => {
+  try {
+    const pathname = typeof req.query.path === 'string' && req.query.path.trim() ? req.query.path.trim() : '/';
+    const isDirectory = req.query.directory === 'true';
+    const url = buildBunnyUrl(pathname, { directory: isDirectory });
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        AccessKey: BUNNY_STORAGE_KEY,
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: 'Nem sikerült törölni az elemet.' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Bunny delete error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni az elemet.' });
+  }
+});
+
+app.use('/api/bunny/storage', bunnyStorageRouter);
 
 app.delete('/api/news/:id', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
