@@ -18,6 +18,18 @@ npm run start # production-style build + API/static server (http://localhost:808
 
 > Tip: keep `npm run start` running when you need `/admin/news` or other admin screens to persist data during development. The Vite dev server proxies `/api` to `http://localhost:8080`, so the admin UI can talk to the API without changing URLs.
 
+If your environment forces npm through a corporate proxy (for example, you see `E403` errors fetching packages), run the helper script that clears the proxy variables before installing:
+
+```bash
+npm run install:noproxy
+```
+
+You can also run it manually:
+
+```bash
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u npm_config_http_proxy -u npm_config_https_proxy npm install --no-progress --registry=https://registry.npmjs.org/
+```
+
 ### Environment variables
 
 Create a `.env` file based on `.env.example`.
