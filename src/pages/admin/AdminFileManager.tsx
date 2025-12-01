@@ -40,6 +40,15 @@ type StorageEntry = {
   path: string;
 };
 
+type RawStorageEntry = StorageEntry &
+  Partial<{
+    ObjectName: string;
+    IsDirectory: boolean;
+    Length: number;
+    LastChanged: string;
+    Path: string;
+  }>;
+
 function encodePath(path: string) {
   return path
     .split("/")
@@ -88,6 +97,22 @@ export default function AdminFileManager() {
     [buildTargetPath],
   );
 
+  const normalizeEntries = useCallback((payload: unknown): StorageEntry[] => {
+    const items: RawStorageEntry[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray((payload as { Items?: RawStorageEntry[] })?.Items)
+        ? ((payload as { Items?: RawStorageEntry[] }).Items as RawStorageEntry[])
+        : [];
+
+    return items.map((item) => ({
+      objectName: item.objectName || item.ObjectName || item.path?.split("/").filter(Boolean).pop() || "",
+      isDirectory: Boolean(item.isDirectory ?? item.IsDirectory),
+      size: typeof item.size === "number" ? item.size : typeof item.Length === "number" ? item.Length : 0,
+      lastChanged: item.lastChanged || item.LastChanged || new Date().toISOString(),
+      path: item.path || item.Path || "",
+    }));
+  }, []);
+
   const fetchEntries = useCallback(async () => {
     if (!hasConfig) return;
     setIsFetching(true);
@@ -104,8 +129,10 @@ export default function AdminFileManager() {
         throw new Error("Nem sikerült betölteni a fájlokat. Ellenőrizd a beállításokat.");
       }
 
-      const data = (await response.json()) as StorageEntry[];
-      const sorted = data.sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory));
+      const data = normalizeEntries(await response.json());
+      const sorted = data
+        .filter((entry) => Boolean(entry.objectName))
+        .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory));
       setEntries(sorted);
     } catch (err) {
       setEntries([]);
@@ -113,7 +140,7 @@ export default function AdminFileManager() {
     } finally {
       setIsFetching(false);
     }
-  }, [buildApiUrl, hasConfig]);
+  }, [buildApiUrl, hasConfig, normalizeEntries]);
 
   useEffect(() => {
     fetchEntries();
