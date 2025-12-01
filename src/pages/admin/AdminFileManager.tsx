@@ -28,10 +28,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const bunnyStorageZone = import.meta.env.VITE_BUNNY_STORAGE_ZONE || "";
-const bunnyStorageKey = import.meta.env.VITE_BUNNY_STORAGE_KEY || "";
-const bunnyCdnHostname = import.meta.env.VITE_BUNNY_CDN_HOSTNAME || "";
-const bunnyStorageHost = import.meta.env.VITE_BUNNY_STORAGE_HOST || "storage.bunnycdn.com";
+const bunnyStorageZone = (import.meta.env.VITE_BUNNY_STORAGE_ZONE || "").trim();
+const bunnyStorageKey = (import.meta.env.VITE_BUNNY_STORAGE_KEY || "").trim();
+const bunnyCdnHostname = (import.meta.env.VITE_BUNNY_CDN_HOSTNAME || "").trim();
+const bunnyStorageHost = (import.meta.env.VITE_BUNNY_STORAGE_HOST || "storage.bunnycdn.com").trim() || "storage.bunnycdn.com";
 
 const encodedRoot = encodeURIComponent("/");
 
@@ -274,8 +274,9 @@ export default function AdminFileManager() {
           <Alert className="border-amber-300 bg-amber-50 text-amber-900">
             <AlertTitle>Hiányzó beállítások</AlertTitle>
             <AlertDescription>
-              A fájlkezeléshez add meg a VITE_BUNNY_STORAGE_ZONE és VITE_BUNNY_STORAGE_KEY értékeket, majd frissítsd az
-              oldalt.
+              A fájlkezeléshez töltsd ki a következőket: VITE_BUNNY_STORAGE_ZONE = YOUR_STORAGE_ZONE_NAME,
+              VITE_BUNNY_STORAGE_KEY = YOUR_BUNNY_STORAGE_API_KEY, VITE_BUNNY_STORAGE_HOST = storage.bunnycdn.com,
+              VITE_BUNNY_CDN_HOSTNAME = a CDN/Pull zónád hostneve. A Bunny Storage API az AccessKey fejlécet várja.
             </AlertDescription>
           </Alert>
         )}
