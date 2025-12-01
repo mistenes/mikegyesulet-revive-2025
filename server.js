@@ -3139,20 +3139,24 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
 });
 
 function encodeBunnyPath(pathname = '/') {
-  return pathname
+  const cleaned = pathname.replace(/^\/+|\/+$/g, '');
+  if (!cleaned) return '';
+
+  return cleaned
     .split('/')
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment))
-    .join('/') || encodeURIComponent('/');
+    .join('/');
 }
 
 function buildBunnyUrl(pathname = '/', { directory = false } = {}) {
   const trimmedHost = BUNNY_STORAGE_HOST.replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
   const trimmedZone = BUNNY_STORAGE_ZONE.replace(/^\/+|\/+$/g, '');
   const encodedPath = encodeBunnyPath(pathname);
+  const base = `https://${trimmedHost}/${encodeURIComponent(trimmedZone)}`;
   const suffix = directory ? '/' : '';
 
-  return `https://${trimmedHost}/${encodeURIComponent(trimmedZone)}/${encodedPath}${suffix}`;
+  return `${base}${encodedPath ? `/${encodedPath}` : ''}${suffix}`;
 }
 
 const bunnyStorageRouter = express.Router();
