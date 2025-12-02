@@ -64,6 +64,7 @@ type ImportCandidate = {
   bodyHtml: string;
   markdown: string;
   excerpt: string;
+  date?: string;
   approved: boolean;
 };
 
@@ -146,6 +147,43 @@ export default function AdminNews() {
     const clean = text.replace(/\s+/g, " ").trim();
     if (!clean) return "";
     return clean.length > limit ? `${clean.slice(0, limit - 3)}...` : clean;
+  };
+
+  const normalizeDate = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+
+    const cleaned = trimmed
+      .replace(/\s{2,}/g, " ")
+      .replace(/\.$/, "")
+      .replace(/\./g, "-")
+      .replace(/\s+/g, " ");
+
+    const direct = new Date(cleaned);
+    if (!Number.isNaN(direct.getTime())) {
+      return direct.toISOString().slice(0, 10);
+    }
+
+    const parts = cleaned
+      .replace(/[^0-9-\/ ]+/g, " ")
+      .trim()
+      .split(/[\s\/\-]+/)
+      .filter(Boolean);
+
+    if (parts.length === 3) {
+      const [a, b, c] = parts.map(Number);
+      if (!Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(c)) {
+        const year = a > 31 ? a : c;
+        const month = a > 31 ? b : a;
+        const day = a > 31 ? c : b;
+        const candidate = new Date(Date.UTC(year, month - 1, day));
+        if (!Number.isNaN(candidate.getTime())) {
+          return candidate.toISOString().slice(0, 10);
+        }
+      }
+    }
+
+    return "";
   };
 
   const convertHtmlToMarkdown = (html: string) => {
@@ -328,6 +366,7 @@ export default function AdminNews() {
     const TITLE_HEADERS = ["✍️ Cikk Címe", "Cikk Címe", "Cikk Cime", "Title"];
     const IMAGE_HEADERS = ["Nagy Kép", "Nagy Kep", "Cover Image", "Image", "Main Image"];
     const BODY_HEADERS = ["Post Body", "Body", "Tartalom", "Post Content", "Rich Text"];
+    const DATE_HEADERS = ["📅 Dátum", "Dátum", "Datum", "Date"];
 
     const candidates: ImportCandidate[] = [];
     const errors: string[] = [];
@@ -339,6 +378,7 @@ export default function AdminNews() {
       const title = getValue(row, TITLE_HEADERS).trim();
       const imageUrl = getValue(row, IMAGE_HEADERS).trim();
       const bodyHtml = getValue(row, BODY_HEADERS).trim();
+      const rawDate = getValue(row, DATE_HEADERS).trim();
 
       if (!title) {
         errors.push(`${i + 1}. sor: hiányzik a cím (✍️ Cikk Címe)`);
@@ -353,6 +393,7 @@ export default function AdminNews() {
       const { markdown, text } = convertHtmlToMarkdown(bodyHtml);
       const slug = slugifyText(title) || `cikk-${i}`;
       const excerpt = createExcerpt(text || title);
+      const parsedDate = normalizeDate(rawDate);
 
       candidates.push({
         row: i + 1,
@@ -363,6 +404,7 @@ export default function AdminNews() {
         bodyHtml,
         markdown,
         excerpt,
+        date: parsedDate,
         approved: false,
       });
     }
@@ -702,7 +744,7 @@ export default function AdminNews() {
   const approvedImportCount = useMemo(() => importPreview.filter((item) => item.approved).length, [importPreview]);
   const allImportsApproved = importPreview.length > 0 && approvedImportCount === importPreview.length;
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (overridePublished?: boolean) => {
     setSaving(true);
     const hu = form.translations.hu;
     const en = form.translations.en;
@@ -762,7 +804,7 @@ export default function AdminNews() {
         sticky: form.sticky,
         date: form.date,
         languageAvailability: form.languageAvailability,
-        published: form.published,
+        published: overridePublished ?? form.published,
         translations: form.translations,
       };
 
@@ -959,7 +1001,7 @@ export default function AdminNews() {
           imageUrl: processed.imageUrl || undefined,
           imageAlt: processed.imageAlt,
           sticky: false,
-          date: todayIso(),
+          date: processed.date || todayIso(),
           languageAvailability: "hu",
           published: false,
           translations: {
@@ -1030,8 +1072,8 @@ export default function AdminNews() {
                 <div className="space-y-1">
                   <h2 className="text-xl font-semibold">Webflow hír import</h2>
                   <p className="text-sm text-muted-foreground">
-                    Töltsd fel a Webflow CSV exportot (oszlopok: ✍️ Cikk Címe, Nagy Kép, Post Body). Mentés előtt minden sor
-                    kap előnézetet és jóváhagyást igényel.
+                    Töltsd fel a Webflow CSV exportot (oszlopok: ✍️ Cikk Címe, Nagy Kép, 📅 Dátum, Post Body). Mentés előtt
+                    minden sor kap előnézetet és jóváhagyást igényel.
                   </p>
                 </div>
               </div>
@@ -1143,6 +1185,13 @@ export default function AdminNews() {
                         </h3>
                         <p className="text-sm text-muted-foreground line-clamp-2">{item.excerpt}</p>
                       </div>
+
+                      {item.date && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          <span>{new Date(item.date).toLocaleDateString("hu-HU")}</span>
+                        </div>
+                      )}
 
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt={item.imageAlt} className="w-full h-40 object-cover rounded-md" />
@@ -1435,7 +1484,15 @@ export default function AdminNews() {
                   Új hír
                 </Button>
               )}
-              <Button onClick={handleSubmit} disabled={saving} className="gap-2">
+              <Button
+                onClick={() => handleSubmit(false)}
+                disabled={saving}
+                variant="secondary"
+                className="gap-2"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Mentés piszkozatként
+              </Button>
+              <Button onClick={() => handleSubmit()} disabled={saving} className="gap-2">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Mentés
               </Button>
             </div>
