@@ -881,69 +881,6 @@ function slugifyText(text) {
     .toLowerCase();
 }
 
-async function analyzeNewsLanguageAndSlug({ title, body }) {
-  if (!OPENAI_API_KEY) {
-    const error = new Error('Az OpenAI API kulcs nincs konfigurálva');
-    error.status = 500;
-    throw error;
-  }
-
-  const combined = `${title || ''}\n${body || ''}`.trim();
-  const fallbackSlug = slugifyText(title || body || 'hir') || 'hir';
-
-  if (!combined) {
-    const error = new Error('Hiányzik az elemzendő szöveg');
-    error.status = 400;
-    throw error;
-  }
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-5-mini-2025-08-07',
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You detect whether news copy is Hungarian (hu) or English (en) and craft a URL-safe slug. Return only JSON.',
-        },
-        {
-          role: 'user',
-          content: `Title: ${title || ''}\nBody: ${(body || '').slice(0, 4000)}\nReturn JSON with keys "language" (hu|en) and "slug" (kebab-case, ASCII).`,
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    const error = new Error(`Nyelv felismerési hiba: ${errorText || response.statusText}`);
-    error.status = response.status || 500;
-    throw error;
-  }
-
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content || '{}';
-
-  let parsed = {};
-  try {
-    parsed = JSON.parse(content);
-  } catch (error) {
-    parsed = {};
-  }
-
-  const detectedLanguage = parsed.language === 'en' ? 'en' : 'hu';
-  const openAiSlug = typeof parsed.slug === 'string' ? parsed.slug : '';
-  const normalizedSlug = slugifyText(openAiSlug || fallbackSlug) || fallbackSlug;
-
-  return { language: detectedLanguage, slug: normalizedSlug };
-}
-
 function ensureUniqueSlug(base, usedSet) {
   const safeBase = base || 'projekt';
   let candidate = safeBase;
@@ -2079,23 +2016,6 @@ app.post('/api/news/translate', authenticateRequest, async (req, res) => {
   }
 });
 
-app.post('/api/news/import/analyze', authenticateRequest, async (req, res) => {
-  const title = (req.body?.title || '').toString();
-  const body = (req.body?.body || '').toString();
-
-  if (!title.trim() && !body.trim()) {
-    return res.status(400).json({ message: 'Adj meg címet vagy tartalmat az elemzéshez' });
-  }
-
-  try {
-    const result = await analyzeNewsLanguageAndSlug({ title, body });
-    return res.status(200).json(result);
-  } catch (error) {
-    const status = error.status || 500;
-    console.error('News import analyze error', error);
-    return res.status(status).json({ message: error.message || 'Nem sikerült elemezni a hírt' });
-  }
-});
 
 app.get('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();

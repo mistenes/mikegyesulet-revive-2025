@@ -36,7 +36,6 @@ import {
   deleteNews,
   getAdminNews,
   getNewsCategories,
-  analyzeNewsImport,
   updateNewsCategory,
   updateNews,
 } from "@/services/newsService";
@@ -67,7 +66,7 @@ type ImportCandidate = {
   excerpt: string;
   date?: string;
   approved: boolean;
-  language?: LanguageCode;
+  language: LanguageCode;
 };
 
 const emptyTranslation: NewsTranslation = { title: "", slug: "", excerpt: "", content: "" };
@@ -296,29 +295,11 @@ export default function AdminNews() {
     return { ...candidate, imageUrl: coverUrl, bodyHtml: updatedHtml, markdown, excerpt: updatedExcerpt };
   };
 
-  const analyzeImportCandidate = async (candidate: ImportCandidate): Promise<ImportCandidate> => {
+  const prepareImportCandidate = (candidate: ImportCandidate): ImportCandidate => {
     const fallbackSlug = slugifyText(candidate.slug || candidate.title) || `cikk-${candidate.row}`;
-    let language: LanguageCode = "hu";
-    let slug = fallbackSlug;
+    const language: LanguageCode = candidate.language || 'hu';
 
-    try {
-      const result = await analyzeNewsImport({
-        title: candidate.title,
-        body: candidate.markdown || candidate.bodyHtml || candidate.excerpt || candidate.title,
-      });
-
-      if (result.language === "en") {
-        language = "en";
-      }
-
-      if (result.slug) {
-        slug = slugifyText(result.slug) || fallbackSlug;
-      }
-    } catch (error) {
-      console.error("Import analysis error", error);
-    }
-
-    return { ...candidate, slug, language };
+    return { ...candidate, slug: fallbackSlug, language };
   };
 
   const parseCsv = (content: string) => {
@@ -433,6 +414,7 @@ export default function AdminNews() {
         excerpt,
         date: parsedDate,
         approved: false,
+        language: 'hu',
       });
     }
 
@@ -455,12 +437,8 @@ export default function AdminNews() {
         throw new Error("Nem találtunk importálható híreket a fájlban");
       }
 
-      setImportPreview([]);
-
-      for (const candidate of candidates) {
-        const analyzed = await analyzeImportCandidate(candidate);
-        setImportPreview((prev) => [...prev, analyzed]);
-      }
+      const prepared = candidates.map((candidate) => prepareImportCandidate(candidate));
+      setImportPreview(prepared);
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : "Nem sikerült feldolgozni a fájlt";
@@ -1001,6 +979,10 @@ export default function AdminNews() {
     setImportPreview((prev) => prev.map((item) => (item.row === row ? { ...item, approved } : item)));
   };
 
+  const updateImportLanguage = (row: number, language: LanguageCode) => {
+    setImportPreview((prev) => prev.map((item) => (item.row === row ? { ...item, language } : item)));
+  };
+
   const toggleAllImportApprovals = (approved: boolean) => {
     setImportPreview((prev) => prev.map((item) => ({ ...item, approved })));
   };
@@ -1011,9 +993,9 @@ export default function AdminNews() {
       return;
     }
 
-    const notApproved = importPreview.filter((item) => !item.approved);
-    if (notApproved.length) {
-      toast.error("Minden importált sort jóvá kell hagyni a mentés előtt");
+    const approvedItems = importPreview.filter((item) => item.approved);
+    if (!approvedItems.length) {
+      toast.error("Jelölj ki legalább egy jóváhagyott sort az importhoz");
       return;
     }
 
@@ -1024,12 +1006,28 @@ export default function AdminNews() {
 
     try {
       const created: NewsArticle[] = [];
-      for (const candidate of importPreview) {
+      const usedSlugs = new Set<string>();
+
+      const ensureUniqueSlug = (value: string) => {
+        const base = value || "cikk";
+        let candidate = base;
+        let suffix = 1;
+
+        while (usedSlugs.has(candidate)) {
+          candidate = `${base}-${suffix}`;
+          suffix += 1;
+        }
+
+        usedSlugs.add(candidate);
+        return candidate;
+      };
+
+      for (const candidate of approvedItems) {
         const processed = await uploadImportImages(candidate);
         const isEnglish = processed.language === "en";
-        const baseSlug = slugifyText(processed.slug || processed.title) || `cikk-${processed.row}`;
-        const slugHu = isEnglish ? `${baseSlug}-hu` : baseSlug;
-        const slugEn = isEnglish ? baseSlug : `${baseSlug}-en`;
+        const baseSlug = ensureUniqueSlug(slugifyText(processed.slug || processed.title) || `cikk-${processed.row}`);
+        const slugHu = isEnglish ? ensureUniqueSlug(`${baseSlug}-hu`) : baseSlug;
+        const slugEn = isEnglish ? baseSlug : ensureUniqueSlug(`${baseSlug}-en`);
         const payload: NewsInput = {
           categoryId: selectedCategory?.id || null,
           category: categoryTranslations.hu,
@@ -1038,7 +1036,7 @@ export default function AdminNews() {
           imageAlt: processed.imageAlt,
           sticky: false,
           date: processed.date || todayIso(),
-          languageAvailability: isEnglish ? "en" : "hu",
+          languageAvailability: processed.language || "hu",
           published: false,
           translations: {
             hu: {
@@ -1070,7 +1068,7 @@ export default function AdminNews() {
       setArticles((prev) => [...created, ...prev]);
       setImportPreview([]);
       setImportError(null);
-      toast.success(`Sikeres import: ${created.length} hír vázlatként mentve`);
+      toast.success(`Sikeres import: ${created.length} jóváhagyott hír vázlatként mentve`);
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : "Nem sikerült importálni a híreket";
@@ -1197,15 +1195,15 @@ export default function AdminNews() {
               <div className="space-y-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <p className="text-sm text-muted-foreground">
-                    {approvedImportCount}/{importPreview.length} sor jóváhagyva. Minden sort jóvá kell hagyni a mentéshez.
+                    Csak a jóváhagyott sorok kerülnek importálásra. {approvedImportCount}/{importPreview.length} sor megjelölve.
                   </p>
                   <Button
                     onClick={handleImportSubmit}
                     className="gap-2"
-                    disabled={!allImportsApproved || importSaving}
+                    disabled={approvedImportCount === 0 || importSaving}
                     type="button"
                   >
-                    {importSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Importálás és jóváhagyás
+                    {importSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Jóváhagyott hírek importálása
                   </Button>
                 </div>
 
@@ -1215,15 +1213,28 @@ export default function AdminNews() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <Badge variant="outline">Sor {item.row}</Badge>
-                          <Badge variant="secondary">HU</Badge>
+                          <Badge variant="secondary">{item.language.toUpperCase()}</Badge>
                           {item.imageUrl && <Badge variant="outline">Borítókép</Badge>}
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Switch
-                            checked={item.approved}
-                            onCheckedChange={(checked) => toggleImportApproval(item.row, checked)}
-                          />
-                          <span>Jóváhagyva</span>
+                        <div className="flex flex-col items-end gap-2 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={item.approved}
+                              onCheckedChange={(checked) => toggleImportApproval(item.row, checked)}
+                            />
+                            <span>Jóváhagyva</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">Nyelv:</span>
+                            <select
+                              value={item.language}
+                              onChange={(event) => updateImportLanguage(item.row, event.target.value as LanguageCode)}
+                              className="rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                            >
+                              <option value="hu">HU</option>
+                              <option value="en">EN</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
 
