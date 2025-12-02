@@ -296,35 +296,29 @@ export default function AdminNews() {
     return { ...candidate, imageUrl: coverUrl, bodyHtml: updatedHtml, markdown, excerpt: updatedExcerpt };
   };
 
-  const analyzeImportCandidates = async (candidates: ImportCandidate[]): Promise<ImportCandidate[]> => {
-    const analyzed: ImportCandidate[] = [];
+  const analyzeImportCandidate = async (candidate: ImportCandidate): Promise<ImportCandidate> => {
+    const fallbackSlug = slugifyText(candidate.slug || candidate.title) || `cikk-${candidate.row}`;
+    let language: LanguageCode = "hu";
+    let slug = fallbackSlug;
 
-    for (const candidate of candidates) {
-      const fallbackSlug = slugifyText(candidate.slug || candidate.title) || `cikk-${candidate.row}`;
-      let language: LanguageCode = "hu";
-      let slug = fallbackSlug;
+    try {
+      const result = await analyzeNewsImport({
+        title: candidate.title,
+        body: candidate.markdown || candidate.bodyHtml || candidate.excerpt || candidate.title,
+      });
 
-      try {
-        const result = await analyzeNewsImport({
-          title: candidate.title,
-          body: candidate.markdown || candidate.bodyHtml || candidate.excerpt || candidate.title,
-        });
-
-        if (result.language === "en") {
-          language = "en";
-        }
-
-        if (result.slug) {
-          slug = slugifyText(result.slug) || fallbackSlug;
-        }
-      } catch (error) {
-        console.error("Import analysis error", error);
+      if (result.language === "en") {
+        language = "en";
       }
 
-      analyzed.push({ ...candidate, slug, language });
+      if (result.slug) {
+        slug = slugifyText(result.slug) || fallbackSlug;
+      }
+    } catch (error) {
+      console.error("Import analysis error", error);
     }
 
-    return analyzed;
+    return { ...candidate, slug, language };
   };
 
   const parseCsv = (content: string) => {
@@ -461,8 +455,12 @@ export default function AdminNews() {
         throw new Error("Nem találtunk importálható híreket a fájlban");
       }
 
-      const analyzed = await analyzeImportCandidates(candidates);
-      setImportPreview(analyzed);
+      setImportPreview([]);
+
+      for (const candidate of candidates) {
+        const analyzed = await analyzeImportCandidate(candidate);
+        setImportPreview((prev) => [...prev, analyzed]);
+      }
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : "Nem sikerült feldolgozni a fájlt";
