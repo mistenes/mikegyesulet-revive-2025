@@ -1,5 +1,6 @@
 import type { NewsArticle, NewsCategory, NewsInput, NewsListResponse } from "@/types/news";
 import { withCsrfHeader } from "@/utils/csrf";
+import type { LanguageCode } from "@/types/language";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EVENT_NAME = "news-updated";
@@ -177,6 +178,20 @@ export async function deleteNews(id: string): Promise<void> {
   }
 
   broadcastUpdate(id);
+}
+
+export async function analyzeNewsImport(payload: {
+  title: string;
+  body: string;
+}): Promise<{ language: LanguageCode; slug: string }> {
+  const response = await fetch(`${API_BASE}/api/news/import/analyze`, {
+    method: "POST",
+    credentials: "include",
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+
+  return handleResponse<{ language: LanguageCode; slug: string }>(response);
 }
 
 export const NEWS_EVENT = EVENT_NAME;

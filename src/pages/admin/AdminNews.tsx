@@ -36,6 +36,7 @@ import {
   deleteNews,
   getAdminNews,
   getNewsCategories,
+  analyzeNewsImport,
   updateNewsCategory,
   updateNews,
 } from "@/services/newsService";
@@ -66,6 +67,7 @@ type ImportCandidate = {
   excerpt: string;
   date?: string;
   approved: boolean;
+  language?: LanguageCode;
 };
 
 const emptyTranslation: NewsTranslation = { title: "", slug: "", excerpt: "", content: "" };
@@ -294,6 +296,37 @@ export default function AdminNews() {
     return { ...candidate, imageUrl: coverUrl, bodyHtml: updatedHtml, markdown, excerpt: updatedExcerpt };
   };
 
+  const analyzeImportCandidates = async (candidates: ImportCandidate[]): Promise<ImportCandidate[]> => {
+    const analyzed: ImportCandidate[] = [];
+
+    for (const candidate of candidates) {
+      const fallbackSlug = slugifyText(candidate.slug || candidate.title) || `cikk-${candidate.row}`;
+      let language: LanguageCode = "hu";
+      let slug = fallbackSlug;
+
+      try {
+        const result = await analyzeNewsImport({
+          title: candidate.title,
+          body: candidate.markdown || candidate.bodyHtml || candidate.excerpt || candidate.title,
+        });
+
+        if (result.language === "en") {
+          language = "en";
+        }
+
+        if (result.slug) {
+          slug = slugifyText(result.slug) || fallbackSlug;
+        }
+      } catch (error) {
+        console.error("Import analysis error", error);
+      }
+
+      analyzed.push({ ...candidate, slug, language });
+    }
+
+    return analyzed;
+  };
+
   const parseCsv = (content: string) => {
     const rows: string[][] = [];
     const clean = content.replace(/\r\n?/g, "\n");
@@ -428,7 +461,8 @@ export default function AdminNews() {
         throw new Error("Nem találtunk importálható híreket a fájlban");
       }
 
-      setImportPreview(candidates);
+      const analyzed = await analyzeImportCandidates(candidates);
+      setImportPreview(analyzed);
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : "Nem sikerült feldolgozni a fájlt";
@@ -994,6 +1028,10 @@ export default function AdminNews() {
       const created: NewsArticle[] = [];
       for (const candidate of importPreview) {
         const processed = await uploadImportImages(candidate);
+        const isEnglish = processed.language === "en";
+        const baseSlug = slugifyText(processed.slug || processed.title) || `cikk-${processed.row}`;
+        const slugHu = isEnglish ? `${baseSlug}-hu` : baseSlug;
+        const slugEn = isEnglish ? baseSlug : `${baseSlug}-en`;
         const payload: NewsInput = {
           categoryId: selectedCategory?.id || null,
           category: categoryTranslations.hu,
@@ -1002,16 +1040,28 @@ export default function AdminNews() {
           imageAlt: processed.imageAlt,
           sticky: false,
           date: processed.date || todayIso(),
-          languageAvailability: "hu",
+          languageAvailability: isEnglish ? "en" : "hu",
           published: false,
           translations: {
             hu: {
-              title: processed.title,
-              slug: processed.slug || slugifyText(processed.title) || `cikk-${processed.row}`,
-              excerpt: processed.excerpt || processed.title,
-              content: processed.markdown || processed.bodyHtml || processed.title,
+              title: isEnglish ? "" : processed.title,
+              slug: slugHu,
+              excerpt: isEnglish ? "" : processed.excerpt || processed.title,
+              content: isEnglish ? "" : processed.markdown || processed.bodyHtml || processed.title,
             },
-            en: { ...emptyTranslation },
+            en: isEnglish
+              ? {
+                  title: processed.title,
+                  slug: slugEn,
+                  excerpt: processed.excerpt || processed.title,
+                  content: processed.markdown || processed.bodyHtml || processed.title,
+                }
+              : {
+                  title: "",
+                  slug: slugEn,
+                  excerpt: "",
+                  content: "",
+                },
           },
         };
 
