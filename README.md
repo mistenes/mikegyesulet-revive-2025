@@ -18,6 +18,8 @@ npm run start # production-style build + API/static server (http://localhost:808
 
 > Tip: keep `npm run start` running when you need `/admin/news` or other admin screens to persist data during development. The Vite dev server proxies `/api` to `http://localhost:8080`, so the admin UI can talk to the API without changing URLs.
 
+> Build note: the project needs dev dependencies (including Vite) to run `npm run build`. The repo ships with `.npmrc` forcing `production=false` so `npm install` always pulls dev packages even if `NODE_ENV=production` is set. If you previously installed without dev deps, run `npm install --include=dev` to restore Vite before retrying the build.
+
 If your environment forces npm through a corporate proxy (for example, you see `E403` errors fetching packages), run the helper script that clears the proxy variables before installing:
 
 ```bash
