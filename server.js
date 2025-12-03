@@ -521,8 +521,9 @@ async function ensureNewsTables() {
         published_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        slug_hu TEXT NOT NULL,
-        slug_en TEXT NOT NULL,
+        slug_hu TEXT,
+        slug_en TEXT,
+        language_availability TEXT NOT NULL DEFAULT 'both',
         translations JSONB NOT NULL
       );
     `);
@@ -545,6 +546,11 @@ async function ensureNewsTables() {
     await client.query(
       'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS news_date DATE NOT NULL DEFAULT CURRENT_DATE;',
     );
+    await client.query(
+      "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS language_availability TEXT NOT NULL DEFAULT 'both';",
+    );
+    await client.query("ALTER TABLE news_articles ALTER COLUMN slug_hu DROP NOT NULL;");
+    await client.query("ALTER TABLE news_articles ALTER COLUMN slug_en DROP NOT NULL;");
 
     const distinctCategories = await client.query(
       'SELECT DISTINCT category FROM news_articles WHERE category IS NOT NULL',
@@ -749,6 +755,8 @@ function mapNewsRow(row) {
     en: row.category_name_en || row.category || '',
   };
 
+  const translations = normalizeNewsTranslations(row.translations || { hu: {}, en: {} }, row.language_availability);
+
   return {
     id: row.id,
     categoryId: row.category_id || null,
@@ -762,7 +770,8 @@ function mapNewsRow(row) {
     publishedAt: row.published_at ? row.published_at.toISOString() : null,
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
-    translations: row.translations || { hu: {}, en: {} },
+    languageAvailability: row.language_availability || 'both',
+    translations,
   };
 }
 
@@ -870,6 +879,24 @@ function mapProjectRow(row) {
   };
 }
 
+function sanitizeNewsTranslation(data = {}) {
+  return {
+    title: (data.title || '').toString(),
+    slug: (data.slug || '').toString(),
+    excerpt: (data.excerpt || '').toString(),
+    content: (data.content || '').toString(),
+  };
+}
+
+function normalizeNewsTranslations(translations = { hu: {}, en: {} }, availability = 'both') {
+  const allowedHu = availability !== 'en';
+  const allowedEn = availability !== 'hu';
+  return {
+    hu: allowedHu ? sanitizeNewsTranslation(translations.hu) : sanitizeNewsTranslation(),
+    en: allowedEn ? sanitizeNewsTranslation(translations.en) : sanitizeNewsTranslation(),
+  };
+}
+
 function slugifyText(text) {
   return (text || '')
     .toString()
@@ -946,12 +973,26 @@ function mapPageContentRows(rows) {
 }
 
 async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
-  const params = [slugHu, slugEn];
-  let query = 'SELECT id, slug_hu, slug_en FROM news_articles WHERE (slug_hu = $1 OR slug_en = $2)';
+  const conditions = [];
+  const params = [];
+
+  if (slugHu) {
+    params.push(slugHu);
+    conditions.push(`slug_hu = $${params.length}`);
+  }
+
+  if (slugEn) {
+    params.push(slugEn);
+    conditions.push(`slug_en = $${params.length}`);
+  }
+
+  if (!conditions.length) return;
+
+  let query = `SELECT id, slug_hu, slug_en FROM news_articles WHERE ${conditions.join(' OR ')}`;
 
   if (excludeId) {
     params.push(excludeId);
-    query += ' AND id <> $3';
+    query += ` AND id <> $${params.length}`;
   }
 
   const existing = await client.query(query, params);
@@ -2808,8 +2849,12 @@ app.get('/api/news/public', async (req, res) => {
   const limitParam = Number(req.query.limit);
   const pageSize = pageSizeParam > 0 ? pageSizeParam : limitParam > 0 ? limitParam : 6;
   const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const availabilityCondition = lang === 'en'
+    ? "language_availability IN ('en', 'both')"
+    : "language_availability IN ('hu', 'both')";
 
-  const filters = ['published = TRUE'];
+  const filters = ['published = TRUE', availabilityCondition];
   const values = [];
 
   if (categoryId) {
@@ -2862,12 +2907,16 @@ app.get('/api/news/public', async (req, res) => {
 
 app.get('/api/news/slug/:slug', async (req, res) => {
   const client = await pool.connect();
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const availabilityCondition = lang === 'en'
+    ? "language_availability IN ('en', 'both')"
+    : "language_availability IN ('hu', 'both')";
   try {
     const result = await client.query(
       `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
        FROM news_articles a
        LEFT JOIN news_categories c ON a.category_id = c.id
-       WHERE (slug_hu = $1 OR slug_en = $1) AND published = TRUE
+       WHERE (slug_hu = $1 OR slug_en = $1) AND published = TRUE AND ${availabilityCondition}
        LIMIT 1`,
       [req.params.slug],
     );
@@ -3014,15 +3063,24 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const payload = req.body || {};
 
-  if (!payload.translations?.hu?.slug || !payload.translations?.en?.slug) {
-    return res.status(400).json({ message: 'A magyar és angol slug mező megadása kötelező' });
-  }
-
   try {
-    await validateUniqueSlugs(client, {
-      slugHu: payload.translations.hu.slug,
-      slugEn: payload.translations.en.slug,
-    });
+    const availability = ['hu', 'en', 'both'].includes(payload.languageAvailability) ? payload.languageAvailability : 'both';
+    const needsHu = availability !== 'en';
+    const needsEn = availability !== 'hu';
+    const translations = normalizeNewsTranslations(payload.translations, availability);
+
+    const slugHu = translations.hu.slug.trim() || null;
+    const slugEn = translations.en.slug.trim() || null;
+
+    if (needsHu && !slugHu) {
+      return res.status(400).json({ message: 'A magyar slug megadása kötelező' });
+    }
+
+    if (needsEn && !slugEn) {
+      return res.status(400).json({ message: 'Az angol slug megadása kötelező' });
+    }
+
+    await validateUniqueSlugs(client, { slugHu, slugEn });
 
     const { categoryId: resolvedCategoryId, categoryNameHu, categoryNameEn } = await resolveNewsCategory(
       client,
@@ -3034,8 +3092,8 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
 
     const insertResult = await client.query(
       `INSERT INTO news_articles
-       (category, category_id, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, translations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       (category, category_id, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, language_availability, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
       [
         categoryNameHu,
@@ -3046,9 +3104,10 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
         newsDate,
         Boolean(payload.published),
         publishedAt,
-        payload.translations.hu.slug,
-        payload.translations.en.slug,
-        payload.translations,
+        slugHu,
+        slugEn,
+        availability,
+        translations,
       ],
     );
 
@@ -3069,14 +3128,26 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
   const payload = req.body || {};
   const newsId = req.params.id;
 
-  if (!payload.translations?.hu?.slug || !payload.translations?.en?.slug) {
-    return res.status(400).json({ message: 'A magyar és angol slug mező megadása kötelező' });
-  }
-
   try {
+    const availability = ['hu', 'en', 'both'].includes(payload.languageAvailability) ? payload.languageAvailability : 'both';
+    const needsHu = availability !== 'en';
+    const needsEn = availability !== 'hu';
+    const translations = normalizeNewsTranslations(payload.translations, availability);
+
+    const slugHu = translations.hu.slug.trim() || null;
+    const slugEn = translations.en.slug.trim() || null;
+
+    if (needsHu && !slugHu) {
+      return res.status(400).json({ message: 'A magyar slug megadása kötelező' });
+    }
+
+    if (needsEn && !slugEn) {
+      return res.status(400).json({ message: 'Az angol slug megadása kötelező' });
+    }
+
     await validateUniqueSlugs(client, {
-      slugHu: payload.translations.hu.slug,
-      slugEn: payload.translations.en.slug,
+      slugHu,
+      slugEn,
       excludeId: newsId,
     });
 
@@ -3107,9 +3178,10 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
            published_at = $8,
            slug_hu = $9,
            slug_en = $10,
-           translations = $11,
+           language_availability = $11,
+           translations = $12,
            updated_at = NOW()
-       WHERE id = $12
+       WHERE id = $13
        RETURNING id`,
       [
         categoryNameHu,
@@ -3120,9 +3192,10 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
         newsDate,
         Boolean(payload.published),
         publishedAt,
-        payload.translations.hu.slug,
-        payload.translations.en.slug,
-        payload.translations,
+        slugHu,
+        slugEn,
+        availability,
+        translations,
         newsId,
       ],
     );

@@ -538,6 +538,30 @@ export default function AdminNews() {
     }));
   };
 
+  const handleLanguageAvailabilityChange = (value: LanguageAvailability) => {
+    const target = value as LanguageAvailability;
+    if (form.languageAvailability === "both" && target !== "both") {
+      const lostLanguage = target === "hu" ? "angol" : "magyar";
+      const confirmed = window.confirm(
+        `Ha csak ${target === "hu" ? "magyar" : "angol"} nyelv marad, a ${lostLanguage} tartalom törlődik. Folytatod?`,
+      );
+      if (!confirmed) return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      languageAvailability: target,
+      translations: {
+        ...prev.translations,
+        ...(target === "hu"
+          ? { en: { ...emptyTranslation } }
+          : target === "en"
+            ? { hu: { ...emptyTranslation } }
+            : {}),
+      },
+    }));
+  };
+
   const handleCategorySelect = (categoryId: string) => {
     const selected = categories.find((item) => item.id === categoryId);
     setForm((prev) => ({
@@ -756,10 +780,31 @@ export default function AdminNews() {
 
   const handleSubmit = async (overridePublished?: boolean) => {
     setSaving(true);
-    const hu = form.translations.hu;
-    const en = form.translations.en;
-    const needsHu = form.languageAvailability === "hu" || form.languageAvailability === "both";
-    const needsEn = form.languageAvailability === "en" || form.languageAvailability === "both";
+    const availability = form.languageAvailability;
+    const sanitizedTranslations: Record<LanguageCode, NewsTranslation> = {
+      hu:
+        availability !== "en"
+          ? {
+              title: form.translations.hu.title.trim(),
+              slug: form.translations.hu.slug.trim(),
+              excerpt: form.translations.hu.excerpt.trim(),
+              content: form.translations.hu.content.trim(),
+            }
+          : { ...emptyTranslation },
+      en:
+        availability !== "hu"
+          ? {
+              title: form.translations.en.title.trim(),
+              slug: form.translations.en.slug.trim(),
+              excerpt: form.translations.en.excerpt.trim(),
+              content: form.translations.en.content.trim(),
+            }
+          : { ...emptyTranslation },
+    };
+    const hu = sanitizedTranslations.hu;
+    const en = sanitizedTranslations.en;
+    const needsHu = availability === "hu" || availability === "both";
+    const needsEn = availability === "en" || availability === "both";
     const selectedCategory = categories.find((item) => item.id === form.categoryId);
     const categoryTranslations = selectedCategory?.name || form.categoryTranslations;
 
@@ -813,9 +858,9 @@ export default function AdminNews() {
         imageAlt: form.imageAlt || undefined,
         sticky: form.sticky,
         date: form.date,
-        languageAvailability: form.languageAvailability,
+        languageAvailability: availability,
         published: overridePublished ?? form.published,
-        translations: form.translations,
+        translations: sanitizedTranslations,
       };
 
       let saved: NewsArticle;
@@ -1289,7 +1334,7 @@ export default function AdminNews() {
                   <Label>Hír nyelve</Label>
                   <RadioGroup
                     value={form.languageAvailability}
-                    onValueChange={(value) => handleFieldChange("languageAvailability", value)}
+                    onValueChange={handleLanguageAvailabilityChange}
                     className="grid grid-cols-1 md:grid-cols-3 gap-3"
                   >
                     <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3" htmlFor="news-lang-hu">

@@ -48,9 +48,11 @@ export async function getAdminNews(params: {
   return handleResponse<NewsListResponse>(response);
 }
 
-export async function getPublishedNews(limit = 6, categoryId?: string): Promise<NewsArticle[]> {
+export async function getPublishedNews(limit = 6, categoryId?: string, lang: 'hu' | 'en' = 'hu'):
+  Promise<NewsArticle[]> {
   const url = new URL("/api/news/public", defaultBase);
   url.searchParams.set("limit", String(limit));
+  url.searchParams.set("lang", lang);
   if (categoryId) url.searchParams.set("categoryId", categoryId);
 
   const response = await fetch(url.toString());
@@ -62,11 +64,13 @@ export async function getPublishedNewsPage(params: {
   page?: number;
   pageSize?: number;
   categoryId?: string;
+  lang?: 'hu' | 'en';
 } = {}): Promise<NewsListResponse> {
   const url = new URL("/api/news/public", defaultBase);
   if (params.page) url.searchParams.set("page", String(params.page));
   if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
   if (params.categoryId) url.searchParams.set("categoryId", params.categoryId);
+  url.searchParams.set("lang", params.lang === "en" ? "en" : "hu");
 
   const response = await fetch(url.toString());
   const data = await handleResponse<Partial<NewsListResponse> & { items: NewsArticle[] }>(response);
@@ -83,9 +87,12 @@ export async function getPublishedNewsPage(params: {
   };
 }
 
-export async function getNewsBySlug(slug: string): Promise<NewsArticle | null> {
+export async function getNewsBySlug(slug: string, lang: 'hu' | 'en' = 'hu'):
+  Promise<NewsArticle | null> {
   if (!slug) return null;
-  const response = await fetch(`${API_BASE}/api/news/slug/${encodeURIComponent(slug)}`);
+  const url = new URL(`/api/news/slug/${encodeURIComponent(slug)}`, defaultBase);
+  url.searchParams.set("lang", lang);
+  const response = await fetch(url.toString());
   if (response.status === 404) return null;
   return handleResponse<NewsArticle>(response);
 }

@@ -33,7 +33,7 @@ export default function NewsArticlePage() {
     const fetchArticle = async () => {
       setLoading(true);
       try {
-        const result = await getNewsBySlug(slug);
+        const result = await getNewsBySlug(slug, language === "en" ? "en" : "hu");
         setArticle(result);
       } catch (error) {
         console.error(error);
@@ -44,7 +44,7 @@ export default function NewsArticlePage() {
     };
 
     fetchArticle();
-  }, [slug]);
+  }, [slug, language]);
 
   if (loading) {
     return (
