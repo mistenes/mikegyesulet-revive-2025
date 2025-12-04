@@ -528,11 +528,13 @@ async function ensureNewsTables() {
       );
     `);
 
+    await client.query('DROP INDEX IF EXISTS news_slug_hu_idx;');
+    await client.query('DROP INDEX IF EXISTS news_slug_en_idx;');
     await client.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_hu_idx ON news_articles(slug_hu);',
+      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_hu_published_idx ON news_articles(slug_hu) WHERE published = TRUE;',
     );
     await client.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_en_idx ON news_articles(slug_en);',
+      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_en_published_idx ON news_articles(slug_en) WHERE published = TRUE;',
     );
     await client.query(
       'CREATE INDEX IF NOT EXISTS news_published_idx ON news_articles(published, published_at DESC, created_at DESC);',
@@ -988,7 +990,7 @@ async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
 
   if (!conditions.length) return;
 
-  let query = `SELECT id, slug_hu, slug_en FROM news_articles WHERE ${conditions.join(' OR ')}`;
+  let query = `SELECT id, slug_hu, slug_en FROM news_articles WHERE (${conditions.join(' OR ')}) AND published = TRUE`;
 
   if (excludeId) {
     params.push(excludeId);
