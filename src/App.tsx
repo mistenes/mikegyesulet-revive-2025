@@ -12,6 +12,7 @@ import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
+import AdminNewsNewArticle from "./pages/admin/AdminNewsNewArticle";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminProjects from "./pages/admin/AdminProjects";
 import AdminGallery from "./pages/admin/AdminGallery";
@@ -100,6 +101,7 @@ const App = () => {
               <Route path="/admin/pages" element={<AdminPages />} />
               <Route path="/admin/pages/:pageSlug" element={<AdminPages />} />
               <Route path="/admin/regions" element={<AdminRegions />} />
+              <Route path="/admin/news/new-article" element={<AdminNewsNewArticle />} />
               <Route path="/admin/news" element={<AdminNews />} />
               <Route path="/admin/projects" element={<AdminProjects />} />
               <Route path="/admin/gallery" element={<AdminGallery />} />
