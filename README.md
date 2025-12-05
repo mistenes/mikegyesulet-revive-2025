@@ -20,6 +20,13 @@ npm run start # production-style build + API/static server (http://localhost:808
 
 > Build note: the project needs dev dependencies (including Vite) to run `npm run build`. The repo ships with `.npmrc` forcing `production=false` so `npm install` always pulls dev packages even if `NODE_ENV=production` is set. If you previously installed without dev deps, run `npm install --include=dev` to restore Vite before retrying the build.
 
+> If your environment does not have `npm` installed, source the Bun-backed shim before running project commands. This adds a lightweight `npm` that forwards to Bun so `npm run build` and similar commands still work:
+>
+> ```bash
+> source scripts/use-bun-npm.sh
+> npm run build
+> ```
+
 If your environment forces npm through a corporate proxy (for example, you see `E403` errors fetching packages), run the helper script that clears the proxy variables before installing. The script also forces the official npm registry (not mirrors such as `registry.npmmirror.com`) and always installs dev dependencies so `vite` is available for builds:
 
 ```bash
