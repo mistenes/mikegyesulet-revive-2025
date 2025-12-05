@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if ! command -v bun >/dev/null 2>&1; then
+  echo "npm shim error: bun is required to run npm-equivalent commands." >&2
+  exit 127
+fi
+cmd="${1:-}" || cmd=""
+shift || true
+case "$cmd" in
+  run)
+    exec bun run "$@"
+    ;;
+  install)
+    exec bun install "$@"
+    ;;
+  *)
+    exec bun "$cmd" "$@"
+    ;;
+ esac

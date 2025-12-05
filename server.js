@@ -44,6 +44,9 @@ const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
 const PASSWORD_HISTORY_LIMIT = 5;
 const PASSWORD_MIN_LENGTH = 12;
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
+const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
+const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
 
 const brevoClient = BREVO_API_KEY ? new SibApiV3Sdk.TransactionalEmailsApi() : null;
 
@@ -518,17 +521,20 @@ async function ensureNewsTables() {
         published_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        slug_hu TEXT NOT NULL,
-        slug_en TEXT NOT NULL,
+        slug_hu TEXT,
+        slug_en TEXT,
+        language_availability TEXT NOT NULL DEFAULT 'both',
         translations JSONB NOT NULL
       );
     `);
 
+    await client.query('DROP INDEX IF EXISTS news_slug_hu_idx;');
+    await client.query('DROP INDEX IF EXISTS news_slug_en_idx;');
     await client.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_hu_idx ON news_articles(slug_hu);',
+      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_hu_published_idx ON news_articles(slug_hu) WHERE published = TRUE;',
     );
     await client.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_en_idx ON news_articles(slug_en);',
+      'CREATE UNIQUE INDEX IF NOT EXISTS news_slug_en_published_idx ON news_articles(slug_en) WHERE published = TRUE;',
     );
     await client.query(
       'CREATE INDEX IF NOT EXISTS news_published_idx ON news_articles(published, published_at DESC, created_at DESC);',
@@ -542,6 +548,11 @@ async function ensureNewsTables() {
     await client.query(
       'ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS news_date DATE NOT NULL DEFAULT CURRENT_DATE;',
     );
+    await client.query(
+      "ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS language_availability TEXT NOT NULL DEFAULT 'both';",
+    );
+    await client.query("ALTER TABLE news_articles ALTER COLUMN slug_hu DROP NOT NULL;");
+    await client.query("ALTER TABLE news_articles ALTER COLUMN slug_en DROP NOT NULL;");
 
     const distinctCategories = await client.query(
       'SELECT DISTINCT category FROM news_articles WHERE category IS NOT NULL',
@@ -746,6 +757,8 @@ function mapNewsRow(row) {
     en: row.category_name_en || row.category || '',
   };
 
+  const translations = normalizeNewsTranslations(row.translations || { hu: {}, en: {} }, row.language_availability);
+
   return {
     id: row.id,
     categoryId: row.category_id || null,
@@ -759,7 +772,8 @@ function mapNewsRow(row) {
     publishedAt: row.published_at ? row.published_at.toISOString() : null,
     createdAt: row.created_at ? row.created_at.toISOString() : '',
     updatedAt: row.updated_at ? row.updated_at.toISOString() : '',
-    translations: row.translations || { hu: {}, en: {} },
+    languageAvailability: row.language_availability || 'both',
+    translations,
   };
 }
 
@@ -867,6 +881,24 @@ function mapProjectRow(row) {
   };
 }
 
+function sanitizeNewsTranslation(data = {}) {
+  return {
+    title: (data.title || '').toString(),
+    slug: (data.slug || '').toString(),
+    excerpt: (data.excerpt || '').toString(),
+    content: (data.content || '').toString(),
+  };
+}
+
+function normalizeNewsTranslations(translations = { hu: {}, en: {} }, availability = 'both') {
+  const allowedHu = availability !== 'en';
+  const allowedEn = availability !== 'hu';
+  return {
+    hu: allowedHu ? sanitizeNewsTranslation(translations.hu) : sanitizeNewsTranslation(),
+    en: allowedEn ? sanitizeNewsTranslation(translations.en) : sanitizeNewsTranslation(),
+  };
+}
+
 function slugifyText(text) {
   return (text || '')
     .toString()
@@ -943,12 +975,26 @@ function mapPageContentRows(rows) {
 }
 
 async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
-  const params = [slugHu, slugEn];
-  let query = 'SELECT id, slug_hu, slug_en FROM news_articles WHERE (slug_hu = $1 OR slug_en = $2)';
+  const conditions = [];
+  const params = [];
+
+  if (slugHu) {
+    params.push(slugHu);
+    conditions.push(`slug_hu = $${params.length}`);
+  }
+
+  if (slugEn) {
+    params.push(slugEn);
+    conditions.push(`slug_en = $${params.length}`);
+  }
+
+  if (!conditions.length) return;
+
+  let query = `SELECT id, slug_hu, slug_en FROM news_articles WHERE (${conditions.join(' OR ')}) AND published = TRUE`;
 
   if (excludeId) {
     params.push(excludeId);
-    query += ' AND id <> $3';
+    query += ` AND id <> $${params.length}`;
   }
 
   const existing = await client.query(query, params);
@@ -1794,6 +1840,62 @@ app.post('/api/gallery/imagekit-folders', authenticateRequest, async (req, res) 
   }
 });
 
+app.delete('/api/gallery/imagekit-files/:id', authenticateRequest, async (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
+    return res.status(500).json({ message: 'ImageKit konfiguráció hiányzik a szerveren' });
+  }
+
+  const fileId = (req.params.id || '').toString().trim();
+  const baseFolder = ensureFolderPath(IMAGEKIT_GALLERY_FOLDER || '/');
+
+  if (!fileId) {
+    return res.status(400).json({ message: 'Hiányzó fájlazonosító' });
+  }
+
+  const authHeader = Buffer.from(`${IMAGEKIT_PRIVATE_KEY}:`).toString('base64');
+
+  try {
+    const detailResponse = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(fileId)}/details`, {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!detailResponse.ok) {
+      const message = `ImageKit file detail hiba: ${detailResponse.status}`;
+      console.error(message, await detailResponse.text());
+      return res.status(502).json({ message: 'Nem sikerült lekérni a fájl részleteit' });
+    }
+
+    const details = await detailResponse.json();
+    const filePath = ensureFolderPath(details.filePath || details.folderPath || '/');
+
+    if (baseFolder !== '/' && !filePath.startsWith(`${baseFolder}/`) && filePath !== baseFolder) {
+      return res.status(403).json({ message: 'A fájl nem törölhető ebből a mappából' });
+    }
+
+    const deleteResponse = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!deleteResponse.ok) {
+      const message = `ImageKit delete hiba: ${deleteResponse.status}`;
+      console.error(message, await deleteResponse.text());
+      return res.status(502).json({ message: 'Nem sikerült törölni a fájlt az ImageKitből' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('ImageKit delete error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a fájlt az ImageKitből' });
+  }
+});
+
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -1956,6 +2058,7 @@ app.post('/api/news/translate', authenticateRequest, async (req, res) => {
     return res.status(status).json({ message });
   }
 });
+
 
 app.get('/api/projects', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
@@ -2748,8 +2851,12 @@ app.get('/api/news/public', async (req, res) => {
   const limitParam = Number(req.query.limit);
   const pageSize = pageSizeParam > 0 ? pageSizeParam : limitParam > 0 ? limitParam : 6;
   const categoryId = req.query.categoryId ? req.query.categoryId.toString() : '';
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const availabilityCondition = lang === 'en'
+    ? "language_availability IN ('en', 'both')"
+    : "language_availability IN ('hu', 'both')";
 
-  const filters = ['published = TRUE'];
+  const filters = ['published = TRUE', availabilityCondition];
   const values = [];
 
   if (categoryId) {
@@ -2802,12 +2909,16 @@ app.get('/api/news/public', async (req, res) => {
 
 app.get('/api/news/slug/:slug', async (req, res) => {
   const client = await pool.connect();
+  const lang = req.query.lang === 'en' ? 'en' : 'hu';
+  const availabilityCondition = lang === 'en'
+    ? "language_availability IN ('en', 'both')"
+    : "language_availability IN ('hu', 'both')";
   try {
     const result = await client.query(
       `SELECT a.*, c.name_hu AS category_name_hu, c.name_en AS category_name_en
        FROM news_articles a
        LEFT JOIN news_categories c ON a.category_id = c.id
-       WHERE (slug_hu = $1 OR slug_en = $1) AND published = TRUE
+       WHERE (slug_hu = $1 OR slug_en = $1) AND published = TRUE AND ${availabilityCondition}
        LIMIT 1`,
       [req.params.slug],
     );
@@ -2954,15 +3065,24 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const payload = req.body || {};
 
-  if (!payload.translations?.hu?.slug || !payload.translations?.en?.slug) {
-    return res.status(400).json({ message: 'A magyar és angol slug mező megadása kötelező' });
-  }
-
   try {
-    await validateUniqueSlugs(client, {
-      slugHu: payload.translations.hu.slug,
-      slugEn: payload.translations.en.slug,
-    });
+    const availability = ['hu', 'en', 'both'].includes(payload.languageAvailability) ? payload.languageAvailability : 'both';
+    const needsHu = availability !== 'en';
+    const needsEn = availability !== 'hu';
+    const translations = normalizeNewsTranslations(payload.translations, availability);
+
+    const slugHu = translations.hu.slug.trim() || null;
+    const slugEn = translations.en.slug.trim() || null;
+
+    if (needsHu && !slugHu) {
+      return res.status(400).json({ message: 'A magyar slug megadása kötelező' });
+    }
+
+    if (needsEn && !slugEn) {
+      return res.status(400).json({ message: 'Az angol slug megadása kötelező' });
+    }
+
+    await validateUniqueSlugs(client, { slugHu, slugEn });
 
     const { categoryId: resolvedCategoryId, categoryNameHu, categoryNameEn } = await resolveNewsCategory(
       client,
@@ -2974,8 +3094,8 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
 
     const insertResult = await client.query(
       `INSERT INTO news_articles
-       (category, category_id, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, translations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       (category, category_id, image_url, image_alt, sticky, news_date, published, published_at, slug_hu, slug_en, language_availability, translations)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
       [
         categoryNameHu,
@@ -2986,9 +3106,10 @@ app.post('/api/news', authenticateRequest, async (req, res) => {
         newsDate,
         Boolean(payload.published),
         publishedAt,
-        payload.translations.hu.slug,
-        payload.translations.en.slug,
-        payload.translations,
+        slugHu,
+        slugEn,
+        availability,
+        translations,
       ],
     );
 
@@ -3009,14 +3130,26 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
   const payload = req.body || {};
   const newsId = req.params.id;
 
-  if (!payload.translations?.hu?.slug || !payload.translations?.en?.slug) {
-    return res.status(400).json({ message: 'A magyar és angol slug mező megadása kötelező' });
-  }
-
   try {
+    const availability = ['hu', 'en', 'both'].includes(payload.languageAvailability) ? payload.languageAvailability : 'both';
+    const needsHu = availability !== 'en';
+    const needsEn = availability !== 'hu';
+    const translations = normalizeNewsTranslations(payload.translations, availability);
+
+    const slugHu = translations.hu.slug.trim() || null;
+    const slugEn = translations.en.slug.trim() || null;
+
+    if (needsHu && !slugHu) {
+      return res.status(400).json({ message: 'A magyar slug megadása kötelező' });
+    }
+
+    if (needsEn && !slugEn) {
+      return res.status(400).json({ message: 'Az angol slug megadása kötelező' });
+    }
+
     await validateUniqueSlugs(client, {
-      slugHu: payload.translations.hu.slug,
-      slugEn: payload.translations.en.slug,
+      slugHu,
+      slugEn,
       excludeId: newsId,
     });
 
@@ -3047,9 +3180,10 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
            published_at = $8,
            slug_hu = $9,
            slug_en = $10,
-           translations = $11,
+           language_availability = $11,
+           translations = $12,
            updated_at = NOW()
-       WHERE id = $12
+       WHERE id = $13
        RETURNING id`,
       [
         categoryNameHu,
@@ -3060,9 +3194,10 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
         newsDate,
         Boolean(payload.published),
         publishedAt,
-        payload.translations.hu.slug,
-        payload.translations.en.slug,
-        payload.translations,
+        slugHu,
+        slugEn,
+        availability,
+        translations,
         newsId,
       ],
     );
@@ -3073,11 +3208,121 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
   } catch (error) {
     console.error('Update news error', error);
     const status = error.status || 500;
-    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a hírt' });
+  return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a hírt' });
   } finally {
     client.release();
   }
 });
+
+function encodeBunnyPath(pathname = '/') {
+  const cleaned = pathname.replace(/^\/+|\/+$/g, '');
+  if (!cleaned) return '';
+
+  return cleaned
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function buildBunnyUrl(pathname = '/', { directory = false } = {}) {
+  const trimmedHost = BUNNY_STORAGE_HOST.replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+  const trimmedZone = BUNNY_STORAGE_ZONE.replace(/^\/+|\/+$/g, '');
+  const encodedPath = encodeBunnyPath(pathname);
+  const base = `https://${trimmedHost}/${encodeURIComponent(trimmedZone)}`;
+  const suffix = directory ? '/' : '';
+
+  return `${base}${encodedPath ? `/${encodedPath}` : ''}${suffix}`;
+}
+
+const bunnyStorageRouter = express.Router();
+
+bunnyStorageRouter.use(express.raw({ type: '*/*', limit: '200mb' }));
+
+bunnyStorageRouter.use((req, res, next) => {
+  if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_KEY) {
+    return res.status(503).json({ message: 'A Bunny storage nincs konfigurálva.' });
+  }
+
+  return next();
+});
+
+bunnyStorageRouter.get('/', async (req, res) => {
+  try {
+    const pathname = typeof req.query.path === 'string' && req.query.path.trim() ? req.query.path.trim() : '/';
+    const url = buildBunnyUrl(pathname, { directory: true });
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        AccessKey: BUNNY_STORAGE_KEY,
+        accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: 'Nem sikerült betölteni a tárolót.' });
+    }
+
+    const payload = await response.json();
+    return res.status(200).json(payload);
+  } catch (error) {
+    console.error('Bunny list error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a tároló tartalmát.' });
+  }
+});
+
+bunnyStorageRouter.put('/', async (req, res) => {
+  try {
+    const pathname = typeof req.query.path === 'string' && req.query.path.trim() ? req.query.path.trim() : '/';
+    const isDirectory = req.query.directory === 'true';
+    const url = buildBunnyUrl(pathname, { directory: isDirectory });
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        AccessKey: BUNNY_STORAGE_KEY,
+        'content-type': req.headers['content-type'] || 'application/octet-stream',
+      },
+      body: req.body,
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: 'Nem sikerült létrehozni vagy feltölteni az elemet.' });
+    }
+
+    const payload = await response.text();
+    return res.status(200).send(payload);
+  } catch (error) {
+    console.error('Bunny upload error', error);
+    return res.status(500).json({ message: 'Nem sikerült menteni az elemet.' });
+  }
+});
+
+bunnyStorageRouter.delete('/', async (req, res) => {
+  try {
+    const pathname = typeof req.query.path === 'string' && req.query.path.trim() ? req.query.path.trim() : '/';
+    const isDirectory = req.query.directory === 'true';
+    const url = buildBunnyUrl(pathname, { directory: isDirectory });
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        AccessKey: BUNNY_STORAGE_KEY,
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: 'Nem sikerült törölni az elemet.' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Bunny delete error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni az elemet.' });
+  }
+});
+
+app.use('/api/bunny/storage', bunnyStorageRouter);
 
 app.delete('/api/news/:id', authenticateRequest, async (req, res) => {
   const client = await pool.connect();

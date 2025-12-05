@@ -31,6 +31,7 @@ export default function NewsIndex() {
           page,
           pageSize: PAGE_SIZE,
           categoryId: selectedCategory || undefined,
+          lang: language === "en" ? "en" : "hu",
         });
         setArticles(items);
         setTotal(totalItems);

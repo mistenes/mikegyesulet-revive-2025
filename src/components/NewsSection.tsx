@@ -41,7 +41,7 @@ export const NewsSection = () => {
     const loadNews = async () => {
       setLoading(true);
       try {
-        const articles = await getPublishedNews();
+        const articles = await getPublishedNews(undefined, undefined, language === "en" ? "en" : "hu");
         if (!active) return;
         setNews(articles);
       } catch (error) {

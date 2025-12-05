@@ -18,7 +18,12 @@ import {
   reorderAlbums,
   updateAlbum,
 } from "@/services/galleryService";
-import { listImageKitFiles, uploadToImageKit, type ImageKitItem } from "@/services/imageKitService";
+import {
+  deleteImageKitFile,
+  listImageKitFiles,
+  uploadToImageKit,
+  type ImageKitItem,
+} from "@/services/imageKitService";
 import type { GalleryAlbum, GalleryAlbumInput } from "@/types/gallery";
 
 const createEmptyAlbum = (sortOrder = 1): GalleryAlbumInput => ({
@@ -51,6 +56,7 @@ export default function AdminGallery() {
   const [browserPath, setBrowserPath] = useState<string>("");
   const [browserBasePath, setBrowserBasePath] = useState<string>("");
   const [browserSelected, setBrowserSelected] = useState<Set<string>>(new Set());
+  const [browserDeleting, setBrowserDeleting] = useState<Set<string>>(new Set());
 
   const currentBrowserPath = browserPath || browserBasePath || "";
   const parentBrowserPath = useMemo(() => {
@@ -210,6 +216,39 @@ export default function AdminGallery() {
   };
 
   const handleClearSelection = () => setBrowserSelected(new Set());
+
+  const handleDeleteFile = async (item: ImageKitItem) => {
+    if (item.isFolder) return;
+    if (!item.id) {
+      toast.error("Ismeretlen fájl nem törölhető");
+      return;
+    }
+
+    const confirmDelete = window.confirm(`Biztosan törlöd a(z) "${item.name}" fájlt?`);
+    if (!confirmDelete) return;
+
+    setBrowserDeleting((prev) => new Set(prev).add(item.id));
+    try {
+      await deleteImageKitFile(item.id);
+      setBrowserSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+      toast.success("Fájl törölve az ImageKitből");
+      void loadImageKitFiles(browserSearch, currentBrowserPath || undefined);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Nem sikerült törölni a fájlt";
+      toast.error(message);
+    } finally {
+      setBrowserDeleting((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  };
 
   const handleAddSelected = () => {
     const selectedItems = browserItems.filter((item) => browserSelected.has(item.id) && !item.isFolder && item.url);
@@ -761,69 +800,89 @@ export default function AdminGallery() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {browserItems.map((item) => (
-                        <div key={item.id} className="border rounded-lg p-3 space-y-2 bg-card shadow-sm">
-                          <div className="relative aspect-video overflow-hidden rounded-md bg-muted flex items-center justify-center">
-                            {browserTarget === "gallery" && !item.isFolder && item.url && (
-                              <label className="absolute left-2 top-2 flex items-center gap-2 rounded bg-background/90 px-2 py-1 text-xs shadow">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4"
-                                  checked={browserSelected.has(item.id)}
-                                  onChange={() => handleToggleSelection(item)}
+                      {browserItems.map((item) => {
+                        const isDeleting = browserDeleting.has(item.id);
+
+                        return (
+                          <div key={item.id} className="border rounded-lg p-3 space-y-2 bg-card shadow-sm">
+                            <div className="relative aspect-video overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                              {browserTarget === "gallery" && !item.isFolder && item.url && (
+                                <label className="absolute left-2 top-2 flex items-center gap-2 rounded bg-background/90 px-2 py-1 text-xs shadow">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4"
+                                    checked={browserSelected.has(item.id)}
+                                    onChange={() => handleToggleSelection(item)}
+                                  />
+                                  Kijelölés
+                                </label>
+                              )}
+                              {item.isFolder ? (
+                                <Folder className="h-10 w-10 text-muted-foreground" />
+                              ) : item.thumbnailUrl ? (
+                                <img
+                                  src={item.thumbnailUrl}
+                                  alt={item.name}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
                                 />
-                                Kijelölés
-                              </label>
-                            )}
-                            {item.isFolder ? (
-                              <Folder className="h-10 w-10 text-muted-foreground" />
-                            ) : item.thumbnailUrl ? (
-                              <img
-                                src={item.thumbnailUrl}
-                                alt={item.name}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
-                                Nincs előnézet
-                              </div>
-                            )}
+                              ) : (
+                                <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
+                                  Nincs előnézet
+                                </div>
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <p className="font-medium text-sm truncate" title={item.name}>
+                                {item.name}
+                              </p>
+                              {!item.isFolder && (
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span>
+                                    {item.width && item.height ? `${item.width}×${item.height}` : "Méret nem elérhető"}
+                                  </span>
+                                  {item.createdAt && <span>{new Date(item.createdAt).toLocaleDateString()}</span>}
+                                </div>
+                              )}
+                              {item.isFolder && item.path && (
+                                <p className="text-xs text-muted-foreground break-all">{item.path}</p>
+                              )}
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              {item.isFolder ? (
+                                <Button size="sm" variant="outline" onClick={() => handleOpenFolder(item)}>
+                                  Megnyitás
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    disabled={isDeleting}
+                                    onClick={() =>
+                                      browserTarget === "gallery" ? handleToggleSelection(item) : handlePickImage(item)
+                                    }
+                                  >
+                                    {browserTarget === "cover"
+                                      ? "Borító beállítása"
+                                      : browserSelected.has(item.id)
+                                        ? "Kijelölve"
+                                        : "Kijelölés"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={isDeleting}
+                                    onClick={() => void handleDeleteFile(item)}
+                                    className="gap-2"
+                                  >
+                                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash className="h-4 w-4" />}Törlés
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <p className="font-medium text-sm truncate" title={item.name}>
-                              {item.name}
-                            </p>
-                            {!item.isFolder && (
-                              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>
-                                  {item.width && item.height ? `${item.width}×${item.height}` : "Méret nem elérhető"}
-                                </span>
-                                {item.createdAt && <span>{new Date(item.createdAt).toLocaleDateString()}</span>}
-                              </div>
-                            )}
-                            {item.isFolder && item.path && (
-                              <p className="text-xs text-muted-foreground break-all">{item.path}</p>
-                            )}
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            {item.isFolder ? (
-                              <Button size="sm" variant="outline" onClick={() => handleOpenFolder(item)}>
-                                Megnyitás
-                              </Button>
-                            ) : (
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  browserTarget === "gallery" ? handleToggleSelection(item) : handlePickImage(item)
-                                }
-                              >
-                                {browserTarget === "cover" ? "Borító beállítása" : browserSelected.has(item.id) ? "Kijelölve" : "Kijelölés"}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </ScrollArea>

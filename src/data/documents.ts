@@ -4,7 +4,7 @@ export type Document = {
   location?: string;
   date: string;
   url: string;
-  category: 'statute' | 'founding' | 'closing-statement';
+  category: 'statute' | 'founding' | 'closing-statement' | 'other';
 };
 
 export const documentsData: Document[] = [
@@ -27,6 +27,45 @@ export const documentsData: Document[] = [
   },
   
   // Closing Statements (Zárónyilatkozatok)
+  {
+    title: "Zárónyilatkozat",
+    titleEn: "Closing Statement",
+    location: "Budapest",
+    date: "2025-02-08",
+    url: "https://mikegyesulet.b-cdn.net/zaronyilatkozatok/Za%CC%81ro%CC%81nyilatkozat%20-%20Budapest.pdf",
+    category: "closing-statement"
+  },
+  {
+    title: "Zárónyilatkozat",
+    titleEn: "Closing Statement",
+    location: "Sepsiszentgyörgy",
+    date: "2024-06-22",
+    url: "https://mikegyesulet.b-cdn.net/zaronyilatkozatok/Za%CC%81ro%CC%81nyilatkozat%20-%20Sepsiszentgyo%CC%88rgy.pdf",
+    category: "closing-statement"
+  },
+  {
+    title: "Zárónyilatkozat",
+    titleEn: "Closing Statement",
+    location: "Lendva",
+    date: "2025-05-24",
+    url: "https://mikegyesulet.b-cdn.net/zaronyilatkozatok/ZA%CC%81RO%CC%81NYILATKOZAT%20-%20Lendva.pdf",
+    category: "closing-statement"
+  },
+  {
+    title: "Zárónyilatkozat",
+    titleEn: "Closing Statement",
+    location: "Székesfehérvár",
+    date: "2025-11-22",
+    url: "https://mikegyesulet.b-cdn.net/zaronyilatkozatok/Za%CC%81ro%CC%81nyilatkozat%20-%20Sze%CC%81kesfehe%CC%81rva%CC%81r.pdf",
+    category: "closing-statement"
+  },
+  {
+    title: "Felügyelőbizottsági állásfoglalás",
+    titleEn: "Supervisory Committee Position Statement",
+    date: "2025-11-25",
+    url: "https://mikegyesulet.b-cdn.net/egyeb/Mik%20FEBA%CC%81lla%CC%81sfoglala%CC%81s.pdf",
+    category: "other"
+  },
   {
     title: "Zárónyilatkozat",
     titleEn: "Closing Statement",

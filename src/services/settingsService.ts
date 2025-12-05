@@ -33,7 +33,7 @@ const defaultSettings: SettingsStore = {
     },
     site_favicon: {
       label: "Favicon URL",
-      value: mikLogo,
+      value: "",
     },
     dev_banner_enabled: {
       label: "Fejlesztés alatt banner megjelenítése",

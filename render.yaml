@@ -28,6 +28,14 @@ services:
         value: ""
       - key: IMAGEKIT_GALLERY_FOLDER
         value: ""
+      - key: VITE_BUNNY_STORAGE_ZONE
+        value: "YOUR_STORAGE_ZONE_NAME"
+      - key: VITE_BUNNY_STORAGE_KEY
+        value: "YOUR_BUNNY_STORAGE_API_KEY"
+      - key: VITE_BUNNY_CDN_HOSTNAME
+        value: "YOUR_CDN_HOSTNAME_OR_PULL_ZONE (e.g. mikegyesulet.b-cdn.net)"
+      - key: VITE_BUNNY_STORAGE_HOST
+        value: "storage.bunnycdn.com"
       - key: OPENAI_API_KEY
         value: ""
     autoDeploy: true

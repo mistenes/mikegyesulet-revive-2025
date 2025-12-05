@@ -18,6 +18,27 @@ npm run start # production-style build + API/static server (http://localhost:808
 
 > Tip: keep `npm run start` running when you need `/admin/news` or other admin screens to persist data during development. The Vite dev server proxies `/api` to `http://localhost:8080`, so the admin UI can talk to the API without changing URLs.
 
+> Build note: the project needs dev dependencies (including Vite) to run `npm run build`. The repo ships with `.npmrc` forcing `production=false` so `npm install` always pulls dev packages even if `NODE_ENV=production` is set. If you previously installed without dev deps, run `npm install --include=dev` to restore Vite before retrying the build.
+
+> If your environment does not have `npm` installed, source the Bun-backed shim before running project commands. This adds a lightweight `npm` that forwards to Bun so `npm run build` and similar commands still work:
+>
+> ```bash
+> source scripts/use-bun-npm.sh
+> npm run build
+> ```
+
+If your environment forces npm through a corporate proxy (for example, you see `E403` errors fetching packages), run the helper script that clears the proxy variables before installing. The script also forces the official npm registry (not mirrors such as `registry.npmmirror.com`) and always installs dev dependencies so `vite` is available for builds:
+
+```bash
+npm run install:noproxy
+```
+
+You can also run it manually (note the explicit npmjs registry and cleared proxy variables):
+
+```bash
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u npm_config_http_proxy -u npm_config_https_proxy -u NPM_CONFIG_REGISTRY -u npm_config_registry npm install --include=dev --no-progress --registry=https://registry.npmjs.org/
+```
+
 ### Environment variables
 
 Create a `.env` file based on `.env.example`.

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Save, Loader2, ShieldCheck, KeyRound } from "lucide-react";
+import { Settings, Save, Loader2, ShieldCheck, KeyRound, Image as ImageIcon, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getSettings, updateSetting } from "@/services/settingsService";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
@@ -29,6 +29,7 @@ export default function AdminSettings() {
   const [mfaSetup, setMfaSetup] = useState<MfaPreparation | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const mfaInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [mfaStep, setMfaStep] = useState<number | null>(null);
   const [recoveryCodeInput, setRecoveryCodeInput] = useState("");
   const [recoveryAcknowledged, setRecoveryAcknowledged] = useState(false);
@@ -97,6 +98,21 @@ export default function AdminSettings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleImageSelect = (key: "site_logo" | "site_favicon", files?: FileList | null) => {
+    if (!files || !files.length) return;
+    const [file] = files;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormData((prev) => ({ ...prev, [key]: reader.result as string }));
+      if (fileInputRefs.current[key]) {
+        fileInputRefs.current[key]!.value = "";
+      }
+    };
+
+    reader.readAsDataURL(file);
   };
 
   const handlePrepareMfa = async () => {
@@ -169,6 +185,10 @@ export default function AdminSettings() {
     } finally {
       setSecuritySaving(false);
     }
+  };
+
+  const handleClearImage = (key: "site_logo" | "site_favicon") => {
+    setFormData((prev) => ({ ...prev, [key]: "" }));
   };
 
   const handlePasswordChange = async () => {
@@ -256,24 +276,104 @@ export default function AdminSettings() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Logó URL</Label>
-              <Input
-                value={formData.site_logo || ""}
-                onChange={(e) => setFormData({ ...formData, site_logo: e.target.value })}
-                placeholder="https://..."
-              />
-              <p className="text-xs text-muted-foreground">Ugyanez az ikon kerül a fejlécbe és a faviconhoz is.</p>
-            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-primary/10 p-2 text-primary">
+                    <ImageIcon className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-base">Logó kép</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Ez jelenik meg a fejlécben és a legtöbb helyen, ahol logóra van szükség.
+                    </p>
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label>Favicon URL</Label>
-              <Input
-                value={formData.site_favicon || ""}
-                onChange={(e) => setFormData({ ...formData, site_favicon: e.target.value })}
-                placeholder="https://..."
-              />
-              <p className="text-xs text-muted-foreground">Ha üres, automatikusan a fenti logó kerül használatra.</p>
+                <div className="overflow-hidden rounded-lg border bg-muted/30">
+                  <div className="flex h-32 items-center justify-center bg-gradient-to-br from-background to-muted/40">
+                    {formData.site_logo ? (
+                      <img src={formData.site_logo.toString()} alt="Logó előnézet" className="h-full w-full object-contain" />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Nincs kiválasztva logó</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="gap-2"
+                    onClick={() => fileInputRefs.current.site_logo?.click()}
+                  >
+                    <Upload className="h-4 w-4" /> Kép kiválasztása
+                  </Button>
+                  {formData.site_logo && (
+                    <Button type="button" variant="ghost" className="gap-2" onClick={() => handleClearImage("site_logo")}>
+                      <Trash2 className="h-4 w-4" /> Kép eltávolítása
+                    </Button>
+                  )}
+                  <input
+                    ref={(el) => (fileInputRefs.current.site_logo = el)}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => handleImageSelect("site_logo", event.target.files)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-primary/10 p-2 text-primary">
+                    <ImageIcon className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-base">Favicon</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Négyzetes ikon a böngészőfülhöz; ha üres, a logó kerül felhasználásra.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-lg border bg-muted/30">
+                  <div className="flex h-32 items-center justify-center bg-gradient-to-br from-background to-muted/40">
+                    {formData.site_favicon ? (
+                      <img
+                        src={formData.site_favicon.toString()}
+                        alt="Favicon előnézet"
+                        className="h-20 w-20 rounded object-contain"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Nincs kiválasztva favicon</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="gap-2"
+                    onClick={() => fileInputRefs.current.site_favicon?.click()}
+                  >
+                    <Upload className="h-4 w-4" /> Ikon kiválasztása
+                  </Button>
+                  {formData.site_favicon && (
+                    <Button type="button" variant="ghost" className="gap-2" onClick={() => handleClearImage("site_favicon")}>
+                      <Trash2 className="h-4 w-4" /> Ikon eltávolítása
+                    </Button>
+                  )}
+                  <input
+                    ref={(el) => (fileInputRefs.current.site_favicon = el)}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => handleImageSelect("site_favicon", event.target.files)}
+                  />
+                </div>
+              </div>
             </div>
 
             <Button onClick={handleSave} disabled={saving} className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">

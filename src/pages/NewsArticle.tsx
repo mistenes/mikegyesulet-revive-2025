@@ -8,7 +8,6 @@ import { getNewsBySlug } from "@/services/newsService";
 import type { NewsArticle } from "@/types/news";
 import { renderMarkdown } from "@/utils/markdown";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { getLocalizedPath } from "@/lib/localePaths";
 
 const EmptyState = ({ message }: { message: string }) => (
@@ -33,7 +32,7 @@ export default function NewsArticlePage() {
     const fetchArticle = async () => {
       setLoading(true);
       try {
-        const result = await getNewsBySlug(slug);
+        const result = await getNewsBySlug(slug, language === "en" ? "en" : "hu");
         setArticle(result);
       } catch (error) {
         console.error(error);
@@ -44,7 +43,7 @@ export default function NewsArticlePage() {
     };
 
     fetchArticle();
-  }, [slug]);
+  }, [slug, language]);
 
   if (loading) {
     return (
@@ -89,16 +88,13 @@ export default function NewsArticlePage() {
 
       <main className="container px-4 pt-32 pb-16 lg:pb-20">
         <div className="max-w-5xl mx-auto space-y-8">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
             <Link to={getLocalizedPath('/news', language)}>
               <Button variant="ghost" className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 {language === "hu" ? "Vissza a hírekhez" : "Back to news"}
               </Button>
             </Link>
-            <Badge variant={article.published ? "default" : "secondary"} className="uppercase tracking-wide">
-              {article.published ? (language === "hu" ? "Publikálva" : "Published") : "Draft"}
-            </Badge>
           </div>
 
           <div className="space-y-4">
