@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
 import speakeasy from 'speakeasy';
 import SibApiV3Sdk from 'sib-api-v3-sdk';
+import { defaultDocuments as defaultDocumentSeed } from './server-default-documents.js';
 
 const { Pool } = pkg;
 
@@ -30,6 +31,7 @@ const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY || '';
 const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
 const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
 const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
+const BUNNY_CDN_HOSTNAME = process.env.VITE_BUNNY_CDN_HOSTNAME || process.env.BUNNY_CDN_HOSTNAME || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || process.env.ADMIN_EMAIL || '';
@@ -751,6 +753,44 @@ async function ensurePageContentTable() {
   }
 }
 
+async function ensureDocumentsTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        title_en TEXT NOT NULL,
+        location TEXT,
+        event_date TEXT DEFAULT '',
+        url TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query('CREATE INDEX IF NOT EXISTS documents_category_idx ON documents(category);');
+    await client.query('CREATE INDEX IF NOT EXISTS documents_date_idx ON documents(event_date);');
+
+    const count = await client.query('SELECT COUNT(*)::int AS count FROM documents');
+    if ((count.rows[0]?.count || 0) === 0) {
+      for (const doc of defaultDocumentSeed) {
+        await client.query(
+          `INSERT INTO documents (title, title_en, location, event_date, url, category)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [doc.title, doc.titleEn || doc.title, doc.location || null, doc.date || '', doc.url, doc.category],
+        );
+      }
+    }
+  } finally {
+    client.release();
+  }
+}
+
 function mapNewsRow(row) {
   const categoryTranslations = {
     hu: row.category_name_hu || row.category || '',
@@ -786,6 +826,107 @@ function mapNewsCategory(row) {
     },
     createdAt: row.created_at ? row.created_at.toISOString() : '',
   };
+}
+
+function mapDocumentRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    titleEn: row.title_en || row.title,
+    location: row.location || undefined,
+    date: row.event_date || '',
+    url: row.url,
+    category: row.category || 'other',
+  };
+}
+
+const DOCUMENT_CATEGORIES = new Set(['statute', 'founding', 'closing-statement', 'other']);
+
+function normalizeDocumentPayload(payload = {}) {
+  const title = (payload.title || '').toString().trim();
+  const titleEn = (payload.titleEn || title).toString().trim() || title;
+  const location = (payload.location || '').toString().trim();
+  const date = (payload.date || '').toString().trim();
+  const url = (payload.url || '').toString().trim();
+  const category = (payload.category || '').toString().trim();
+
+  if (!title) {
+    const error = new Error('A cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!url) {
+    const error = new Error('A dokumentum elérhetősége kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!DOCUMENT_CATEGORIES.has(category)) {
+    const error = new Error('Érvénytelen kategória');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    title,
+    titleEn,
+    location: location || null,
+    date,
+    url,
+    category,
+  };
+}
+
+function normalizeDocumentImportPayload(payload = {}) {
+  const base = normalizeDocumentPayload({ ...payload, url: payload.sourceUrl || payload.url || '' });
+  const targetPath = (payload.targetPath || '').toString().trim().replace(/^\/+/, '').replace(/\/+$/, '');
+
+  if (!targetPath) {
+    const error = new Error('A célútvonal megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    ...base,
+    sourceUrl: (payload.sourceUrl || '').toString().trim(),
+    targetPath,
+  };
+}
+
+async function uploadDocumentFromSource(sourceUrl, targetPath) {
+  if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_KEY) {
+    const error = new Error('A Bunny storage nincs konfigurálva.');
+    error.status = 503;
+    throw error;
+  }
+
+  const downloadResponse = await fetch(sourceUrl);
+  if (!downloadResponse.ok) {
+    const error = new Error('Nem sikerült letölteni a forrásdokumentumot.');
+    error.status = 400;
+    throw error;
+  }
+
+  const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+  const uploadUrl = buildBunnyUrl(targetPath);
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      AccessKey: BUNNY_STORAGE_KEY,
+      'content-type': downloadResponse.headers.get('content-type') || 'application/octet-stream',
+    },
+    body: buffer,
+  });
+
+  if (!uploadResponse.ok) {
+    const error = new Error('Nem sikerült feltölteni a dokumentumot a tárhelyre.');
+    error.status = 502;
+    throw error;
+  }
+
+  return buildBunnyCdnUrl(targetPath) || sourceUrl;
 }
 
 async function resolveNewsCategory(client, payload) {
@@ -1974,6 +2115,19 @@ app.get('/api/page-content/public', async (_req, res) => {
   }
 });
 
+app.get('/api/documents', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM documents ORDER BY event_date DESC NULLS LAST, created_at DESC');
+    return res.status(200).json({ documents: result.rows.map(mapDocumentRow) });
+  } catch (error) {
+    console.error('Fetch documents error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a dokumentumokat.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/page-content', authenticateRequest, async (_req, res) => {
   const client = await pool.connect();
   try {
@@ -1982,6 +2136,19 @@ app.get('/api/page-content', authenticateRequest, async (_req, res) => {
   } catch (error) {
     console.error('Admin page content error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni az oldal tartalmait' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/documents', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM documents ORDER BY event_date DESC NULLS LAST, created_at DESC');
+    return res.status(200).json({ documents: result.rows.map(mapDocumentRow) });
+  } catch (error) {
+    console.error('Admin fetch documents error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a dokumentumokat.' });
   } finally {
     client.release();
   }
@@ -2011,6 +2178,56 @@ app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) =
   } catch (error) {
     console.error('Save page content error', error);
     return res.status(500).json({ message: 'Nem sikerült menteni a tartalmat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/documents/import', authenticateRequest, async (req, res) => {
+  const closingStatements = Array.isArray(req.body?.closingStatements) ? req.body.closingStatements : [];
+  const otherDocuments = Array.isArray(req.body?.documents) ? req.body.documents : [];
+  const combinedPayload = [...closingStatements, ...otherDocuments];
+
+  let normalizedDocuments = [];
+  try {
+    normalizedDocuments = combinedPayload.map(normalizeDocumentImportPayload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Érvénytelen import adatok';
+    return res.status(error.status || 400).json({ message });
+  }
+
+  if (!normalizedDocuments.length) {
+    return res.status(400).json({ message: 'Nincs importálható dokumentum' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM documents');
+
+    const savedDocuments = [];
+
+    for (const doc of normalizedDocuments) {
+      const uploadedUrl = await uploadDocumentFromSource(doc.sourceUrl, doc.targetPath);
+      const normalized = normalizeDocumentPayload({ ...doc, url: uploadedUrl });
+
+      await client.query(
+        `INSERT INTO documents (title, title_en, location, event_date, url, category, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [normalized.title, normalized.titleEn, normalized.location, normalized.date, normalized.url, normalized.category],
+      );
+
+      savedDocuments.push(normalized);
+    }
+
+    await client.query('COMMIT');
+    return res.status(200).json({ documents: savedDocuments });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Import documents error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült importálni a dokumentumokat.';
+    return res.status(status).json({ message });
   } finally {
     client.release();
   }
@@ -3235,6 +3452,14 @@ function buildBunnyUrl(pathname = '/', { directory = false } = {}) {
   return `${base}${encodedPath ? `/${encodedPath}` : ''}${suffix}`;
 }
 
+function buildBunnyCdnUrl(pathname = '/') {
+  if (!BUNNY_CDN_HOSTNAME) return '';
+
+  const cleanedHost = BUNNY_CDN_HOSTNAME.replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+  const encodedPath = encodeBunnyPath(pathname);
+  return encodedPath ? `https://${cleanedHost}/${encodedPath}` : `https://${cleanedHost}`;
+}
+
 const bunnyStorageRouter = express.Router();
 
 bunnyStorageRouter.use(express.raw({ type: '*/*', limit: '200mb' }));
@@ -3356,6 +3581,7 @@ Promise.all([
   ensureProjectsTables(),
   ensureGalleryTables(),
   ensurePageContentTable(),
+  ensureDocumentsTables(),
 ])
   .then(() => {
     app.listen(PORT, () => {

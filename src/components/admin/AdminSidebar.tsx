@@ -21,6 +21,7 @@ import {
   UsersRound,
   MapPin,
   HardDrive,
+  ScrollText,
 } from "lucide-react";
 
 const menuItems = [
@@ -53,6 +54,11 @@ const menuItems = [
     title: "Galéria",
     url: "/admin/gallery",
     icon: Images,
+  },
+  {
+    title: "Dokumentumok",
+    url: "/admin/documents",
+    icon: ScrollText,
   },
   {
     title: "Fájlkezelő",
