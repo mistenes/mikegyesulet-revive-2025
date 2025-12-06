@@ -1,4 +1,3 @@
-import { defaultDocuments } from "@/data/documents";
 import { type Document, type DocumentPayload } from "@/types/documents";
 import { withCsrfHeader } from "@/utils/csrf";
 
@@ -63,9 +62,9 @@ export async function fetchDocuments(): Promise<Document[]> {
     const response = await fetch(`${API_BASE}/api/documents`);
     const data = await handleResponse(response);
     const docs = normalizeDocuments(data);
-    return docs.length ? docs : defaultDocuments;
+    return docs;
   } catch (error) {
-    return defaultDocuments;
+    return [];
   }
 }
 

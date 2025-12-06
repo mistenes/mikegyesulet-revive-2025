@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FileText, Download, Search, Calendar, MapPin } from "lucide-react";
-import { defaultDocuments } from "@/data/documents";
 import { useState, useMemo, useEffect } from "react";
 import { fetchDocuments } from "@/services/documentsService";
 import { type Document } from "@/types/documents";
@@ -14,7 +13,7 @@ export default function Dokumentumok() {
   const { language, t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [documents, setDocuments] = useState<Document[]>(defaultDocuments);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -27,9 +26,7 @@ export default function Dokumentumok() {
         }
       })
       .catch(() => {
-        if (isMounted) {
-          setDocuments(defaultDocuments);
-        }
+        // Keep empty on error to avoid showing outdated hardcoded files
       })
       .finally(() => {
         if (isMounted) {
