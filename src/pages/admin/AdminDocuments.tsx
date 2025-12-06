@@ -33,6 +33,7 @@ const documentsHeaders = {
   name: "dokumentum neve",
   category: "a dokumentum kategóriája",
   pdf: "dokumentum",
+  internalName: "belső név",
 };
 
 function normalizeHeader(value: string) {
@@ -404,14 +405,25 @@ export default function AdminDocuments() {
         })
         .filter(Boolean);
 
+      const existingTitleKeys = new Set(documents.map((doc) => doc.title.toLowerCase().trim()));
+      const duplicateTracker = new Map<string, number>();
+
       const documentPayload = documentRows
         .map((row) => {
           const title = getCsvValue(row, documentsHeaders.name);
           const categoryText = getCsvValue(row, documentsHeaders.category);
           const pdfUrl = getCsvValue(row, documentsHeaders.pdf);
+          const internalName = getCsvValue(row, documentsHeaders.internalName);
           if (!title || !pdfUrl) return null;
 
           const category = mapCategory(categoryText);
+          const normalizedTitle = title.toLowerCase();
+          const currentCount = duplicateTracker.get(normalizedTitle) || 0;
+          duplicateTracker.set(normalizedTitle, currentCount + 1);
+
+          const needsInternalName =
+            Boolean(internalName) && (existingTitleKeys.has(normalizedTitle) || currentCount > 0);
+          const safeTitleForFile = needsInternalName ? `${title} ${internalName}` : title;
 
           return {
             title,
@@ -420,7 +432,7 @@ export default function AdminDocuments() {
             date: "",
             location: "",
             sourceUrl: pdfUrl,
-            targetPath: `dokumentumok/${buildFileName(title)}`,
+            targetPath: `dokumentumok/${buildFileName(safeTitleForFile)}`,
           };
         })
         .filter(Boolean);
