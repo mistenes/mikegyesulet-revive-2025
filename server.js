@@ -2272,13 +2272,14 @@ app.post('/api/admin/documents/import', authenticateRequest, async (req, res) =>
       const uploadedUrl = await uploadDocumentFromSource(doc.sourceUrl, doc.targetPath);
       const normalized = normalizeDocumentPayload({ ...doc, url: uploadedUrl });
 
-      await client.query(
+      const result = await client.query(
         `INSERT INTO documents (title, title_en, location, event_date, url, category, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         RETURNING *`,
         [normalized.title, normalized.titleEn, normalized.location, normalized.date, normalized.url, normalized.category],
       );
 
-      savedDocuments.push(normalized);
+      savedDocuments.push(mapDocumentRow(result.rows[0]));
     }
 
     await client.query('COMMIT');
