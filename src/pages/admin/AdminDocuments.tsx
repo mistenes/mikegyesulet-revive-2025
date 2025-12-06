@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -12,10 +13,12 @@ import {
   type DocumentImportPayload,
   updateDocument,
   createDocument,
+  deleteDocument,
+  uploadDocumentFile,
 } from "@/services/documentsService";
 import { type Document, type DocumentCategory, type DocumentPayload } from "@/types/documents";
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileInput, FileText, ListChecks, Loader2, UploadCloud } from "lucide-react";
+import { AlertTriangle, FileInput, FileText, ListChecks, Loader2, Trash2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 
 type CsvRow = Record<string, string>;
@@ -131,11 +134,15 @@ function normalizeDate(dateValue: string) {
   return raw;
 }
 
-function buildFileName(base: string, date?: string) {
+function getStorageFolder(category: DocumentCategory) {
+  return category === "closing-statement" ? "zaronyilatkozatok" : "dokumentumok";
+}
+
+function buildFileName(base: string, date?: string, extension = "pdf") {
   const baseSlug = slugify(base || "dokumentum") || "dokumentum";
   const dateSlug = date ? slugify(date).replace(/-/g, "") : "";
   const name = [baseSlug, dateSlug].filter(Boolean).join("-");
-  return `${name}.pdf`;
+  return `${name}.${extension.replace(/^\./, "") || "pdf"}`;
 }
 
 function getCsvValue(row: CsvRow, key: string) {
@@ -176,6 +183,10 @@ export default function AdminDocuments() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [newDocument, setNewDocument] = useState<DocumentPayload>({ ...initialNewDocument });
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const newFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     fetchAdminDocuments()
@@ -224,6 +235,12 @@ export default function AdminDocuments() {
     });
   };
 
+  const buildTargetPath = (file: File, payload: DocumentPayload) => {
+    const extension = (file.name.split(".").pop() || "pdf").toLowerCase();
+    const safeBase = payload.title || file.name.replace(/\.[^.]+$/, "");
+    return `${getStorageFolder(payload.category)}/${buildFileName(safeBase, payload.date, extension)}`;
+  };
+
   const normalizePayload = (payload: DocumentPayload | Document): DocumentPayload => ({
     title: payload.title.trim(),
     titleEn: (payload.titleEn || payload.title).trim() || payload.title.trim(),
@@ -270,6 +287,7 @@ export default function AdminDocuments() {
       const created = await createDocument(payload);
       setDocuments((prev) => [created, ...prev]);
       setNewDocument({ ...initialNewDocument });
+      setUploadedFileName(null);
       toast.success("Új dokumentum létrehozva");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nem sikerült létrehozni a dokumentumot";
@@ -277,6 +295,66 @@ export default function AdminDocuments() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleDeleteDocument = async (id?: string) => {
+    if (!id) return;
+
+    setSavingId(id);
+    try {
+      await deleteDocument(id);
+      setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+      toast.success("Dokumentum törölve");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nem sikerült törölni a dokumentumot";
+      toast.error(message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleUploadNewFile = async (file: File | null | undefined) => {
+    if (!file) return;
+    const payload = normalizePayload(newDocument);
+    const targetPath = buildTargetPath(file, payload);
+
+    setUploadingFile(true);
+    try {
+      const url = await uploadDocumentFile(file, targetPath);
+      setNewDocument((prev) => ({ ...prev, url }));
+      setUploadedFileName(file.name);
+      toast.success("Fájl sikeresen feltöltve");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nem sikerült feltölteni a fájlt";
+      toast.error(message);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      void handleUploadNewFile(file);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      void handleUploadNewFile(file);
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!dragActive) setDragActive(true);
+  };
+
+  const handleDragLeave = () => {
+    setDragActive(false);
   };
 
   if (isLoading || !session) {
@@ -484,17 +562,60 @@ export default function AdminDocuments() {
                   />
                 </div>
               </div>
-              <div className="mt-4 flex justify-end">
-                <Button type="button" onClick={handleCreateDocument} disabled={isCreating}>
-                  {isCreating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Mentés...
-                    </>
-                  ) : (
-                    "Dokumentum hozzáadása"
-                  )}
-                </Button>
+              <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                <div
+                  className={`lg:col-span-2 rounded-lg border border-dashed p-4 transition ${dragActive ? "border-primary bg-primary/5" : ""}`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => newFileInputRef.current?.click()}
+                >
+                  <div className="flex items-center gap-3">
+                    <UploadCloud className="h-5 w-5 text-primary" />
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">PDF feltöltése húzással vagy kattintással</div>
+                      <p className="text-xs text-muted-foreground">
+                        A fájl a kiválasztott kategória mappájába kerül: <strong>{getStorageFolder(newDocument.category)}</strong>
+                      </p>
+                      {uploadedFileName ? (
+                        <p className="text-xs text-foreground">Feltöltött fájl: {uploadedFileName}</p>
+                      ) : null}
+                      {uploadingFile ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" /> Feltöltés folyamatban...
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => newFileInputRef.current?.click()}>
+                            Fájl kiválasztása
+                          </Button>
+                          <span className="text-xs text-muted-foreground">PDF vagy egyéb dokumentum</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    ref={newFileInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={handleFileInputChange}
+                  />
+                </div>
+                <div className="flex items-end justify-end">
+                  <Button type="button" onClick={handleCreateDocument} disabled={isCreating || uploadingFile}>
+                    {isCreating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Mentés...
+                      </>
+                    ) : (
+                      "Dokumentum hozzáadása"
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -557,23 +678,44 @@ export default function AdminDocuments() {
                         />
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="text-xs text-muted-foreground">Azonosító: {doc.id || "-"}</div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => handleSaveDocument(doc.id)}
-                          disabled={!doc.id || savingId === doc.id}
-                        >
-                          {savingId === doc.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Mentés...
-                            </>
-                          ) : (
-                            "Módosítás mentése"
-                          )}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteDocument(doc.id)}
+                            disabled={!doc.id || savingId === doc.id}
+                          >
+                            {savingId === doc.id ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Törlés...
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Törlés
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleSaveDocument(doc.id)}
+                            disabled={!doc.id || savingId === doc.id}
+                          >
+                            {savingId === doc.id ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Mentés...
+                              </>
+                            ) : (
+                              "Módosítás mentése"
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))

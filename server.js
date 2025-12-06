@@ -2215,6 +2215,49 @@ app.post('/api/admin/documents', authenticateRequest, async (req, res) => {
   }
 });
 
+app.delete('/api/admin/documents/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const documentId = req.params.id;
+
+  try {
+    const existing = await client.query('SELECT url FROM documents WHERE id = $1 LIMIT 1', [documentId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A dokumentum nem található.' });
+    }
+
+    await client.query('DELETE FROM documents WHERE id = $1', [documentId]);
+
+    const storedUrl = existing.rows[0].url || '';
+    const cdnHost = (BUNNY_CDN_HOSTNAME || '').replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+
+    if (storedUrl && cdnHost && storedUrl.includes(cdnHost) && BUNNY_STORAGE_KEY) {
+      try {
+        const parsed = new URL(storedUrl);
+        const storagePath = decodeURIComponent(parsed.pathname || '').replace(/^\/+/, '');
+        if (storagePath) {
+          await fetch(buildBunnyUrl(storagePath), {
+            method: 'DELETE',
+            headers: {
+              AccessKey: BUNNY_STORAGE_KEY,
+            },
+          });
+        }
+      } catch (cleanupError) {
+        console.error('Optional Bunny cleanup failed', cleanupError);
+      }
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete document error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült törölni a dokumentumot.';
+    return res.status(status).json({ message });
+  } finally {
+    client.release();
+  }
+});
+
 app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const sectionKey = req.params.sectionKey;

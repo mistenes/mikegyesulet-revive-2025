@@ -3,6 +3,7 @@ import { type Document, type DocumentPayload } from "@/types/documents";
 import { withCsrfHeader } from "@/utils/csrf";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const bunnyCdnHost = (import.meta.env.VITE_BUNNY_CDN_HOSTNAME || "").replace(/^https?:\/\//i, "").replace(/\/+$/, "");
 
 type DocumentImportItem = Omit<DocumentPayload, "url"> & {
   sourceUrl: string;
@@ -33,6 +34,12 @@ function normalizeDocuments(payload: unknown): Document[] {
     url: doc.url,
     category: doc.category,
   }));
+}
+
+function buildCdnUrl(path: string) {
+  if (!bunnyCdnHost) return "";
+  const normalized = path.replace(/^\/+/, "");
+  return `https://${bunnyCdnHost}/${normalized}`;
 }
 
 async function handleResponse(response: Response) {
@@ -106,4 +113,30 @@ export async function createDocument(payload: DocumentPayload): Promise<Document
   const data = await handleResponse(response);
   const normalized = normalizeDocuments(data);
   return normalized[0];
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/admin/documents/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: withCsrfHeader(),
+  });
+
+  await handleResponse(response);
+}
+
+export async function uploadDocumentFile(file: File, targetPath: string): Promise<string> {
+  const path = targetPath.replace(/^\/+/, "");
+  const response = await fetch(`/api/bunny/storage?path=/${encodeURIComponent(path)}`, {
+    method: "PUT",
+    body: file,
+    headers: {
+      "content-type": file.type || "application/octet-stream",
+    },
+  });
+
+  await handleResponse(response);
+
+  const cdnUrl = buildCdnUrl(path);
+  return cdnUrl || targetPath;
 }
