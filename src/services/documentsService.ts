@@ -81,3 +81,29 @@ export async function importDocuments(payload: DocumentImportPayload): Promise<D
   const data = await handleResponse(response);
   return normalizeDocuments(data);
 }
+
+export async function updateDocument(id: string, payload: DocumentPayload): Promise<Document> {
+  const response = await fetch(`${API_BASE}/api/admin/documents/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+
+  const data = await handleResponse(response);
+  const normalized = normalizeDocuments(data);
+  return normalized[0];
+}
+
+export async function createDocument(payload: DocumentPayload): Promise<Document> {
+  const response = await fetch(`${API_BASE}/api/admin/documents`, {
+    method: "POST",
+    credentials: "include",
+    headers: withCsrfHeader({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+
+  const data = await handleResponse(response);
+  const normalized = normalizeDocuments(data);
+  return normalized[0];
+}

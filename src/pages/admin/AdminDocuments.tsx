@@ -6,8 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
-import { importDocuments, fetchAdminDocuments, type DocumentImportPayload } from "@/services/documentsService";
-import { type Document, type DocumentCategory } from "@/types/documents";
+import {
+  importDocuments,
+  fetchAdminDocuments,
+  type DocumentImportPayload,
+  updateDocument,
+  createDocument,
+} from "@/services/documentsService";
+import { type Document, type DocumentCategory, type DocumentPayload } from "@/types/documents";
 import { Separator } from "@/components/ui/separator";
 import { AlertTriangle, FileInput, FileText, ListChecks, Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
@@ -144,22 +150,41 @@ function mapCategory(value: string): DocumentCategory {
   return "other";
 }
 
+const initialNewDocument: DocumentPayload = {
+  title: "",
+  titleEn: "",
+  location: "",
+  date: "",
+  url: "",
+  category: "other",
+};
+
+const categoryOptions: { value: DocumentCategory; label: string }[] = [
+  { value: "closing-statement", label: "Zárónyilatkozat" },
+  { value: "statute", label: "Alapszabály" },
+  { value: "founding", label: "Alapító nyilatkozat" },
+  { value: "other", label: "Egyéb" },
+];
+
 export default function AdminDocuments() {
   const { isLoading, session } = useAdminAuthGuard();
   const [closingFile, setClosingFile] = useState<File | null>(null);
   const [documentsFile, setDocumentsFile] = useState<File | null>(null);
-  const [existingDocuments, setExistingDocuments] = useState<Document[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [parsedCounts, setParsedCounts] = useState({ closing: 0, documents: 0 });
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newDocument, setNewDocument] = useState<DocumentPayload>({ ...initialNewDocument });
 
   useEffect(() => {
     fetchAdminDocuments()
-      .then(setExistingDocuments)
-      .catch(() => setExistingDocuments([]));
+      .then(setDocuments)
+      .catch(() => setDocuments([]));
   }, []);
 
   const grouped = useMemo(() => {
-    return existingDocuments.reduce(
+    return documents.reduce(
       (acc, doc) => {
         if (doc.category === "closing-statement") {
           acc.closing += 1;
@@ -174,7 +199,85 @@ export default function AdminDocuments() {
       },
       { closing: 0, other: 0, statute: 0, founding: 0 },
     );
-  }, [existingDocuments]);
+  }, [documents]);
+
+  const updateDocumentField = (id: string | undefined, field: keyof Document, value: string | DocumentCategory) => {
+    setDocuments((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== id) return doc;
+        const updated = { ...doc, [field]: value } as Document;
+        if (field === "title" && (!doc.titleEn || doc.titleEn === doc.title)) {
+          updated.titleEn = value as string;
+        }
+        return updated;
+      }),
+    );
+  };
+
+  const handleNewDocumentChange = (field: keyof DocumentPayload, value: string | DocumentCategory) => {
+    setNewDocument((prev) => {
+      const updated = { ...prev, [field]: value } as DocumentPayload;
+      if (field === "title" && (!prev.titleEn || prev.titleEn === prev.title)) {
+        updated.titleEn = value as string;
+      }
+      return updated;
+    });
+  };
+
+  const normalizePayload = (payload: DocumentPayload | Document): DocumentPayload => ({
+    title: payload.title.trim(),
+    titleEn: (payload.titleEn || payload.title).trim() || payload.title.trim(),
+    location: (payload.location || "").trim(),
+    date: (payload.date || "").trim(),
+    url: payload.url.trim(),
+    category: payload.category,
+  });
+
+  const handleSaveDocument = async (id?: string) => {
+    if (!id) return;
+
+    const target = documents.find((doc) => doc.id === id);
+    if (!target) return;
+
+    const payload = normalizePayload(target);
+    if (!payload.title || !payload.url) {
+      toast.error("A cím és az URL megadása kötelező");
+      return;
+    }
+
+    setSavingId(id);
+    try {
+      const updated = await updateDocument(id, payload);
+      setDocuments((prev) => prev.map((doc) => (doc.id === id ? updated : doc)));
+      toast.success("Dokumentum frissítve");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nem sikerült frissíteni a dokumentumot";
+      toast.error(message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleCreateDocument = async () => {
+    const payload = normalizePayload(newDocument);
+    if (!payload.title || !payload.url) {
+      toast.error("A cím és az URL megadása kötelező");
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const created = await createDocument(payload);
+      setDocuments((prev) => [created, ...prev]);
+      setNewDocument({ ...initialNewDocument });
+      toast.success("Új dokumentum létrehozva");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nem sikerült létrehozni a dokumentumot";
+      toast.error(message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   if (isLoading || !session) {
     return (
@@ -255,7 +358,7 @@ export default function AdminDocuments() {
       }
 
       const result = await importDocuments(payload);
-      setExistingDocuments(result);
+      setDocuments(result);
       setParsedCounts({ closing: payload.closingStatements.length, documents: payload.documents.length });
       toast.success("Dokumentumok sikeresen importálva");
     } catch (error) {
@@ -321,6 +424,161 @@ export default function AdminDocuments() {
                 Alapító nyilatkozat
               </div>
               <div className="mt-2 text-2xl font-bold">{grouped.founding}</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Dokumentumok szerkesztése</CardTitle>
+            <CardDescription>Meglévő elemek módosítása és új dokumentumok rögzítése.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="rounded-lg border p-4">
+              <div className="mb-4 font-semibold">Új dokumentum hozzáadása</div>
+              <div className="grid gap-3 lg:grid-cols-5">
+                <div className="space-y-2 lg:col-span-2">
+                  <label className="text-sm font-medium">Cím</label>
+                  <Input
+                    value={newDocument.title}
+                    onChange={(event) => handleNewDocumentChange("title", event.target.value)}
+                    placeholder="Dokumentum címe"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Helyszín (opcionális)</label>
+                  <Input
+                    value={newDocument.location}
+                    onChange={(event) => handleNewDocumentChange("location", event.target.value)}
+                    placeholder="Pl. Budapest"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Dátum</label>
+                  <Input
+                    value={newDocument.date}
+                    onChange={(event) => handleNewDocumentChange("date", event.target.value)}
+                    placeholder="ÉÉÉÉ-HH-NN"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Kategória</label>
+                  <select
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={newDocument.category}
+                    onChange={(event) => handleNewDocumentChange("category", event.target.value as DocumentCategory)}
+                  >
+                    {categoryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2 lg:col-span-2">
+                  <label className="text-sm font-medium">URL</label>
+                  <Input
+                    value={newDocument.url}
+                    onChange={(event) => handleNewDocumentChange("url", event.target.value)}
+                    placeholder="https://..."
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button type="button" onClick={handleCreateDocument} disabled={isCreating}>
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Mentés...
+                    </>
+                  ) : (
+                    "Dokumentum hozzáadása"
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                A módosítások azonnal mentésre kerülnek az aktuális adatbázisba.
+              </div>
+              <div className="space-y-3">
+                {documents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nincs megjeleníthető dokumentum.</p>
+                ) : (
+                  documents.map((doc) => (
+                    <div key={doc.id || doc.title} className="rounded-lg border p-4 space-y-3">
+                      <div className="grid gap-3 lg:grid-cols-6">
+                        <div className="space-y-2 lg:col-span-2">
+                          <label className="text-sm font-medium">Cím</label>
+                      <Input
+                        value={doc.title}
+                        onChange={(event) => updateDocumentField(doc.id, "title", event.target.value)}
+                      />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Helyszín</label>
+                      <Input
+                        value={doc.location || ""}
+                        onChange={(event) => updateDocumentField(doc.id, "location", event.target.value)}
+                        placeholder="Opcionális"
+                      />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Dátum</label>
+                      <Input
+                        value={doc.date || ""}
+                        onChange={(event) => updateDocumentField(doc.id, "date", event.target.value)}
+                        placeholder="ÉÉÉÉ-HH-NN"
+                      />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Kategória</label>
+                          <select
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            value={doc.category}
+                            onChange={(event) => updateDocumentField(doc.id, "category", event.target.value as DocumentCategory)}
+                          >
+                            {categoryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2 lg:col-span-2">
+                          <label className="text-sm font-medium">URL</label>
+                        <Input
+                          value={doc.url}
+                          onChange={(event) => updateDocumentField(doc.id, "url", event.target.value)}
+                          placeholder="https://..."
+                        />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-muted-foreground">Azonosító: {doc.id || "-"}</div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleSaveDocument(doc.id)}
+                          disabled={!doc.id || savingId === doc.id}
+                        >
+                          {savingId === doc.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Mentés...
+                            </>
+                          ) : (
+                            "Módosítás mentése"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

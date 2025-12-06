@@ -2154,6 +2154,67 @@ app.get('/api/admin/documents', authenticateRequest, async (_req, res) => {
   }
 });
 
+app.put('/api/admin/documents/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const documentId = req.params.id;
+
+  try {
+    const payload = normalizeDocumentPayload(req.body);
+
+    const existing = await client.query('SELECT id FROM documents WHERE id = $1 LIMIT 1', [documentId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A dokumentum nem található.' });
+    }
+
+    const result = await client.query(
+      `UPDATE documents
+       SET title = $1,
+           title_en = $2,
+           location = $3,
+           event_date = $4,
+           url = $5,
+           category = $6,
+           updated_at = NOW()
+       WHERE id = $7
+       RETURNING *`,
+      [payload.title, payload.titleEn, payload.location, payload.date, payload.url, payload.category, documentId],
+    );
+
+    return res.status(200).json({ documents: [mapDocumentRow(result.rows[0])] });
+  } catch (error) {
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült frissíteni a dokumentumot.';
+    console.error('Update document error', error);
+    return res.status(status).json({ message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/documents', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const payload = normalizeDocumentPayload(req.body);
+
+    const result = await client.query(
+      `INSERT INTO documents (title, title_en, location, event_date, url, category)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [payload.title, payload.titleEn, payload.location, payload.date, payload.url, payload.category],
+    );
+
+    return res.status(201).json({ documents: [mapDocumentRow(result.rows[0])] });
+  } catch (error) {
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült létrehozni a dokumentumot.';
+    console.error('Create document error', error);
+    return res.status(status).json({ message });
+  } finally {
+    client.release();
+  }
+});
+
 app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   const sectionKey = req.params.sectionKey;
