@@ -322,7 +322,7 @@ export default function Dokumentumok() {
 
       {(selectedCategory === "all" || selectedCategory === "other") && otherDocs.length > 0 && (
         <section className="py-12 px-4">
-          <div className="container mx-auto max-w-4xl">
+          <div className="container mx-auto max-w-6xl">
             <Card className="border-border/50 shadow-lg">
               <CardContent className="p-8 space-y-6">
                 <div>
