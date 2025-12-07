@@ -174,6 +174,13 @@ const categoryOptions: { value: DocumentCategory; label: string }[] = [
   { value: "other", label: "Egyéb" },
 ];
 
+const categoryDisplayOrder: DocumentCategory[] = [
+  "statute",
+  "founding",
+  "other",
+  "closing-statement",
+];
+
 export default function AdminDocuments() {
   const { isLoading, session } = useAdminAuthGuard();
   const [closingFile, setClosingFile] = useState<File | null>(null);
@@ -212,6 +219,36 @@ export default function AdminDocuments() {
       { closing: 0, other: 0, statute: 0, founding: 0 },
     );
   }, [documents]);
+
+  const documentsByCategory = useMemo(
+    () =>
+      categoryDisplayOrder.reduce(
+        (acc, category) => {
+          const sorted = [...documents]
+            .filter((doc) => doc.category === category)
+            .sort((a, b) => b.date.localeCompare(a.date));
+
+          acc[category] = sorted;
+          return acc;
+        },
+        {
+          "closing-statement": [],
+          founding: [],
+          other: [],
+          statute: [],
+        } as Record<DocumentCategory, Document[]>,
+      ),
+    [documents],
+  );
+
+  const categoryLabelMap = useMemo(
+    () =>
+      categoryOptions.reduce((acc, option) => {
+        acc[option.value] = option.label;
+        return acc;
+      }, {} as Record<DocumentCategory, string>),
+    [],
+  );
 
   const updateDocumentField = (id: string | undefined, field: keyof Document, value: string | DocumentCategory) => {
     setDocuments((prev) =>
@@ -637,101 +674,117 @@ export default function AdminDocuments() {
               <div className="text-sm text-muted-foreground">
                 A módosítások azonnal mentésre kerülnek az aktuális adatbázisba.
               </div>
-              <div className="space-y-3">
-                {documents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nincs megjeleníthető dokumentum.</p>
-                ) : (
-                  documents.map((doc) => (
-                    <div key={doc.id || doc.title} className="rounded-lg border p-4 space-y-3">
-                      <div className="grid gap-3 lg:grid-cols-6">
-                        <div className="space-y-2 lg:col-span-2">
-                          <label className="text-sm font-medium">Cím</label>
-                      <Input
-                        value={doc.title}
-                        onChange={(event) => updateDocumentField(doc.id, "title", event.target.value)}
-                      />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Helyszín</label>
-                      <Input
-                        value={doc.location || ""}
-                        onChange={(event) => updateDocumentField(doc.id, "location", event.target.value)}
-                        placeholder="Opcionális"
-                      />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Dátum</label>
-                      <Input
-                        value={doc.date || ""}
-                        onChange={(event) => updateDocumentField(doc.id, "date", event.target.value)}
-                        placeholder="ÉÉÉÉ-HH-NN"
-                      />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Kategória</label>
-                          <select
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            value={doc.category}
-                            onChange={(event) => updateDocumentField(doc.id, "category", event.target.value as DocumentCategory)}
-                          >
-                            {categoryOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-2 lg:col-span-2">
-                          <label className="text-sm font-medium">URL</label>
-                        <Input
-                          value={doc.url}
-                          onChange={(event) => updateDocumentField(doc.id, "url", event.target.value)}
-                          placeholder="https://..."
-                        />
-                        </div>
+              <div className="space-y-5">
+                {categoryDisplayOrder.map((category) => {
+                  const docs = documentsByCategory[category];
+                  if (!docs.length) return null;
+
+                  return (
+                    <div key={category} className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-lg font-semibold">{categoryLabelMap[category]}</h3>
+                        <Badge variant="outline">{docs.length} db</Badge>
                       </div>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xs text-muted-foreground">Azonosító: {doc.id || "-"}</div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteDocument(doc.id)}
-                            disabled={!doc.id || savingId === doc.id}
-                          >
-                            {savingId === doc.id ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Törlés...
-                              </>
-                            ) : (
-                              <>
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Törlés
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleSaveDocument(doc.id)}
-                            disabled={!doc.id || savingId === doc.id}
-                          >
-                            {savingId === doc.id ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Mentés...
-                              </>
-                            ) : (
-                              "Módosítás mentése"
-                            )}
-                          </Button>
-                        </div>
+
+                      <div className="space-y-3">
+                        {docs.map((doc) => (
+                          <div key={doc.id || doc.title} className="rounded-lg border p-4 space-y-3">
+                            <div className="grid gap-3 lg:grid-cols-6">
+                              <div className="space-y-2 lg:col-span-2">
+                                <label className="text-sm font-medium">Cím</label>
+                                <Input
+                                  value={doc.title}
+                                  onChange={(event) => updateDocumentField(doc.id, "title", event.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Helyszín</label>
+                                <Input
+                                  value={doc.location || ""}
+                                  onChange={(event) => updateDocumentField(doc.id, "location", event.target.value)}
+                                  placeholder="Opcionális"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Dátum</label>
+                                <Input
+                                  value={doc.date || ""}
+                                  onChange={(event) => updateDocumentField(doc.id, "date", event.target.value)}
+                                  placeholder="ÉÉÉÉ-HH-NN"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Kategória</label>
+                                <select
+                                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  value={doc.category}
+                                  onChange={(event) => updateDocumentField(doc.id, "category", event.target.value as DocumentCategory)}
+                                >
+                                  {categoryOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="space-y-2 lg:col-span-2">
+                                <label className="text-sm font-medium">URL</label>
+                                <Input
+                                  value={doc.url}
+                                  onChange={(event) => updateDocumentField(doc.id, "url", event.target.value)}
+                                  placeholder="https://..."
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="text-xs text-muted-foreground">Azonosító: {doc.id || "-"}</div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteDocument(doc.id)}
+                                  disabled={!doc.id || savingId === doc.id}
+                                >
+                                  {savingId === doc.id ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Törlés...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Törlés
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleSaveDocument(doc.id)}
+                                  disabled={!doc.id || savingId === doc.id}
+                                >
+                                  {savingId === doc.id ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Mentés...
+                                    </>
+                                  ) : (
+                                    "Módosítás mentése"
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))
-                )}
+                  );
+                })}
+
+                {documents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nincs megjeleníthető dokumentum.</p>
+                ) : null}
               </div>
             </div>
           </CardContent>
