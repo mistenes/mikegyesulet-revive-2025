@@ -895,6 +895,48 @@ function normalizeDocumentImportPayload(payload = {}) {
   };
 }
 
+function extractStoragePath(url = '') {
+  const raw = (url || '').toString().trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    return parsed.pathname.replace(/^\/+/, '');
+  } catch (error) {
+    // If it's not a valid URL, try to strip a potential host manually
+  }
+
+  return raw.replace(/^https?:\/\/[^/]+\//i, '').replace(/^\/+/, '');
+}
+
+function buildUniqueTargetPath(targetPath = '', usedPaths = new Set()) {
+  const cleaned = targetPath.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!cleaned) return '';
+
+  if (!usedPaths.has(cleaned)) {
+    usedPaths.add(cleaned);
+    return cleaned;
+  }
+
+  const lastSlash = cleaned.lastIndexOf('/');
+  const directory = lastSlash >= 0 ? cleaned.slice(0, lastSlash + 1) : '';
+  const fileName = lastSlash >= 0 ? cleaned.slice(lastSlash + 1) : cleaned;
+  const dotIndex = fileName.lastIndexOf('.');
+  const baseName = dotIndex >= 0 ? fileName.slice(0, dotIndex) : fileName;
+  const extension = dotIndex >= 0 ? fileName.slice(dotIndex) : '';
+
+  let counter = 2;
+  let candidate = cleaned;
+
+  while (usedPaths.has(candidate)) {
+    candidate = `${directory}${baseName}-${counter}${extension}`;
+    counter += 1;
+  }
+
+  usedPaths.add(candidate);
+  return candidate;
+}
+
 async function uploadDocumentFromSource(sourceUrl, targetPath) {
   if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_KEY) {
     const error = new Error('A Bunny storage nincs konfigurálva.');
@@ -2307,12 +2349,19 @@ app.post('/api/admin/documents/import', authenticateRequest, async (req, res) =>
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM documents');
+    const existingTargetPaths = new Set();
 
-    const savedDocuments = [];
+    const existingDocuments = await client.query('SELECT url FROM documents');
+    existingDocuments.rows.forEach((row) => {
+      const storagePath = extractStoragePath(row.url);
+      if (storagePath) {
+        existingTargetPaths.add(storagePath);
+      }
+    });
 
     for (const doc of normalizedDocuments) {
-      const uploadedUrl = await uploadDocumentFromSource(doc.sourceUrl, doc.targetPath);
+      const uniqueTargetPath = buildUniqueTargetPath(doc.targetPath, existingTargetPaths);
+      const uploadedUrl = await uploadDocumentFromSource(doc.sourceUrl, uniqueTargetPath);
       const normalized = normalizeDocumentPayload({ ...doc, url: uploadedUrl });
 
       const result = await client.query(
@@ -2321,12 +2370,13 @@ app.post('/api/admin/documents/import', authenticateRequest, async (req, res) =>
          RETURNING *`,
         [normalized.title, normalized.titleEn, normalized.location, normalized.date, normalized.url, normalized.category],
       );
-
-      savedDocuments.push(mapDocumentRow(result.rows[0]));
     }
 
     await client.query('COMMIT');
-    return res.status(200).json({ documents: savedDocuments });
+    const allDocuments = await client.query(
+      'SELECT * FROM documents ORDER BY event_date DESC NULLS LAST, created_at DESC',
+    );
+    return res.status(200).json({ documents: allDocuments.rows.map(mapDocumentRow) });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Import documents error', error);

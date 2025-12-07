@@ -339,7 +339,7 @@ export default function Dokumentumok() {
                   </p>
                 </div>
 
-                <div className="grid gap-4 pt-4">
+                <div className="grid gap-6 pt-4 md:grid-cols-2 lg:grid-cols-3">
                   {otherDocs.map((doc, index) => (
                     <Card
                       key={index}
