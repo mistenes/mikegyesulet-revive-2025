@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node node_modules/vite/bin/vite.js",
-    "build": "node node_modules/vite/bin/vite.js build",
-    "build:dev": "node node_modules/vite/bin/vite.js build --mode development",
+    "dev": "node scripts/ensure-vite.js && node node_modules/vite/bin/vite.js",
+    "build": "node scripts/ensure-vite.js && node node_modules/vite/bin/vite.js build",
+    "build:dev": "node scripts/ensure-vite.js && node node_modules/vite/bin/vite.js build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.js",
