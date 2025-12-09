@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, DragEvent, ClipboardEvent } from "react";
+import type { ChangeEvent, DragEvent } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -14,13 +17,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
+  Bold,
   Calendar,
+  Code,
   Eye,
-  Folder,
   FileSpreadsheet,
+  Folder,
   GripVertical,
+  Heading1,
+  Heading2,
+  Heading3,
+  Heading4,
   Image as ImageIcon,
   Italic,
+  List,
+  ListOrdered,
   Loader2,
   Pencil,
   Plus,
@@ -95,6 +106,85 @@ const createEmptyNews = (): NewsFormState => ({
   },
 });
 
+const convertHtmlToMarkdown = (html: string) => {
+  if (typeof window === "undefined" || !html.trim()) {
+    return { markdown: html.trim(), text: html.trim() };
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return (node.textContent || "").replace(/\s+/g, " ");
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+    const element = node as HTMLElement;
+    const children = Array.from(element.childNodes)
+      .map((child) => walk(child))
+      .filter(Boolean);
+    const content = children.join("");
+
+    switch (element.tagName.toLowerCase()) {
+      case "br":
+        return "\n";
+      case "p":
+      case "div":
+        return `${content}\n\n`;
+      case "h1":
+        return `# ${content}\n\n`;
+      case "h2":
+        return `## ${content}\n\n`;
+      case "h3":
+        return `### ${content}\n\n`;
+      case "h4":
+        return `#### ${content}\n\n`;
+      case "h5":
+        return `##### ${content}\n\n`;
+      case "h6":
+        return `###### ${content}\n\n`;
+      case "strong":
+      case "b":
+        return `**${content}**`;
+      case "em":
+      case "i":
+        return `*${content}*`;
+      case "ul":
+        return `${Array.from(element.children)
+          .map((child) => `- ${walk(child)}`)
+          .join("\n")}\n\n`;
+      case "ol":
+        return `${Array.from(element.children)
+          .map((child, index) => `${index + 1}. ${walk(child)}`)
+          .join("\n")}\n\n`;
+      case "li":
+        return `${content}\n`;
+      case "a": {
+        const href = element.getAttribute("href") || "";
+        return href ? `[${content}](${href})` : content;
+      }
+      case "img": {
+        const src = element.getAttribute("src") || "";
+        const alt = element.getAttribute("alt") || content || "";
+        return src ? `![${alt}](${src})` : alt;
+      }
+      case "code":
+        return `\`${content}\``;
+      case "pre":
+        return content ? `\n\n\`\`\`${content}\`\`\`\n\n` : "";
+      default:
+        return content;
+    }
+  };
+
+  const markdown = walk(doc.body).replace(/\n{3,}/g, "\n\n").trim();
+  const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+
+  return { markdown, text };
+};
+
 type NewsRichTextEditorProps = {
   value: string;
   onChange: (value: string) => void;
@@ -104,49 +194,41 @@ type NewsRichTextEditorProps = {
 };
 
 function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: NewsRichTextEditorProps) {
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const [htmlValue, setHtmlValue] = useState(() => (value ? renderMarkdown(value) : ""));
-  const lastValueRef = useRef(value);
-  const [isFocused, setIsFocused] = useState(false);
+  const lastMarkdownRef = useRef(value);
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3, 4] },
+        bulletList: { HTMLAttributes: { class: "list-disc pl-5" } },
+        orderedList: { HTMLAttributes: { class: "list-decimal pl-5" } },
+        codeBlock: { HTMLAttributes: { class: "rounded-md bg-muted/60 p-3 font-mono text-sm" } },
+      }),
+      Placeholder.configure({ placeholder: placeholder || "Írd be a tartalmat" }),
+    ],
+    content: value ? renderMarkdown(value) : "",
+    editable: !disabled,
+    onUpdate: ({ editor: instance }) => {
+      const html = instance.getHTML();
+      const { markdown } = convertHtmlToMarkdown(html);
+      if (markdown === lastMarkdownRef.current) return;
+      lastMarkdownRef.current = markdown;
+      onChange(markdown);
+    },
+  });
 
   useEffect(() => {
-    if (value === lastValueRef.current) return;
-    const nextHtml = value ? renderMarkdown(value) : "";
-    lastValueRef.current = value;
-    setHtmlValue(nextHtml);
-    if (editorRef.current && editorRef.current.innerHTML !== nextHtml) {
-      editorRef.current.innerHTML = nextHtml;
-    }
-  }, [value]);
+    if (!editor) return;
+    if (value === lastMarkdownRef.current) return;
+    const html = value ? renderMarkdown(value) : "";
+    lastMarkdownRef.current = value;
+    editor.commands.setContent(html || "", false);
+  }, [editor, value]);
 
-  const syncFromDom = () => {
-    const currentHtml = editorRef.current?.innerHTML || "";
-    const { markdown } = convertHtmlToMarkdown(currentHtml);
-    lastValueRef.current = markdown;
-    setHtmlValue(currentHtml);
-    onChange(markdown);
-  };
+  useEffect(() => {
+    editor?.setEditable(!disabled);
+  }, [disabled, editor]);
 
-  const applyCommand = (command: string, argument?: string) => {
-    if (disabled) return;
-    document.execCommand(command, false, argument);
-    syncFromDom();
-  };
-
-  const applyBlock = (tag: string) => {
-    if (disabled) return;
-    document.execCommand("formatBlock", false, tag);
-    syncFromDom();
-  };
-
-  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const text = event.clipboardData?.getData("text/plain") || "";
-    document.execCommand("insertText", false, text);
-    syncFromDom();
-  };
-
-  const handleInput = () => syncFromDom();
+  const isActive = (name: string, attrs?: Record<string, unknown>) => editor?.isActive(name, attrs);
 
   return (
     <div className="space-y-2">
@@ -155,121 +237,100 @@ function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: N
         <div className="flex flex-wrap items-center gap-1">
           <Button
             type="button"
-            variant="outline"
+            variant={isActive("bold") ? "secondary" : "outline"}
             size="icon"
             className="h-8 w-8"
-            onClick={() => applyCommand("bold")}
+            onClick={() => editor?.chain().focus().toggleBold().run()}
             aria-label="Félkövér"
+            disabled={!editor || disabled}
           >
-            <strong>B</strong>
+            <Bold className="h-4 w-4" />
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant={isActive("italic") ? "secondary" : "outline"}
             size="icon"
             className="h-8 w-8"
-            onClick={() => applyCommand("italic")}
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
             aria-label="Dőlt"
+            disabled={!editor || disabled}
           >
             <Italic className="h-4 w-4" />
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant={isActive("strike") ? "secondary" : "outline"}
             size="icon"
             className="h-8 w-8"
-            onClick={() => applyCommand("underline")}
-            aria-label="Aláhúzás"
-          >
-            <u>U</u>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => applyCommand("strikeThrough")}
+            onClick={() => editor?.chain().focus().toggleStrike().run()}
             aria-label="Áthúzás"
+            disabled={!editor || disabled}
           >
             <Strikethrough className="h-4 w-4" />
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant={isActive("bulletList") ? "secondary" : "outline"}
             size="icon"
             className="h-8 w-8"
-            onClick={() => applyCommand("insertUnorderedList")}
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}
             aria-label="Felsorolás"
+            disabled={!editor || disabled}
           >
-            <span className="text-xs">• • •</span>
+            <List className="h-4 w-4" />
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant={isActive("orderedList") ? "secondary" : "outline"}
             size="icon"
             className="h-8 w-8"
-            onClick={() => applyCommand("insertOrderedList")}
+            onClick={() => editor?.chain().focus().toggleOrderedList().run()}
             aria-label="Számozás"
+            disabled={!editor || disabled}
           >
-            <span className="text-xs">1. 2. 3.</span>
+            <ListOrdered className="h-4 w-4" />
           </Button>
-          {["h1", "h2", "h3", "h4"].map((level) => (
+          {[1, 2, 3, 4].map((level) => (
             <Button
               key={level}
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => applyBlock(level)}
-              aria-label={`Címsor ${level.toUpperCase()}`}
+              variant={isActive("heading", { level }) ? "secondary" : "outline"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => editor?.chain().focus().toggleHeading({ level }).run()}
+              aria-label={`Címsor ${level}`}
+              disabled={!editor || disabled}
             >
-              {level.toUpperCase()}
+              {level === 1 && <Heading1 className="h-4 w-4" />}
+              {level === 2 && <Heading2 className="h-4 w-4" />}
+              {level === 3 && <Heading3 className="h-4 w-4" />}
+              {level === 4 && <Heading4 className="h-4 w-4" />}
             </Button>
           ))}
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => applyBlock("pre")}
+            variant={isActive("codeBlock") ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
             aria-label="Kódrészlet"
+            disabled={!editor || disabled}
           >
-            Kód
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8"
-            onClick={() => applyCommand("removeFormat")}
-            aria-label="Formázás törlése"
-          >
-            Formázás törlése
+            <Code className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       <div
-        ref={editorRef}
         className={cn(
-          "min-h-[260px] w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed shadow-sm transition focus-within:outline-none",
+          "min-h-[260px] w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm",
           disabled && "bg-muted/50 text-muted-foreground",
-          isFocused && "ring-2 ring-ring",
           "prose prose-sm max-w-none"
         )}
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        onInput={handleInput}
-        onPaste={handlePaste}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        data-placeholder={placeholder}
-        dangerouslySetInnerHTML={{ __html: htmlValue || "" }}
-        style={{ whiteSpace: "pre-wrap" }}
-      />
-      {!value?.trim() && !htmlValue && placeholder ? (
-        <p className="text-xs text-muted-foreground">{placeholder}</p>
-      ) : null}
+      >
+        <EditorContent editor={editor} />
+      </div>
+      {!value?.trim() && placeholder ? <p className="text-xs text-muted-foreground">{placeholder}</p> : null}
     </div>
   );
 }
@@ -393,85 +454,6 @@ export default function AdminNewsNewArticle() {
     }
 
     return "";
-  };
-
-  const convertHtmlToMarkdown = (html: string) => {
-    if (typeof window === "undefined" || !html.trim()) {
-      return { markdown: html.trim(), text: html.trim() };
-    }
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
-
-    const walk = (node: Node): string => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        return (node.textContent || "").replace(/\s+/g, " ");
-      }
-
-      if (node.nodeType !== Node.ELEMENT_NODE) return "";
-
-      const element = node as HTMLElement;
-      const children = Array.from(element.childNodes)
-        .map((child) => walk(child))
-        .filter(Boolean);
-      const content = children.join("");
-
-      switch (element.tagName.toLowerCase()) {
-        case "br":
-          return "\n";
-        case "p":
-        case "div":
-          return `${content}\n\n`;
-        case "h1":
-          return `# ${content}\n\n`;
-        case "h2":
-          return `## ${content}\n\n`;
-        case "h3":
-          return `### ${content}\n\n`;
-        case "h4":
-          return `#### ${content}\n\n`;
-        case "h5":
-          return `##### ${content}\n\n`;
-        case "h6":
-          return `###### ${content}\n\n`;
-        case "strong":
-        case "b":
-          return `**${content}**`;
-        case "em":
-        case "i":
-          return `*${content}*`;
-        case "ul":
-          return `${Array.from(element.children)
-            .map((child) => `- ${walk(child)}`)
-            .join("\n")}\n\n`;
-        case "ol":
-          return `${Array.from(element.children)
-            .map((child, index) => `${index + 1}. ${walk(child)}`)
-            .join("\n")}\n\n`;
-        case "li":
-          return `${content}\n`;
-        case "a": {
-          const href = element.getAttribute("href") || "";
-          return href ? `[${content}](${href})` : content;
-        }
-        case "img": {
-          const src = element.getAttribute("src") || "";
-          const alt = element.getAttribute("alt") || content || "";
-          return src ? `![${alt}](${src})` : alt;
-        }
-        case "code":
-          return `\`${content}\``;
-        case "pre":
-          return content ? `\n\n\`\`\`${content}\`\`\`\n\n` : "";
-        default:
-          return content;
-      }
-    };
-
-    const markdown = walk(doc.body).replace(/\n{3,}/g, "\n\n").trim();
-    const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
-
-    return { markdown, text };
   };
 
   const buildFileNameFromUrl = (url: string, fallback: string) => {
