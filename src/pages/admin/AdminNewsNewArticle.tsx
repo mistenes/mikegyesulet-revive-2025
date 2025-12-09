@@ -21,7 +21,6 @@ import {
   GripVertical,
   Image as ImageIcon,
   Italic,
-  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -96,7 +95,7 @@ const createEmptyNews = (): NewsFormState => ({
   },
 });
 
-type RichTextEditorProps = {
+type NewsRichTextEditorProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -104,7 +103,7 @@ type RichTextEditorProps = {
   label?: string;
 };
 
-function RichTextEditor({ value, onChange, placeholder, disabled, label }: RichTextEditorProps) {
+function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: NewsRichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [htmlValue, setHtmlValue] = useState(() => (value ? renderMarkdown(value) : ""));
   const lastValueRef = useRef(value);
@@ -120,9 +119,7 @@ function RichTextEditor({ value, onChange, placeholder, disabled, label }: RichT
     }
   }, [value]);
 
-  const applyCommand = (command: string, argument?: string) => {
-    if (disabled) return;
-    document.execCommand(command, false, argument);
+  const syncFromDom = () => {
     const currentHtml = editorRef.current?.innerHTML || "";
     const { markdown } = convertHtmlToMarkdown(currentHtml);
     lastValueRef.current = markdown;
@@ -130,20 +127,26 @@ function RichTextEditor({ value, onChange, placeholder, disabled, label }: RichT
     onChange(markdown);
   };
 
-  const handleInput = () => {
-    if (!editorRef.current) return;
-    const currentHtml = editorRef.current.innerHTML;
-    const { markdown } = convertHtmlToMarkdown(currentHtml);
-    lastValueRef.current = markdown;
-    setHtmlValue(currentHtml);
-    onChange(markdown);
+  const applyCommand = (command: string, argument?: string) => {
+    if (disabled) return;
+    document.execCommand(command, false, argument);
+    syncFromDom();
+  };
+
+  const applyBlock = (tag: string) => {
+    if (disabled) return;
+    document.execCommand("formatBlock", false, tag);
+    syncFromDom();
   };
 
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
     const text = event.clipboardData?.getData("text/plain") || "";
     document.execCommand("insertText", false, text);
+    syncFromDom();
   };
+
+  const handleInput = () => syncFromDom();
 
   return (
     <div className="space-y-2">
@@ -210,20 +213,28 @@ function RichTextEditor({ value, onChange, placeholder, disabled, label }: RichT
           >
             <span className="text-xs">1. 2. 3.</span>
           </Button>
+          {["h1", "h2", "h3", "h4"].map((level) => (
+            <Button
+              key={level}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => applyBlock(level)}
+              aria-label={`Címsor ${level.toUpperCase()}`}
+            >
+              {level.toUpperCase()}
+            </Button>
+          ))}
           <Button
             type="button"
             variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => {
-              const url = window.prompt("Add meg a hivatkozás címét");
-              if (url) {
-                applyCommand("createLink", url);
-              }
-            }}
-            aria-label="Hivatkozás"
+            size="sm"
+            className="h-8"
+            onClick={() => applyBlock("pre")}
+            aria-label="Kódrészlet"
           >
-            <Link2 className="h-4 w-4" />
+            Kód
           </Button>
           <Button
             type="button"
@@ -241,7 +252,7 @@ function RichTextEditor({ value, onChange, placeholder, disabled, label }: RichT
       <div
         ref={editorRef}
         className={cn(
-          "min-h-[240px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed shadow-sm transition focus-within:outline-none",
+          "min-h-[260px] w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed shadow-sm transition focus-within:outline-none",
           disabled && "bg-muted/50 text-muted-foreground",
           isFocused && "ring-2 ring-ring",
           "prose prose-sm max-w-none"
@@ -1675,7 +1686,7 @@ export default function AdminNewsNewArticle() {
                               </Button>
                             )}
                           </div>
-                          <RichTextEditor
+                          <NewsRichTextEditor
                             value={translation.content}
                             onChange={(next) => handleTranslationChange(language, "content", next)}
                             placeholder="Írd be a tartalmat"
