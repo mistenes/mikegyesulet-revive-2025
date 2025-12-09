@@ -327,6 +327,18 @@ function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: N
           disabled && "bg-muted/50 text-muted-foreground",
           "prose prose-sm max-w-none"
         )}
+        role="textbox"
+        tabIndex={disabled ? -1 : 0}
+        onClick={() => {
+          if (!disabled) {
+            editor?.chain().focus().run();
+          }
+        }}
+        onFocus={() => {
+          if (!disabled) {
+            editor?.chain().focus().run();
+          }
+        }}
       >
         <EditorContent editor={editor} />
       </div>
