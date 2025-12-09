@@ -195,6 +195,11 @@ type NewsRichTextEditorProps = {
 
 function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: NewsRichTextEditorProps) {
   const lastMarkdownRef = useRef(value);
+  const focusEditor = () => {
+    if (!disabled) {
+      editor?.chain().focus().run();
+    }
+  };
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -231,7 +236,14 @@ function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: N
   const isActive = (name: string, attrs?: Record<string, unknown>) => editor?.isActive(name, attrs);
 
   return (
-    <div className="space-y-2">
+    <div
+      className="space-y-2"
+      onMouseDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button")) return;
+        focusEditor();
+      }}
+    >
       <div className="flex flex-wrap items-center gap-2">
         {label ? <span className="text-sm font-medium text-muted-foreground">{label}</span> : null}
         <div className="flex flex-wrap items-center gap-1">
@@ -329,16 +341,8 @@ function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: N
         )}
         role="textbox"
         tabIndex={disabled ? -1 : 0}
-        onClick={() => {
-          if (!disabled) {
-            editor?.chain().focus().run();
-          }
-        }}
-        onFocus={() => {
-          if (!disabled) {
-            editor?.chain().focus().run();
-          }
-        }}
+        onClick={focusEditor}
+        onFocus={focusEditor}
       >
         <EditorContent editor={editor} />
       </div>
