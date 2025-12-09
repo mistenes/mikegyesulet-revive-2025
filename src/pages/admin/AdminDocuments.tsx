@@ -16,6 +16,7 @@ import {
   deleteDocument,
   uploadDocumentFile,
 } from "@/services/documentsService";
+import { getSettings, type SettingsStore } from "@/services/settingsService";
 import { type Document, type DocumentCategory, type DocumentPayload } from "@/types/documents";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -236,8 +237,27 @@ export default function AdminDocuments() {
   const [pickerEntries, setPickerEntries] = useState<StorageEntry[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [importerEnabled, setImporterEnabled] = useState(false);
   const newFileInputRef = useRef<HTMLInputElement | null>(null);
   const existingFileInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
+
+  useEffect(() => {
+    const applySetting = (settings: SettingsStore) => {
+      setImporterEnabled(Boolean(settings.general.documents_importer_enabled?.value ?? true));
+    };
+
+    applySetting(getSettings());
+
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsStore>).detail;
+      if (detail) {
+        applySetting(detail);
+      }
+    };
+
+    window.addEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+    return () => window.removeEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+  }, []);
 
   useEffect(() => {
     fetchAdminDocuments()
@@ -719,17 +739,25 @@ export default function AdminDocuments() {
             <FileText className="h-6 w-6 text-primary" />
             <div>
               <h1 className="text-2xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
-                Dokumentumok importálása
+                Dokumentumok kezelése
               </h1>
               <p className="text-sm text-muted-foreground">
-                Töltsd fel a zárónyilatkozatok és egyéb dokumentumok CSV fájljait, a rendszer automatikusan
-                letölti a PDF-eket és feltölti a Bunny tárhelyre.
+                Kezeld a dokumentumokat, szerkeszd a meglévőket, és importáld CSV-ből, ha a Beállítások menüben
+                engedélyezve van az import.
               </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">Cél mappa: zaronyilatkozatok</Badge>
-            <Badge variant="secondary">Cél mappa: dokumentumok</Badge>
+            {importerEnabled ? (
+              <>
+                <Badge variant="secondary">Cél mappa: zaronyilatkozatok</Badge>
+                <Badge variant="secondary">Cél mappa: dokumentumok</Badge>
+              </>
+            ) : (
+              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+                CSV import kikapcsolva a Beállításokban
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -1061,87 +1089,97 @@ export default function AdminDocuments() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>CSV fájlok</CardTitle>
-            <CardDescription>
-              Add meg külön fájlban a zárónyilatkozatokat és az egyéb dokumentumokat. A feltöltés a fájlkezelő
-              által használt Bunny API-n keresztül történik.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Zárónyilatkozatok CSV</label>
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={(event) => setClosingFile(event.target.files?.[0] || null)}
-                  className="cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Kötelező oszlopok: "A Zárónyilatkozat helye", "A Zárónyilatkozat Időpontja:", "PDF".
-                </p>
+        {importerEnabled ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>CSV fájlok</CardTitle>
+              <CardDescription>
+                Add meg külön fájlban a zárónyilatkozatokat és az egyéb dokumentumokat. A feltöltés a fájlkezelő
+                által használt Bunny API-n keresztül történik.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Zárónyilatkozatok CSV</label>
+                  <Input
+                    type="file"
+                    accept=".csv"
+                    onChange={(event) => setClosingFile(event.target.files?.[0] || null)}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Kötelező oszlopok: "A Zárónyilatkozat helye", "A Zárónyilatkozat Időpontja:", "PDF".
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Egyéb dokumentumok CSV</label>
+                  <Input
+                    type="file"
+                    accept=".csv"
+                    onChange={(event) => setDocumentsFile(event.target.files?.[0] || null)}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Kötelező oszlopok: "Dokumentum Neve", "A dokumentum kategóriája", "Dokumentum".
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Egyéb dokumentumok CSV</label>
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={(event) => setDocumentsFile(event.target.files?.[0] || null)}
-                  className="cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Kötelező oszlopok: "Dokumentum Neve", "A dokumentum kategóriája", "Dokumentum".
-                </p>
+
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Fontos</AlertTitle>
+                <AlertDescription>
+                  A feltöltés a megadott URL-ekről tölti le a PDF-eket, majd feltölti azokat a <strong>zaronyilatkozatok</strong>
+                  , illetve <strong>dokumentumok</strong> mappába a Bunny tárolón.
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleParsePreview}
+                  disabled={isImporting}
+                >
+                  <ListChecks className="mr-2 h-4 w-4" />
+                  Sorok számlálása
+                </Button>
+                <Button type="button" onClick={handleImport} disabled={isImporting}>
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Feldolgozás...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="mr-2 h-4 w-4" />
+                      Importálás és feltöltés
+                    </>
+                  )}
+                </Button>
+                <div className="text-sm text-muted-foreground">
+                  Zárónyilatkozat sorok: <strong>{parsedCounts.closing}</strong> · Egyéb sorok: <strong>{parsedCounts.documents}</strong>
+                </div>
               </div>
-            </div>
 
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Fontos</AlertTitle>
-              <AlertDescription>
-                A feltöltés a megadott URL-ekről tölti le a PDF-eket, majd feltölti azokat a <strong>zaronyilatkozatok</strong>
-                , illetve <strong>dokumentumok</strong> mappába a Bunny tárolón.
-              </AlertDescription>
-            </Alert>
+              <Separator />
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleParsePreview}
-                disabled={isImporting}
-              >
-                <ListChecks className="mr-2 h-4 w-4" />
-                Sorok számlálása
-              </Button>
-              <Button type="button" onClick={handleImport} disabled={isImporting}>
-                {isImporting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Feldolgozás...
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="mr-2 h-4 w-4" />
-                    Importálás és feltöltés
-                  </>
-                )}
-              </Button>
               <div className="text-sm text-muted-foreground">
-                Zárónyilatkozat sorok: <strong>{parsedCounts.closing}</strong> · Egyéb sorok: <strong>{parsedCounts.documents}</strong>
+                A végleges dokumentumok a <strong>/dokumentumok</strong> oldalon jelennek meg a jelenlegi megjelenéssel
+                megegyező módon.
               </div>
-            </div>
-
-            <Separator />
-
-            <div className="text-sm text-muted-foreground">
-              A végleges dokumentumok a <strong>/dokumentumok</strong> oldalon jelennek meg a jelenlegi megjelenéssel
-              megegyező módon.
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <Alert>
+            <AlertTitle>CSV import kikapcsolva</AlertTitle>
+            <AlertDescription>
+              A dokumentum import szekció a Beállítások menüben kapcsolható be. Engedélyezd, ha új fájlokat szeretnél CSV-ből
+              feltölteni.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
     </AdminLayout>
   );

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -50,6 +51,7 @@ import { renderMarkdown } from "@/utils/markdown";
 import { translateNewsToEnglish } from "@/services/translationService";
 import type { NewsArticle, NewsCategory, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
+import { getSettings, type SettingsStore } from "@/services/settingsService";
 
 const NEWS_FOLDER = "hirek";
 
@@ -121,7 +123,7 @@ export default function AdminNewsNewArticle() {
   const [importCategoryId, setImportCategoryId] = useState<string>("");
   const [importError, setImportError] = useState<string | null>(null);
   const [importSaving, setImportSaving] = useState(false);
-  const [showImporter, setShowImporter] = useState(true);
+  const [showImporter, setShowImporter] = useState(false);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [newCategoryHu, setNewCategoryHu] = useState("");
@@ -130,6 +132,24 @@ export default function AdminNewsNewArticle() {
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const applySetting = (settings: SettingsStore) => {
+      setShowImporter(Boolean(settings.general.news_importer_enabled?.value ?? true));
+    };
+
+    applySetting(getSettings());
+
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsStore>).detail;
+      if (detail) {
+        applySetting(detail);
+      }
+    };
+
+    window.addEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+    return () => window.removeEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+  }, []);
 
   const slugifyText = (value: string) =>
     value
@@ -1179,18 +1199,15 @@ export default function AdminNewsNewArticle() {
             </div>
           </div>
 
-          <Card className="p-4 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Haladó beállítások</h2>
-                <p className="text-sm text-muted-foreground">Kapcsold ki a Webflow importert, ha csak kézzel hozol létre hírt.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch checked={showImporter} onCheckedChange={setShowImporter} />
-                <span className="text-sm">Webflow import megjelenítése</span>
-              </div>
-            </div>
-          </Card>
+          {!showImporter ? (
+            <Alert>
+              <AlertTitle>CSV import kikapcsolva</AlertTitle>
+              <AlertDescription>
+                A Webflow CSV import szekció a Beállítások menüben kapcsolható be. Engedélyezd, ha új híreket szeretnél
+                fájlból betölteni.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           {showImporter && (
           <Card className="p-6 space-y-4">
