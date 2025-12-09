@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,17 @@ import {
 } from "@/services/documentsService";
 import { type Document, type DocumentCategory, type DocumentPayload } from "@/types/documents";
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileInput, FileText, ListChecks, Loader2, Trash2, UploadCloud } from "lucide-react";
+import {
+  AlertTriangle,
+  ExternalLink,
+  FileInput,
+  FileText,
+  FolderOpen,
+  ListChecks,
+  Loader2,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
 import { toast } from "sonner";
 
 type CsvRow = Record<string, string>;
@@ -36,8 +46,30 @@ const documentsHeaders = {
   internalName: "belső név",
 };
 
+const bunnyCdnHost = (import.meta.env.VITE_BUNNY_CDN_HOSTNAME || "").replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+
 function normalizeHeader(value: string) {
   return value.toLowerCase().trim();
+}
+
+type StorageEntry = {
+  objectName: string;
+  isDirectory: boolean;
+  path: string;
+};
+
+function encodePath(path: string) {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function buildCdnUrl(path: string) {
+  if (!bunnyCdnHost) return "";
+  const normalized = encodePath(path.replace(/^\/+/, ""));
+  return normalized ? `https://${bunnyCdnHost}/${normalized}` : "";
 }
 
 function parseCsv(text: string): CsvRow[] {
@@ -194,7 +226,18 @@ export default function AdminDocuments() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [uploadingExistingId, setUploadingExistingId] = useState<string | null>(null);
+  const [pickerState, setPickerState] = useState<{
+    docId: string;
+    path: string;
+    category: DocumentCategory;
+    base: string;
+  } | null>(null);
+  const [pickerEntries, setPickerEntries] = useState<StorageEntry[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const newFileInputRef = useRef<HTMLInputElement | null>(null);
+  const existingFileInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     fetchAdminDocuments()
@@ -250,6 +293,26 @@ export default function AdminDocuments() {
     [],
   );
 
+  const normalizeEntries = useCallback((payload: unknown): StorageEntry[] => {
+    const items: Partial<StorageEntry & { ObjectName?: string; IsDirectory?: boolean; Path?: string }>[] = Array.isArray(
+      (payload as { Items?: StorageEntry[] })?.Items,
+    )
+      ? ((payload as { Items?: StorageEntry[] }).Items as StorageEntry[])
+      : Array.isArray(payload)
+        ? (payload as StorageEntry[])
+        : Array.isArray((payload as { items?: StorageEntry[] })?.items)
+          ? ((payload as { items?: StorageEntry[] }).items as StorageEntry[])
+          : [];
+
+    return items
+      .map((item) => ({
+        objectName: item.objectName || item.ObjectName || item.path?.split("/").pop() || item.Path?.split("/").pop() || "",
+        isDirectory: Boolean(item.isDirectory ?? item.IsDirectory),
+        path: item.path || item.Path || "",
+      }))
+      .filter((entry) => Boolean(entry.objectName));
+  }, []);
+
   const updateDocumentField = (id: string | undefined, field: keyof Document, value: string | DocumentCategory) => {
     setDocuments((prev) =>
       prev.map((doc) => {
@@ -272,6 +335,64 @@ export default function AdminDocuments() {
       return updated;
     });
   };
+
+  const handleUploadForExisting = async (docId: string, file: File) => {
+    const target = documents.find((doc) => doc.id === docId);
+    if (!target) return;
+
+    const targetPath = buildTargetPath(file, target);
+
+    setUploadingExistingId(docId);
+    try {
+      const url = await uploadDocumentFile(file, targetPath);
+      updateDocumentField(docId, "url", url);
+      toast.success("Fájl feltöltve és beállítva");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nem sikerült feltölteni a fájlt";
+      toast.error(message);
+    } finally {
+      setUploadingExistingId(null);
+    }
+  };
+
+  const handleExistingFileInputChange = async (docId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      void handleUploadForExisting(docId, file);
+    }
+    event.target.value = "";
+  };
+
+  const openPickerForDocument = (doc: Document) => {
+    if (!doc.id) return;
+    const base = getStorageFolder(doc.category);
+    setPickerState({ docId: doc.id, path: base, category: doc.category, base });
+  };
+
+  useEffect(() => {
+    const fetchPickerEntries = async () => {
+      if (!pickerState) return;
+      setPickerLoading(true);
+      setPickerError(null);
+      try {
+        const normalizedPath = pickerState.path.startsWith("/") ? pickerState.path : `/${pickerState.path}`;
+        const params = new URLSearchParams({ path: normalizedPath, directory: "true" });
+        const response = await fetch(`/api/bunny/storage?${params.toString()}`, { headers: { accept: "application/json" } });
+        if (!response.ok) {
+          throw new Error("Nem sikerült betölteni a tároló tartalmát");
+        }
+        const data = await response.json();
+        setPickerEntries(normalizeEntries(data));
+      } catch (error) {
+        setPickerEntries([]);
+        setPickerError(error instanceof Error ? error.message : "Ismeretlen hiba történt");
+      } finally {
+        setPickerLoading(false);
+      }
+    };
+
+    void fetchPickerEntries();
+  }, [normalizeEntries, pickerState]);
 
   const buildTargetPath = (file: File, payload: DocumentPayload) => {
     const extension = (file.name.split(".").pop() || "pdf").toLowerCase();
@@ -395,6 +516,31 @@ export default function AdminDocuments() {
     setDragActive(false);
   };
 
+  const handlePickerEnter = (name: string) => {
+    if (!pickerState) return;
+    setPickerState((prev) => (prev ? { ...prev, path: [prev.path, name].filter(Boolean).join("/") } : prev));
+  };
+
+  const handlePickerBack = () => {
+    if (!pickerState) return;
+    const segments = pickerState.path.split("/").filter(Boolean);
+    const next = segments.slice(0, -1).join("/") || pickerState.base;
+    setPickerState({ ...pickerState, path: next });
+  };
+
+  const handleSelectPickerFile = (entry: StorageEntry) => {
+    if (!pickerState) return;
+    const combined = [pickerState.path, entry.objectName].filter(Boolean).join("/");
+    const url = buildCdnUrl(combined);
+    if (url) {
+      updateDocumentField(pickerState.docId, "url", url);
+      toast.success("Fájl kiválasztva");
+    }
+    setPickerState(null);
+  };
+
+  const closePicker = () => setPickerState(null);
+
   if (isLoading || !session) {
     return (
       <AdminLayout>
@@ -496,8 +642,77 @@ export default function AdminDocuments() {
     }
   };
 
+  const pickerPathLabel = pickerState?.path || "";
+
+  const pickerOverlay = pickerState ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-3xl rounded-lg bg-background shadow-lg">
+        <div className="flex items-center justify-between border-b p-4">
+          <div className="space-y-1">
+            <div className="text-sm text-muted-foreground">Bunny kiválasztás</div>
+            <div className="font-semibold">{pickerPathLabel || "/"}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={handlePickerBack} disabled={pickerState.path === pickerState.base}>
+              Vissza
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={closePicker}>
+              Bezárás
+            </Button>
+          </div>
+        </div>
+
+        <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">
+          {pickerError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Hiba</AlertTitle>
+              <AlertDescription>{pickerError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {pickerLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Betöltés...
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {pickerEntries.map((entry) => (
+                <div
+                  key={`${entry.path}-${entry.objectName}`}
+                  className="flex items-center justify-between rounded-md border p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    {entry.isDirectory ? <FolderOpen className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+                    <div>
+                      <div className="font-medium">{entry.objectName}</div>
+                      <div className="text-xs text-muted-foreground">{entry.isDirectory ? "Mappa" : "Fájl"}</div>
+                    </div>
+                  </div>
+                  {entry.isDirectory ? (
+                    <Button type="button" size="sm" variant="outline" onClick={() => handlePickerEnter(entry.objectName)}>
+                      Megnyitás
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" onClick={() => handleSelectPickerFile(entry)}>
+                      Kiválasztás
+                    </Button>
+                  )}
+                </div>
+              ))}
+
+              {pickerEntries.length === 0 && !pickerLoading ? (
+                <div className="text-sm text-muted-foreground">Nincs megjeleníthető elem ebben a mappában.</div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <AdminLayout>
+      {pickerOverlay}
       <div className="space-y-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
@@ -737,8 +952,64 @@ export default function AdminDocuments() {
                               </div>
                             </div>
                             <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div className="text-xs text-muted-foreground">Azonosító: {doc.id || "-"}</div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!doc.url}
+                                  asChild
+                                >
+                                  <a href={doc.url || "#"} target="_blank" rel="noreferrer">
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    Megnyitás
+                                  </a>
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openPickerForDocument(doc)}
+                                  disabled={!doc.id}
+                                >
+                                  <FolderOpen className="mr-2 h-4 w-4" />
+                                  Bunny fájl
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={!doc.id || uploadingExistingId === doc.id}
+                                  onClick={() =>
+                                    doc.id ? existingFileInputsRef.current[doc.id]?.click() : undefined
+                                  }
+                                >
+                                  {uploadingExistingId === doc.id ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Feltöltés...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UploadCloud className="mr-2 h-4 w-4" />
+                                      Új fájl
+                                    </>
+                                  )}
+                                </Button>
+                                <input
+                                  type="file"
+                                  accept="application/pdf,.pdf"
+                                  className="hidden"
+                                  ref={(el) => {
+                                    if (doc.id) {
+                                      existingFileInputsRef.current[doc.id] = el;
+                                    }
+                                  }}
+                                  onChange={(event) => doc.id && handleExistingFileInputChange(doc.id, event)}
+                                />
+                              </div>
                               <div className="flex items-center gap-2">
+                                <div className="text-xs text-muted-foreground">Azonosító: {doc.id || "-"}</div>
                                 <Button
                                   type="button"
                                   variant="destructive"
