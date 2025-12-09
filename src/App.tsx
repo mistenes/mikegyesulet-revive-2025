@@ -40,20 +40,36 @@ const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
-    const settings = getSettings();
-    const faviconUrl = (settings.general.site_favicon?.value as string | undefined)?.trim();
-    const existingLink = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    const applyFavicon = (faviconUrl?: string | null) => {
+      const cleanedUrl = faviconUrl?.trim();
+      const existingLink = document.querySelector<HTMLLinkElement>("link[rel='icon']");
 
-    if (faviconUrl) {
-      const link = existingLink || document.createElement("link");
-      link.rel = "icon";
-      link.href = faviconUrl;
-      if (!existingLink) {
-        document.head.appendChild(link);
+      if (cleanedUrl) {
+        const link = existingLink || document.createElement("link");
+        link.rel = "icon";
+        link.href = cleanedUrl;
+        if (!existingLink) {
+          document.head.appendChild(link);
+        }
+      } else if (existingLink) {
+        document.head.removeChild(existingLink);
       }
-    } else if (existingLink) {
-      document.head.removeChild(existingLink);
-    }
+    };
+
+    const settings = getSettings();
+    applyFavicon(settings.general.site_favicon?.value as string | undefined);
+
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<ReturnType<typeof getSettings>>).detail;
+      const newFavicon = detail?.general?.site_favicon?.value as string | undefined;
+      applyFavicon(newFavicon);
+    };
+
+    window.addEventListener("mik-settings-updated", handleSettingsUpdate);
+
+    return () => {
+      window.removeEventListener("mik-settings-updated", handleSettingsUpdate);
+    };
   }, []);
 
   const publicRoutes = useMemo(
