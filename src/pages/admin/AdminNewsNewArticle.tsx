@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, DragEvent } from "react";
+import type { ChangeEvent, DragEvent, ClipboardEvent } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -20,12 +20,15 @@ import {
   FileSpreadsheet,
   GripVertical,
   Image as ImageIcon,
+  Italic,
+  Link2,
   Loader2,
   Pencil,
   Plus,
   Save,
   Search,
   ShieldCheck,
+  Strikethrough,
   Trash,
   Upload,
 } from "lucide-react";
@@ -52,6 +55,7 @@ import { translateNewsToEnglish } from "@/services/translationService";
 import type { NewsArticle, NewsCategory, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
 import { getSettings, type SettingsStore } from "@/services/settingsService";
+import { cn } from "@/lib/utils";
 
 const NEWS_FOLDER = "hirek";
 
@@ -91,6 +95,173 @@ const createEmptyNews = (): NewsFormState => ({
     en: { ...emptyTranslation },
   },
 });
+
+type RichTextEditorProps = {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  label?: string;
+};
+
+function RichTextEditor({ value, onChange, placeholder, disabled, label }: RichTextEditorProps) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const [htmlValue, setHtmlValue] = useState(() => (value ? renderMarkdown(value) : ""));
+  const lastValueRef = useRef(value);
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (value === lastValueRef.current) return;
+    const nextHtml = value ? renderMarkdown(value) : "";
+    lastValueRef.current = value;
+    setHtmlValue(nextHtml);
+    if (editorRef.current && editorRef.current.innerHTML !== nextHtml) {
+      editorRef.current.innerHTML = nextHtml;
+    }
+  }, [value]);
+
+  const applyCommand = (command: string, argument?: string) => {
+    if (disabled) return;
+    document.execCommand(command, false, argument);
+    const currentHtml = editorRef.current?.innerHTML || "";
+    const { markdown } = convertHtmlToMarkdown(currentHtml);
+    lastValueRef.current = markdown;
+    setHtmlValue(currentHtml);
+    onChange(markdown);
+  };
+
+  const handleInput = () => {
+    if (!editorRef.current) return;
+    const currentHtml = editorRef.current.innerHTML;
+    const { markdown } = convertHtmlToMarkdown(currentHtml);
+    lastValueRef.current = markdown;
+    setHtmlValue(currentHtml);
+    onChange(markdown);
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const text = event.clipboardData?.getData("text/plain") || "";
+    document.execCommand("insertText", false, text);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {label ? <span className="text-sm font-medium text-muted-foreground">{label}</span> : null}
+        <div className="flex flex-wrap items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => applyCommand("bold")}
+            aria-label="Félkövér"
+          >
+            <strong>B</strong>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => applyCommand("italic")}
+            aria-label="Dőlt"
+          >
+            <Italic className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => applyCommand("underline")}
+            aria-label="Aláhúzás"
+          >
+            <u>U</u>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => applyCommand("strikeThrough")}
+            aria-label="Áthúzás"
+          >
+            <Strikethrough className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => applyCommand("insertUnorderedList")}
+            aria-label="Felsorolás"
+          >
+            <span className="text-xs">• • •</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => applyCommand("insertOrderedList")}
+            aria-label="Számozás"
+          >
+            <span className="text-xs">1. 2. 3.</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              const url = window.prompt("Add meg a hivatkozás címét");
+              if (url) {
+                applyCommand("createLink", url);
+              }
+            }}
+            aria-label="Hivatkozás"
+          >
+            <Link2 className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8"
+            onClick={() => applyCommand("removeFormat")}
+            aria-label="Formázás törlése"
+          >
+            Formázás törlése
+          </Button>
+        </div>
+      </div>
+
+      <div
+        ref={editorRef}
+        className={cn(
+          "min-h-[240px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed shadow-sm transition focus-within:outline-none",
+          disabled && "bg-muted/50 text-muted-foreground",
+          isFocused && "ring-2 ring-ring",
+          "prose prose-sm max-w-none"
+        )}
+        contentEditable={!disabled}
+        suppressContentEditableWarning
+        onInput={handleInput}
+        onPaste={handlePaste}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        data-placeholder={placeholder}
+        dangerouslySetInnerHTML={{ __html: htmlValue || "" }}
+        style={{ whiteSpace: "pre-wrap" }}
+      />
+      {!value?.trim() && !htmlValue && placeholder ? (
+        <p className="text-xs text-muted-foreground">{placeholder}</p>
+      ) : null}
+    </div>
+  );
+}
 
 export default function AdminNewsNewArticle() {
   const { isLoading, session } = useAdminAuthGuard();
@@ -238,7 +409,20 @@ export default function AdminNewsNewArticle() {
         case "br":
           return "\n";
         case "p":
+        case "div":
           return `${content}\n\n`;
+        case "h1":
+          return `# ${content}\n\n`;
+        case "h2":
+          return `## ${content}\n\n`;
+        case "h3":
+          return `### ${content}\n\n`;
+        case "h4":
+          return `#### ${content}\n\n`;
+        case "h5":
+          return `##### ${content}\n\n`;
+        case "h6":
+          return `###### ${content}\n\n`;
         case "strong":
         case "b":
           return `**${content}**`;
@@ -264,6 +448,10 @@ export default function AdminNewsNewArticle() {
           const alt = element.getAttribute("alt") || content || "";
           return src ? `![${alt}](${src})` : alt;
         }
+        case "code":
+          return `\`${content}\``;
+        case "pre":
+          return content ? `\n\n\`\`\`${content}\`\`\`\n\n` : "";
         default:
           return content;
       }
@@ -1487,10 +1675,11 @@ export default function AdminNewsNewArticle() {
                               </Button>
                             )}
                           </div>
-                          <Textarea
+                          <RichTextEditor
                             value={translation.content}
-                            onChange={(e) => handleTranslationChange(language, "content", e.target.value)}
-                            rows={10}
+                            onChange={(next) => handleTranslationChange(language, "content", next)}
+                            placeholder="Írd be a tartalmat"
+                            disabled={false}
                           />
                         </div>
                       </div>
