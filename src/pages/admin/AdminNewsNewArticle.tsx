@@ -822,8 +822,12 @@ export default function AdminNewsNewArticle() {
           ...prev.translations,
           en: {
             ...prev.translations.en,
-            excerpt: result.excerpt ?? prev.translations.en.excerpt,
-            content: result.content ?? prev.translations.en.content,
+            ...(field === "excerpt"
+              ? { excerpt: result.excerpt ?? prev.translations.en.excerpt }
+              : {}),
+            ...(field === "content"
+              ? { content: result.content ?? prev.translations.en.content }
+              : {}),
           },
         },
       }));
