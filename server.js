@@ -2755,11 +2755,12 @@ async function translateNewsToEnglish({ excerptHu, contentHu }) {
       messages: [
         {
           role: 'system',
-          content: 'You translate Hungarian news copy into concise, natural English and return only a JSON object.',
+          content:
+            'You translate Hungarian news copy into natural English without shortening or summarizing any text and return only a JSON object.',
         },
         {
           role: 'user',
-          content: `${parts.join('\n')}\nReturn JSON with keys "excerpt" and "content" using English values. Use empty strings for missing inputs.`,
+          content: `${parts.join('\n')}\nReturn JSON with keys "excerpt" and "content" using English values. Preserve the full meaning and length; use empty strings for missing inputs.`,
         },
       ],
     }),
