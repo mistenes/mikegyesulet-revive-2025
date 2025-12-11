@@ -20,6 +20,7 @@ import AdminMedia from "./pages/admin/AdminMedia";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminRegions from "./pages/admin/AdminRegions";
 import AcceptInvite from "./pages/admin/AcceptInvite";
+import AdminResetPassword from "./pages/admin/AdminResetPassword";
 import AdminFileManager from "./pages/admin/AdminFileManager";
 import AdminDocuments from "./pages/admin/AdminDocuments";
 import Rolunk from "./pages/Rolunk";
@@ -127,6 +128,7 @@ const App = () => {
               <Route path="/admin/media" element={<AdminMedia />} />
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/accept-invite" element={<AcceptInvite />} />
+              <Route path="/admin/reset-password" element={<AdminResetPassword />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

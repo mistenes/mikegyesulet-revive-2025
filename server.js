@@ -46,6 +46,7 @@ const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
 const PASSWORD_HISTORY_LIMIT = 5;
 const PASSWORD_MIN_LENGTH = 12;
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PASSWORD_RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
 const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
 const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
@@ -358,6 +359,11 @@ function buildInviteLink(token) {
   return `${baseUrl}/admin/accept-invite?token=${encodeURIComponent(token)}`;
 }
 
+function buildPasswordResetLink(token) {
+  const baseUrl = INVITE_BASE_URL.replace(/\/$/, '');
+  return `${baseUrl}/admin/reset-password?token=${encodeURIComponent(token)}`;
+}
+
 async function sendInviteEmail(email, inviteLink) {
   if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
     throw new Error('Brevo nincs konfigurálva a meghívók küldéséhez');
@@ -390,6 +396,41 @@ async function sendInviteEmail(email, inviteLink) {
   if (!response.ok) {
     const body = await response.text().catch(() => '');
     throw new Error(`Brevo invite send failed (${response.status}): ${body || response.statusText}`);
+  }
+}
+
+async function sendPasswordResetEmail(email, resetLink) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a jelszó-emlékeztetőhöz');
+  }
+
+  const payload = {
+    sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+    to: [{ email }],
+    subject: 'Admin jelszó visszaállítása',
+    htmlContent: `
+    <p>Jelszó-visszaállítási kérés érkezett a fiókodra.</p>
+    <p>Kattints az alábbi gombra, hogy új jelszót állíts be:</p>
+    <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px">Jelszó visszaállítása</a></p>
+    <p>Ha a gomb nem működik, másold be ezt a linket a böngészőbe:</p>
+    <p>${resetLink}</p>
+    <p>A link 24 óráig érvényes.</p>
+  `,
+  };
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Brevo reset send failed (${response.status}): ${body || response.statusText}`);
   }
 }
 
@@ -1597,6 +1638,50 @@ app.post('/api/auth/complete-invite', async (req, res) => {
   }
 });
 
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body || {};
+
+  if (!token || !password) {
+    return res.status(400).json({ message: 'Hiányzó token vagy jelszó' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const resetToken = await consumeUserToken(client, token, 'reset');
+    if (!resetToken) {
+      return res.status(400).json({ message: 'A jelszó-visszaállító link lejárt vagy már felhasználták' });
+    }
+
+    const issues = validatePasswordComplexity(password, resetToken.email);
+    if (issues.length) {
+      return res.status(400).json({ message: issues[0] });
+    }
+
+    const reused = await isPasswordReused(client, resetToken.email, password);
+    if (reused) {
+      return res.status(400).json({ message: 'Ne használj korábbi jelszót' });
+    }
+
+    const passwordHash = createPasswordHash(password);
+    await recordPasswordHistory(client, resetToken.email, passwordHash);
+    await revokeSessionsForEmail(client, resetToken.email);
+
+    await client.query(
+      `UPDATE admin_users
+       SET password_hash = $1, must_reset_password = FALSE, last_password_change = NOW()
+       WHERE email = $2`,
+      [passwordHash, resetToken.email],
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Complete reset error', error);
+    return res.status(500).json({ message: 'Nem sikerült visszaállítani a jelszót' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/admin/security/mfa', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -1772,13 +1857,22 @@ app.post('/api/admin/security/password', authenticateRequest, async (req, res) =
 app.get('/api/admin/users', authenticateRequest, async (_req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query(
+    const usersPromise = client.query(
       `SELECT email, created_at, last_login_at, mfa_enabled, must_reset_password, is_active
        FROM admin_users
        ORDER BY created_at DESC`,
     );
 
-    return res.status(200).json({ users: result.rows });
+    const invitesPromise = client.query(
+      `SELECT email, expires_at, created_at
+       FROM admin_user_tokens
+       WHERE type = 'invite' AND used = FALSE AND expires_at > NOW()
+       ORDER BY created_at DESC`,
+    );
+
+    const [users, invites] = await Promise.all([usersPromise, invitesPromise]);
+
+    return res.status(200).json({ users: users.rows, invites: invites.rows });
   } catch (error) {
     console.error('List users error', error);
     return res.status(500).json({ message: 'Nem sikerült lekérni a felhasználókat' });
@@ -1821,6 +1915,102 @@ app.post('/api/admin/users/invite', authenticateRequest, async (req, res) => {
   } catch (error) {
     console.error('Invite user error', error);
     return res.status(500).json({ message: 'Nem sikerült elküldeni a meghívót' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/admin/users/invite', authenticateRequest, async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "DELETE FROM admin_user_tokens WHERE email = $1 AND type = 'invite' AND used = FALSE RETURNING id",
+      [normalizedEmail],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Nincs aktív meghívó ehhez az e-mail címhez' });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Delete invite error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a meghívót' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/admin/users/:email', authenticateRequest, async (req, res) => {
+  const normalizedEmail = (req.params.email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  if (normalizedEmail === req.user.email) {
+    return res.status(400).json({ message: 'Nem törölheted a saját fiókodat' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const deleted = await client.query('DELETE FROM admin_users WHERE email = $1 RETURNING email', [normalizedEmail]);
+
+    if (!deleted.rowCount) {
+      return res.status(404).json({ message: 'A felhasználó nem található' });
+    }
+
+    await client.query('DELETE FROM admin_user_tokens WHERE email = $1', [normalizedEmail]);
+    await client.query('DELETE FROM admin_mfa_enrollments WHERE email = $1', [normalizedEmail]);
+    await client.query('DELETE FROM admin_password_history WHERE email = $1', [normalizedEmail]);
+    await revokeSessionsForEmail(client, normalizedEmail);
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Delete user error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a felhasználót' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/users/reset-password', authenticateRequest, async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    return res.status(500).json({ message: 'A jelszó-visszaállításhoz konfiguráld a Brevo API kulcsot' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const existing = await client.query('SELECT email FROM admin_users WHERE email = $1 LIMIT 1', [normalizedEmail]);
+    if (!existing.rowCount) {
+      return res.status(404).json({ message: 'Nincs ilyen felhasználó' });
+    }
+
+    const { token, expiresAt } = await createUserToken(client, normalizedEmail, 'reset', PASSWORD_RESET_TOKEN_TTL_MS);
+    await client.query('UPDATE admin_users SET must_reset_password = TRUE WHERE email = $1', [normalizedEmail]);
+    await revokeSessionsForEmail(client, normalizedEmail);
+
+    const resetLink = buildPasswordResetLink(token);
+    await sendPasswordResetEmail(normalizedEmail, resetLink);
+
+    return res.status(200).json({ resetExpiresAt: expiresAt.toISOString(), link: resetLink });
+  } catch (error) {
+    console.error('Reset password request error', error);
+    return res.status(500).json({ message: 'Nem sikerült elküldeni a jelszó visszaállító e-mailt' });
   } finally {
     client.release();
   }

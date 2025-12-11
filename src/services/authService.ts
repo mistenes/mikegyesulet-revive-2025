@@ -142,3 +142,15 @@ export async function completeInvite(token: string, password: string): Promise<v
 
   await handleResponse(response);
 }
+
+export async function completePasswordReset(token: string, password: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ token, password }),
+  });
+
+  await handleResponse(response);
+}
