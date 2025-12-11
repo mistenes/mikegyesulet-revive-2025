@@ -53,6 +53,12 @@ const defaultSettings: SettingsStore = {
       type: "toggle",
       description: "Kapcsold ki, ha el akarod rejteni a Webflow hír importert az admin felületen.",
     },
+    regions_importer_enabled: {
+      label: "Régió CSV import engedélyezése",
+      value: true,
+      type: "toggle",
+      description: "Kapcsold ki, ha el akarod rejteni a régiók CSV importereit az admin felületen.",
+    },
   },
 };
 
