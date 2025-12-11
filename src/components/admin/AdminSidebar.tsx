@@ -34,6 +34,7 @@ const menuItems = [
     title: "Oldal tartalmak",
     url: "/admin/pages",
     icon: FileEdit,
+    dividerAfter: true,
   },
   {
     title: "Régiók",
@@ -59,6 +60,7 @@ const menuItems = [
     title: "Dokumentumok",
     url: "/admin/documents",
     icon: ScrollText,
+    dividerAfter: true,
   },
   {
     title: "Fájlkezelő",
@@ -69,6 +71,7 @@ const menuItems = [
     title: "Médiatár",
     url: "/admin/media",
     icon: Folders,
+    dividerAfter: true,
   },
   {
     title: "Felhasználók",
@@ -94,24 +97,27 @@ export function AdminSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      end={item.url === "/admin"}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                        }`
-                      }
-                    >
-                      <item.icon className="h-5 w-5" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <div key={item.title}>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        end={item.url === "/admin"}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                            isActive
+                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          }`
+                        }
+                      >
+                        <item.icon className="h-5 w-5" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {item.dividerAfter && <hr className="my-2 border-border" />}
+                </div>
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
