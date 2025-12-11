@@ -38,6 +38,12 @@ services:
         value: "storage.bunnycdn.com"
       - key: OPENAI_API_KEY
         value: ""
+      - key: BREVO_API_KEY
+        value: ""
+      - key: BREVO_FROM_EMAIL
+        value: ""
+      - key: BREVO_FROM_NAME
+        value: "MIK Admin"
     autoDeploy: true
 
 databases:
