@@ -35,7 +35,8 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || process.env.ADMIN_EMAIL || '';
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'MIK Admin';
-const INVITE_BASE_URL = FRONTEND_ORIGIN || RENDER_EXTERNAL_URL || LOCAL_DEV_ORIGIN;
+const INVITE_BASE_URL =
+  process.env.INVITE_BASE_URL || FRONTEND_ORIGIN || 'https://mikegyesulet.hu' || RENDER_EXTERNAL_URL || LOCAL_DEV_ORIGIN;
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 60_000;
