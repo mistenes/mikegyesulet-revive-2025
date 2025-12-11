@@ -22,6 +22,7 @@ import {
   MapPin,
   HardDrive,
   ScrollText,
+  Bug,
 } from "lucide-react";
 
 const menuItems = [
@@ -77,6 +78,11 @@ const menuItems = [
     title: "Felhasználók",
     url: "/admin/users",
     icon: UsersRound,
+  },
+  {
+    title: "Hibajelentő",
+    url: "/admin/bugreport",
+    icon: Bug,
   },
   {
     title: "Beállítások",

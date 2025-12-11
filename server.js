@@ -434,6 +434,43 @@ async function sendPasswordResetEmail(email, resetLink) {
   }
 }
 
+async function sendBugReportEmail({ reporterEmail, title, description, stepsToReproduce, expectedResult, actualResult, severity }) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a hibajelentéshez');
+  }
+
+  const payload = {
+    sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+    to: [{ email: 'mistenes@me.com' }],
+    subject: 'URGENT - bug report',
+    htmlContent: `
+      <p>Új hibajelentés érkezett az admin felületről.</p>
+      <p><strong>Küldő:</strong> ${reporterEmail || 'Ismeretlen'}</p>
+      <p><strong>Cím:</strong> ${title || 'Nincs megadva'}</p>
+      <p><strong>Súlyosság:</strong> ${severity || 'Nem jelölve'}</p>
+      <p><strong>Leírás:</strong><br/>${description || 'Nincs leírás'}</p>
+      <p><strong>Lépések a reprodukáláshoz:</strong><br/>${stepsToReproduce || 'Nincs megadva'}</p>
+      <p><strong>Várt eredmény:</strong><br/>${expectedResult || 'Nincs megadva'}</p>
+      <p><strong>Kapott eredmény:</strong><br/>${actualResult || 'Nincs megadva'}</p>
+    `,
+  };
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Brevo bug report send failed (${response.status}): ${body || response.statusText}`);
+  }
+}
+
 async function ensureAdminUser() {
   const client = await pool.connect();
   try {
@@ -2013,6 +2050,35 @@ app.post('/api/admin/users/reset-password', authenticateRequest, async (req, res
     return res.status(500).json({ message: 'Nem sikerült elküldeni a jelszó visszaállító e-mailt' });
   } finally {
     client.release();
+  }
+});
+
+app.post('/api/admin/bugreports', authenticateRequest, async (req, res) => {
+  const { title, description, stepsToReproduce, expectedResult, actualResult, severity } = req.body || {};
+
+  if (!description || !title) {
+    return res.status(400).json({ message: 'A cím és a leírás megadása kötelező' });
+  }
+
+  try {
+    await sendBugReportEmail({
+      reporterEmail: req.user.email,
+      title: title.trim(),
+      description: description.trim(),
+      stepsToReproduce: stepsToReproduce?.trim(),
+      expectedResult: expectedResult?.trim(),
+      actualResult: actualResult?.trim(),
+      severity: severity?.trim(),
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Bug report send error', error);
+    const message =
+      error instanceof Error && error.message.includes('Brevo')
+        ? 'Hiba a Brevo e-mail küldése közben'
+        : 'Nem sikerült elküldeni a hibajelentést';
+    return res.status(500).json({ message });
   }
 });
 

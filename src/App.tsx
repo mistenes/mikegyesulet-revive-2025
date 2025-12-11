@@ -23,6 +23,7 @@ import AcceptInvite from "./pages/admin/AcceptInvite";
 import AdminResetPassword from "./pages/admin/AdminResetPassword";
 import AdminFileManager from "./pages/admin/AdminFileManager";
 import AdminDocuments from "./pages/admin/AdminDocuments";
+import AdminBugReport from "./pages/admin/AdminBugReport";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -127,6 +128,7 @@ const App = () => {
               <Route path="/admin/file-manager" element={<AdminFileManager />} />
               <Route path="/admin/media" element={<AdminMedia />} />
               <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/bugreport" element={<AdminBugReport />} />
               <Route path="/admin/accept-invite" element={<AcceptInvite />} />
               <Route path="/admin/reset-password" element={<AdminResetPassword />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
