@@ -7,7 +7,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
 import speakeasy from 'speakeasy';
-import SibApiV3Sdk from 'sib-api-v3-sdk';
 import { defaultDocuments as defaultDocumentSeed } from './server-default-documents.js';
 
 const { Pool } = pkg;
@@ -49,13 +48,6 @@ const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
 const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
 const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
-
-const brevoClient = BREVO_API_KEY ? new SibApiV3Sdk.TransactionalEmailsApi() : null;
-
-if (BREVO_API_KEY) {
-  const defaultClient = SibApiV3Sdk.ApiClient.instance;
-  defaultClient.authentications['api-key'].apiKey = BREVO_API_KEY;
-}
 
 const defaultPageContent = {
   hero_content: {
@@ -366,24 +358,38 @@ function buildInviteLink(token) {
 }
 
 async function sendInviteEmail(email, inviteLink) {
-  if (!brevoClient || !BREVO_FROM_EMAIL) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
     throw new Error('Brevo nincs konfigurálva a meghívók küldéséhez');
   }
 
-  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-  sendSmtpEmail.sender = { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME };
-  sendSmtpEmail.to = [{ email }];
-  sendSmtpEmail.subject = 'Admin felhasználói meghívó';
-  sendSmtpEmail.htmlContent = `
+  const payload = {
+    sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+    to: [{ email }],
+    subject: 'Admin felhasználói meghívó',
+    htmlContent: `
     <p>Üdvözlünk! Meghívtak, hogy szerkeszd a MIK admin felületét.</p>
     <p>Kattints az alábbi gombra, hogy beállítsd a jelszavad és a kétlépcsős azonosítást:</p>
     <p><a href="${inviteLink}" style="display:inline-block;padding:12px 18px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px">Meghívó elfogadása</a></p>
     <p>Ha a gomb nem működik, másold be ezt a linket a böngészőbe:</p>
     <p>${inviteLink}</p>
     <p>A meghívó 7 napig érvényes.</p>
-  `;
+  `,
+  };
 
-  await brevoClient.sendTransacEmail(sendSmtpEmail);
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Brevo invite send failed (${response.status}): ${body || response.statusText}`);
+  }
 }
 
 async function ensureAdminUser() {
@@ -1788,7 +1794,7 @@ app.post('/api/admin/users/invite', authenticateRequest, async (req, res) => {
     return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
   }
 
-  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL || !brevoClient) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
     return res.status(500).json({ message: 'A meghívók küldéséhez konfiguráld a Brevo API kulcsot' });
   }
 
