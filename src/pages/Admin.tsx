@@ -1,22 +1,11 @@
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, ShieldAlert } from "lucide-react";
-import { toast } from "sonner";
+import { ShieldAlert } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { logout } from "@/services/authService";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function Admin() {
-  const navigate = useNavigate();
   const { isLoading, session } = useAdminAuthGuard();
-
-  const handleLogout = () => {
-    logout();
-    toast.success('Sikeres kijelentkezés');
-    navigate('/');
-  };
 
   if (isLoading) {
     return (
@@ -43,10 +32,6 @@ export default function Admin() {
               Használd a bal oldali menüt a navigációhoz
             </p>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Kijelentkezés
-          </Button>
         </div>
 
         {!session.mfaEnabled && (
