@@ -71,8 +71,7 @@ export default function AdminBugReport() {
               Hibajelentő
             </h1>
             <p className="text-muted-foreground max-w-3xl">
-              Oszd meg a hibákat a csapattal. A beküldött jelentések azonnal továbbításra kerülnek a mistenes@me.com címre
-              "URGENT - bug report" tárggyal.
+              Oszd meg a hibákat a csapattal.
             </p>
           </div>
         </div>
