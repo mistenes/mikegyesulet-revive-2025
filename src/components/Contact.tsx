@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
-import { Mail, Phone, MapPin, Clock, Send } from "lucide-react";
+import { Mail, Phone, MapPin, Send } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -255,22 +255,14 @@ export const Contact = () => {
                   <Mail className="h-5 w-5" />
                   <div>
                     <p className="text-sm opacity-80">Email</p>
-                    <p className="font-semibold">info@mikegyesulet.hu</p>
+                    <p className="font-semibold">titkarsag@mikegyesulet.hu</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="h-5 w-5" />
                   <div>
                     <p className="text-sm opacity-80">Telefon</p>
-                    <p className="font-semibold">+36 30 123 4567</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Clock className="h-5 w-5" />
-                  <div>
-                    <p className="text-sm opacity-80">Nyitvatartás</p>
-                    <p className="font-semibold">Hétfő - Csütörtök: 9:00 - 17:00</p>
-                    <p className="font-semibold">Péntek: 9:00 - 14:00</p>
+                    <p className="font-semibold">+36 30 959 4595</p>
                   </div>
                 </div>
               </div>
@@ -308,43 +300,75 @@ export const Contact = () => {
                 ))}
               </div>
             </Card>
-
-            {/* Newsletter */}
-            <Card className="p-6 bg-card border-border shadow-sm">
-              <h3 className="text-xl font-bold mb-3" style={{ fontFamily: "'Sora', sans-serif" }}>
-                Hírlevél
-              </h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Iratkozz fel, hogy elsőként értesülj a friss hírekről, eseményekről.
-              </p>
-              <form onSubmit={handleNewsletterSubmit} className="space-y-3">
-                <Input
-                  type="email"
-                  placeholder="Email cím"
-                  value={newsletterEmail}
-                  onChange={(e) => setNewsletterEmail(e.target.value)}
-                  className={`bg-muted/30 border-border ${newsletterErrors.email ? "border-destructive" : ""}`}
-                />
-                {newsletterErrors.email && <p className="text-xs text-destructive">{newsletterErrors.email}</p>}
-
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id="newsletter-privacy"
-                    checked={newsletterPrivacy}
-                    onCheckedChange={(checked) => setNewsletterPrivacy(checked as boolean)}
-                  />
-                  <label htmlFor="newsletter-privacy" className="text-xs text-muted-foreground cursor-pointer">
-                    Elfogadom az Adatkezelési Tájékoztatót
-                  </label>
-                </div>
-                {newsletterErrors.privacy && <p className="text-xs text-destructive">{newsletterErrors.privacy}</p>}
-
-                <Button type="submit" className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
-                  Feliratkozás
-                </Button>
-              </form>
-            </Card>
           </div>
+
+          {/* Newsletter - full width at bottom */}
+          <Card
+            className={`lg:col-span-3 p-6 bg-card border-border shadow-sm transition-all duration-700 delay-150 ${
+              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+            }`}
+          >
+            <div className="grid md:grid-cols-2 gap-8 items-start">
+              <div>
+                <h3 className="text-2xl font-bold mb-3" style={{ fontFamily: "'Sora', sans-serif" }}>
+                  Hírlevél
+                </h3>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Iratkozz fel, hogy elsőként értesülj a friss hírekről, eseményekről.
+                </p>
+                <form onSubmit={handleNewsletterSubmit} className="space-y-3">
+                  <Input
+                    type="email"
+                    placeholder="Email cím"
+                    value={newsletterEmail}
+                    onChange={(e) => setNewsletterEmail(e.target.value)}
+                    className={`bg-muted/30 border-border ${newsletterErrors.email ? "border-destructive" : ""}`}
+                  />
+                  {newsletterErrors.email && <p className="text-xs text-destructive">{newsletterErrors.email}</p>}
+
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      id="newsletter-privacy"
+                      checked={newsletterPrivacy}
+                      onCheckedChange={(checked) => setNewsletterPrivacy(checked as boolean)}
+                    />
+                    <label htmlFor="newsletter-privacy" className="text-xs text-muted-foreground cursor-pointer">
+                      Elfogadom az Adatkezelési Tájékoztatót
+                    </label>
+                  </div>
+                  {newsletterErrors.privacy && <p className="text-xs text-destructive">{newsletterErrors.privacy}</p>}
+
+                  <Button
+                    type="submit"
+                    className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
+                  >
+                    Feliratkozás
+                  </Button>
+                </form>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-muted/60 border border-border/60">
+                  <h4 className="font-semibold mb-2" style={{ fontFamily: "'Sora', sans-serif" }}>
+                    {language === "hu" ? "Támogass minket" : "Support us"}
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {language === "hu"
+                      ? "Oszd meg hírlevelünket vagy keresd titkárságunkat, ha együttműködnél velünk."
+                      : "Share our newsletter or contact our office if you would like to collaborate with us."}
+                  </p>
+                  <Button variant="outline" asChild className="w-full md:w-auto">
+                    <a href="mailto:titkarsag@mikegyesulet.hu">{language === "hu" ? "Kapcsolat" : "Contact"}</a>
+                  </Button>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/40 border border-border/40 text-sm text-muted-foreground">
+                  {language === "hu"
+                    ? "Havonta egyszer küldünk összefoglalót a legfontosabb híreinkről és eseményeinkről."
+                    : "We send a monthly summary of our key news and events."}
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
     </section>
