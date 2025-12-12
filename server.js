@@ -717,14 +717,16 @@ async function ensureProjectsTables() {
       'SELECT id, translations, slug_hu, slug_en, language_availability FROM projects',
     );
 
-    const usedHu = new Set(existingProjects.rows.map((row) => row.slug_hu).filter(Boolean));
-    const usedEn = new Set(existingProjects.rows.map((row) => row.slug_en).filter(Boolean));
+    const usedHu = new Set();
+    const usedEn = new Set();
+
+    const collapseRepeatedOneSuffix = (slug = '') => slug.replace(/(?:-1)(?:-1)+$/g, '-1');
 
     for (const row of existingProjects.rows) {
       const translations = row.translations || { hu: {}, en: {} };
       const normalizedTranslations = normalizeProjectTranslations(translations);
-      let slugHu = row.slug_hu || slugifyText(normalizedTranslations.hu?.title || '');
-      let slugEn = row.slug_en || slugifyText(normalizedTranslations.en?.title || '');
+      let slugHu = collapseRepeatedOneSuffix(row.slug_hu || slugifyText(normalizedTranslations.hu?.title || ''));
+      let slugEn = collapseRepeatedOneSuffix(row.slug_en || slugifyText(normalizedTranslations.en?.title || ''));
 
       if (!slugHu) {
         slugHu = slugifyText(`projekt-${row.id}`);
