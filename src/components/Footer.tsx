@@ -1,11 +1,43 @@
-import { Facebook, Instagram, Twitter, Youtube } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Facebook, Instagram, Link as LinkIcon, Twitter, Youtube } from "lucide-react";
 import { Link } from "react-router-dom";
 import mikLogo from "@/assets/mik-logo.svg";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getLocalizedPath } from "@/lib/localePaths";
+import { getFooterContent } from "@/services/footerContentService";
+import type { SocialLink } from "@/types/footer";
 
 export const Footer = () => {
   const { language } = useLanguage();
+  const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+
+  const socialIconMap = useMemo(
+    () => ({
+      facebook: Facebook,
+      instagram: Instagram,
+      twitter: Twitter,
+      youtube: Youtube,
+      tiktok: LinkIcon,
+      linkedin: LinkIcon,
+      custom: LinkIcon,
+    }),
+    []
+  );
+
+  useEffect(() => {
+    const content = getFooterContent();
+    setSocialLinks(content.socialLinks);
+
+    const handleUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ socialLinks: SocialLink[] }>).detail;
+      if (detail?.socialLinks) {
+        setSocialLinks(detail.socialLinks);
+      }
+    };
+
+    window.addEventListener("mik-footer-updated", handleUpdate);
+    return () => window.removeEventListener("mik-footer-updated", handleUpdate);
+  }, []);
 
   const buildPath = (path: string) => getLocalizedPath(path, language);
 
@@ -30,39 +62,24 @@ export const Footer = () => {
                 KONFERENCIA
               </span>
             </div>
-            <div className="flex gap-3">
-              <a
-                href="https://www.facebook.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary transition-colors"
-              >
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a
-                href="https://www.instagram.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary transition-colors"
-              >
-                <Instagram className="h-5 w-5" />
-              </a>
-              <a
-                href="https://twitter.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary transition-colors"
-              >
-                <Twitter className="h-5 w-5" />
-              </a>
-              <a
-                href="https://www.youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary transition-colors"
-              >
-                <Youtube className="h-5 w-5" />
-              </a>
+            <div className="flex flex-wrap gap-3">
+              {socialLinks
+                .filter((link) => link.enabled && link.url)
+                .map((link) => {
+                  const Icon = socialIconMap[link.type] ?? LinkIcon;
+                  return (
+                    <a
+                      key={link.id}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-primary transition-colors"
+                      aria-label={link.label || link.type}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </a>
+                  );
+                })}
             </div>
           </div>
 

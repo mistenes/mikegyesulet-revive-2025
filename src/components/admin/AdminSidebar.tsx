@@ -85,6 +85,11 @@ const menuItems = [
     icon: Bug,
   },
   {
+    title: "Lábléc",
+    url: "/admin/footer-content",
+    icon: ScrollText,
+  },
+  {
     title: "Beállítások",
     url: "/admin/settings",
     icon: Settings,
