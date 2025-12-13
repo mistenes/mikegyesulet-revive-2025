@@ -55,13 +55,14 @@ const GA_MEASUREMENT_ID = process.env.VITE_GA_MEASUREMENT_ID || process.env.GA_M
 const GA_PROPERTY_ID = process.env.GA4_PROPERTY_ID || process.env.GA_PROPERTY_ID || '';
 const GA_CLIENT_EMAIL = process.env.GA4_CLIENT_EMAIL || process.env.GA_CLIENT_EMAIL || '';
 const GA_PRIVATE_KEY = (process.env.GA4_PRIVATE_KEY || process.env.GA_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-const LISTMONK_URL = (process.env.LISTMONK_URL || '').replace(/\/$/, '');
-const LISTMONK_USERNAME = process.env.LISTMONK_USERNAME || '';
-const LISTMONK_PASSWORD = process.env.LISTMONK_PASSWORD || '';
-const LISTMONK_API_KEY = process.env.LISTMONK_API_KEY || '';
-const LISTMONK_DEFAULT_LIST_ID = Number(process.env.LISTMONK_LIST_ID || '') || null;
-const LISTMONK_FROM_EMAIL = process.env.LISTMONK_FROM_EMAIL || BREVO_FROM_EMAIL || '';
-const LISTMONK_FROM_NAME = process.env.LISTMONK_FROM_NAME || BREVO_FROM_NAME || 'MIK Admin';
+const LISTMONK_URL = (process.env.LISTMONK_URL || process.env.VITE_LISTMONK_URL || '').replace(/\/$/, '');
+const LISTMONK_USERNAME = process.env.LISTMONK_USERNAME || process.env.VITE_LISTMONK_USERNAME || '';
+const LISTMONK_PASSWORD = process.env.LISTMONK_PASSWORD || process.env.VITE_LISTMONK_PASSWORD || '';
+const LISTMONK_API_KEY = process.env.LISTMONK_API_KEY || process.env.VITE_LISTMONK_API_KEY || '';
+const LISTMONK_DEFAULT_LIST_ID =
+  Number(process.env.LISTMONK_LIST_ID || process.env.VITE_LISTMONK_LIST_ID || '') || null;
+const LISTMONK_FROM_EMAIL = process.env.LISTMONK_FROM_EMAIL || process.env.VITE_LISTMONK_FROM_EMAIL || BREVO_FROM_EMAIL || '';
+const LISTMONK_FROM_NAME = process.env.LISTMONK_FROM_NAME || process.env.VITE_LISTMONK_FROM_NAME || BREVO_FROM_NAME || 'MIK Admin';
 
 const defaultPageContent = {
   hero_content: {
