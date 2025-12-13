@@ -46,6 +46,14 @@ services:
         value: "MIK Admin"
       - key: INVITE_BASE_URL
         value: "https://mikegyesulet.hu"
+      - key: VITE_GA_MEASUREMENT_ID
+        value: ""
+      - key: GA4_PROPERTY_ID
+        value: ""
+      - key: GA4_CLIENT_EMAIL
+        value: ""
+      - key: GA4_PRIVATE_KEY
+        value: ""
     autoDeploy: true
 
 databases:

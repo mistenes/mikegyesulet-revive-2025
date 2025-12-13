@@ -1,11 +1,29 @@
 import { Card } from "@/components/ui/card";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, Loader2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useQuery } from "@tanstack/react-query";
+import { fetchVisitorStats } from "@/services/analyticsService";
 
 export default function Admin() {
   const { isLoading, session } = useAdminAuthGuard();
+  const {
+    data: visitorStats,
+    isLoading: isLoadingVisitors,
+    isError: visitorError,
+  } = useQuery({
+    queryKey: ["admin-visitor-stats"],
+    queryFn: fetchVisitorStats,
+  });
+
+  const visitorStatItems = [
+    { label: "Elmúlt óra", value: visitorStats?.pastHour ?? 0 },
+    { label: "Elmúlt 24 óra", value: visitorStats?.past24Hours ?? 0 },
+    { label: "Ez a hét", value: visitorStats?.thisWeek ?? 0 },
+    { label: "Ez a hónap", value: visitorStats?.thisMonth ?? 0 },
+    { label: "Ez az év", value: visitorStats?.thisYear ?? 0 },
+  ];
 
   if (isLoading) {
     return (
@@ -44,6 +62,37 @@ export default function Admin() {
             </AlertDescription>
           </Alert>
         )}
+
+        <Card className="p-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Látogatottsági adatok</p>
+              <h2 className="text-xl font-semibold">Google Analytics</h2>
+              {visitorStats?.message && (
+                <p className="text-sm text-muted-foreground">{visitorStats.message}</p>
+              )}
+              {!visitorStats?.configured && !visitorStats?.message && (
+                <p className="text-sm text-muted-foreground">A mérések eléréséhez állítsd be a GA4 hitelesítő adatokat.</p>
+              )}
+            </div>
+            {isLoadingVisitors && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {visitorStatItems.map((stat) => (
+              <div key={stat.label} className="rounded-lg border bg-card p-4 shadow-sm">
+                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="mt-2 text-2xl font-semibold" aria-live="polite">
+                  {stat.value.toLocaleString("hu-HU")}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {visitorError && (
+            <p className="text-sm text-destructive">Nem sikerült betölteni az analitika adatokat.</p>
+          )}
+        </Card>
 
         <Card className="p-6 space-y-3">
           <h2 className="text-lg font-semibold">Kezdés</h2>

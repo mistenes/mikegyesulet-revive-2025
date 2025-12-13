@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
 import speakeasy from 'speakeasy';
+import { BetaAnalyticsDataClient } from '@google-analytics/data';
 import { defaultDocuments as defaultDocumentSeed } from './server-default-documents.js';
 
 const { Pool } = pkg;
@@ -50,6 +51,10 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
 const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
 const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
+const GA_MEASUREMENT_ID = process.env.VITE_GA_MEASUREMENT_ID || process.env.GA_MEASUREMENT_ID || '';
+const GA_PROPERTY_ID = process.env.GA4_PROPERTY_ID || process.env.GA_PROPERTY_ID || '';
+const GA_CLIENT_EMAIL = process.env.GA4_CLIENT_EMAIL || process.env.GA_CLIENT_EMAIL || '';
+const GA_PRIVATE_KEY = (process.env.GA4_PRIVATE_KEY || process.env.GA_PRIVATE_KEY || '').replace(/\\n/g, '\n');
 
 const defaultPageContent = {
   hero_content: {
@@ -147,6 +152,24 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const analyticsClient =
+  GA_PROPERTY_ID && GA_CLIENT_EMAIL && GA_PRIVATE_KEY
+    ? new BetaAnalyticsDataClient({
+        credentials: {
+          client_email: GA_CLIENT_EMAIL,
+          private_key: GA_PRIVATE_KEY,
+        },
+      })
+    : null;
+
+const analyticsDefaults = {
+  pastHour: 0,
+  past24Hours: 0,
+  thisWeek: 0,
+  thisMonth: 0,
+  thisYear: 0,
+};
+
 const app = express();
 
 const allowedOrigins = [FRONTEND_ORIGIN, RENDER_EXTERNAL_URL, LOCAL_DEV_ORIGIN].filter(Boolean);
@@ -158,6 +181,56 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
+
+const analyticsProperty = GA_PROPERTY_ID ? `properties/${GA_PROPERTY_ID}` : '';
+
+async function getRealtimeActiveUsersSum() {
+  if (!analyticsClient || !analyticsProperty) return analyticsDefaults.pastHour;
+
+  const [response] = await analyticsClient.runRealtimeReport({
+    property: analyticsProperty,
+    metrics: [{ name: 'activeUsers' }],
+    dimensions: [{ name: 'minute' }],
+    limit: 60,
+  });
+
+  return (response.rows || []).reduce((total, row) => total + Number(row.metricValues?.[0]?.value || 0), 0);
+}
+
+async function getRangeActiveUsers(startDate, endDate) {
+  if (!analyticsClient || !analyticsProperty) return 0;
+
+  const [response] = await analyticsClient.runReport({
+    property: analyticsProperty,
+    dateRanges: [{ startDate, endDate }],
+    metrics: [{ name: 'activeUsers' }],
+  });
+
+  return Number(response.rows?.[0]?.metricValues?.[0]?.value || 0);
+}
+
+async function fetchVisitorCounts() {
+  if (!analyticsClient || !analyticsProperty) {
+    return { ...analyticsDefaults, configured: false };
+  }
+
+  const [pastHour, past24Hours, thisWeek, thisMonth, thisYear] = await Promise.all([
+    getRealtimeActiveUsersSum(),
+    getRangeActiveUsers('1daysAgo', 'today'),
+    getRangeActiveUsers('7daysAgo', 'today'),
+    getRangeActiveUsers('30daysAgo', 'today'),
+    getRangeActiveUsers('365daysAgo', 'today'),
+  ]);
+
+  return {
+    pastHour,
+    past24Hours,
+    thisWeek,
+    thisMonth,
+    thisYear,
+    configured: true,
+  };
+}
 
 const loginRateLimitBuckets = new Map();
 
@@ -2081,6 +2154,28 @@ app.post('/api/admin/bugreports', authenticateRequest, async (req, res) => {
         ? 'Hiba a Brevo e-mail küldése közben'
         : 'Nem sikerült elküldeni a hibajelentést';
     return res.status(500).json({ message });
+  }
+});
+
+app.get('/api/admin/analytics/visitors', authenticateRequest, async (_req, res) => {
+  if (!analyticsClient || !analyticsProperty) {
+    return res.status(503).json({
+      ...analyticsDefaults,
+      configured: false,
+      message: 'A Google Analytics nincs beállítva',
+    });
+  }
+
+  try {
+    const data = await fetchVisitorCounts();
+    return res.json(data);
+  } catch (error) {
+    console.error('Analytics fetch error', error);
+    return res.status(500).json({
+      ...analyticsDefaults,
+      configured: true,
+      message: 'Nem sikerült lekérni az analitika adatokat',
+    });
   }
 });
 
