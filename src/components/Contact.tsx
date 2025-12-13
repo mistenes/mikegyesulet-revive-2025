@@ -346,27 +346,6 @@ export const Contact = () => {
                   </Button>
                 </form>
               </div>
-
-              <div className="space-y-4">
-                <div className="p-4 rounded-lg bg-muted/60 border border-border/60">
-                  <h4 className="font-semibold mb-2" style={{ fontFamily: "'Sora', sans-serif" }}>
-                    {language === "hu" ? "Támogass minket" : "Support us"}
-                  </h4>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {language === "hu"
-                      ? "Oszd meg hírlevelünket vagy keresd titkárságunkat, ha együttműködnél velünk."
-                      : "Share our newsletter or contact our office if you would like to collaborate with us."}
-                  </p>
-                  <Button variant="outline" asChild className="w-full md:w-auto">
-                    <a href="mailto:titkarsag@mikegyesulet.hu">{language === "hu" ? "Kapcsolat" : "Contact"}</a>
-                  </Button>
-                </div>
-                <div className="p-4 rounded-lg bg-muted/40 border border-border/40 text-sm text-muted-foreground">
-                  {language === "hu"
-                    ? "Havonta egyszer küldünk összefoglalót a legfontosabb híreinkről és eseményeinkről."
-                    : "We send a monthly summary of our key news and events."}
-                </div>
-              </div>
             </div>
           </Card>
         </div>
