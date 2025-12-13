@@ -55,6 +55,13 @@ const GA_MEASUREMENT_ID = process.env.VITE_GA_MEASUREMENT_ID || process.env.GA_M
 const GA_PROPERTY_ID = process.env.GA4_PROPERTY_ID || process.env.GA_PROPERTY_ID || '';
 const GA_CLIENT_EMAIL = process.env.GA4_CLIENT_EMAIL || process.env.GA_CLIENT_EMAIL || '';
 const GA_PRIVATE_KEY = (process.env.GA4_PRIVATE_KEY || process.env.GA_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+const LISTMONK_URL = (process.env.LISTMONK_URL || '').replace(/\/$/, '');
+const LISTMONK_USERNAME = process.env.LISTMONK_USERNAME || '';
+const LISTMONK_PASSWORD = process.env.LISTMONK_PASSWORD || '';
+const LISTMONK_API_KEY = process.env.LISTMONK_API_KEY || '';
+const LISTMONK_DEFAULT_LIST_ID = Number(process.env.LISTMONK_LIST_ID || '') || null;
+const LISTMONK_FROM_EMAIL = process.env.LISTMONK_FROM_EMAIL || BREVO_FROM_EMAIL || '';
+const LISTMONK_FROM_NAME = process.env.LISTMONK_FROM_NAME || BREVO_FROM_NAME || 'MIK Admin';
 
 const defaultPageContent = {
   hero_content: {
@@ -542,6 +549,47 @@ async function sendBugReportEmail({ reporterEmail, title, description, stepsToRe
     const body = await response.text().catch(() => '');
     throw new Error(`Brevo bug report send failed (${response.status}): ${body || response.statusText}`);
   }
+}
+
+const listmonkConfigured = () => Boolean(LISTMONK_URL && (LISTMONK_API_KEY || (LISTMONK_USERNAME && LISTMONK_PASSWORD)));
+
+function getListmonkAuthHeader() {
+  if (LISTMONK_API_KEY) {
+    return `Bearer ${LISTMONK_API_KEY}`;
+  }
+  if (LISTMONK_USERNAME && LISTMONK_PASSWORD) {
+    const credentials = Buffer.from(`${LISTMONK_USERNAME}:${LISTMONK_PASSWORD}`).toString('base64');
+    return `Basic ${credentials}`;
+  }
+  return '';
+}
+
+async function listmonkRequest(pathname, init = {}) {
+  if (!listmonkConfigured()) {
+    throw new Error('A Listmonk nincs konfigurálva');
+  }
+
+  const url = `${LISTMONK_URL}${pathname}`;
+  const headers = {
+    accept: 'application/json',
+    ...init.headers,
+    Authorization: getListmonkAuthHeader(),
+  };
+
+  if (init.body && !headers['content-type']) {
+    headers['content-type'] = 'application/json';
+  }
+
+  return fetch(url, { ...init, headers });
+}
+
+function stripHtmlToText(html = '') {
+  return html
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function ensureAdminUser() {
@@ -2179,6 +2227,146 @@ app.get('/api/admin/analytics/visitors', authenticateRequest, async (_req, res) 
   }
 });
 
+app.get('/api/admin/newsletter/overview', authenticateRequest, async (_req, res) => {
+  if (!listmonkConfigured()) {
+    return res.status(503).json({
+      configured: false,
+      message: 'A hírlevél szolgáltatás nincs beállítva',
+      lists: [],
+      campaigns: [],
+    });
+  }
+
+  try {
+    const [listsResponse, campaignsResponse] = await Promise.all([
+      listmonkRequest('/api/lists?per_page=100'),
+      listmonkRequest('/api/campaigns?per_page=10&order_by=-created_at'),
+    ]);
+
+    const listsJson = await listsResponse.json().catch(() => ({}));
+    const campaignsJson = await campaignsResponse.json().catch(() => ({}));
+
+    const lists =
+      listsJson?.data?.results ||
+      listsJson?.data?.lists ||
+      listsJson?.data ||
+      listsJson?.results ||
+      [];
+
+    const campaigns =
+      campaignsJson?.data?.results ||
+      campaignsJson?.data?.campaigns ||
+      campaignsJson?.data ||
+      campaignsJson?.results ||
+      [];
+
+    return res.json({
+      configured: true,
+      defaultListId: LISTMONK_DEFAULT_LIST_ID,
+      lists,
+      campaigns,
+    });
+  } catch (error) {
+    console.error('Newsletter overview error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a hírlevél adatokat', configured: true, lists: [], campaigns: [] });
+  }
+});
+
+app.post('/api/admin/newsletter/campaigns', authenticateRequest, async (req, res) => {
+  const { subject, name, preheader, listIds, html, text, sendNow } = req.body || {};
+
+  if (!subject || !html) {
+    return res.status(400).json({ message: 'A tárgy és a tartalom megadása kötelező' });
+  }
+
+  if (!listmonkConfigured()) {
+    return res.status(503).json({ message: 'A hírlevél szolgáltatás nincs beállítva' });
+  }
+
+  const targetLists = Array.isArray(listIds) && listIds.length ? listIds.map(Number).filter(Boolean) : [];
+  if (!targetLists.length && LISTMONK_DEFAULT_LIST_ID) {
+    targetLists.push(LISTMONK_DEFAULT_LIST_ID);
+  }
+
+  if (!targetLists.length) {
+    return res.status(400).json({ message: 'Nincs kiválasztott lista a hírlevélhez' });
+  }
+
+  const payload = {
+    name: (name || subject).toString().trim(),
+    subject: subject.toString().trim(),
+    lists: targetLists,
+    type: 'regular',
+    content_type: 'html',
+    from_email: LISTMONK_FROM_EMAIL,
+    from_name: LISTMONK_FROM_NAME,
+    body: html,
+    altbody: text || stripHtmlToText(html),
+    preheader: preheader?.toString().trim() || undefined,
+  };
+
+  try {
+    const response = await listmonkRequest('/api/campaigns', { method: 'POST', body: JSON.stringify(payload) });
+    const payloadJson = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = payloadJson?.message || payloadJson?.error || 'Nem sikerült menteni a hírlevelet';
+      return res.status(500).json({ message });
+    }
+
+    const campaign = payloadJson?.data || payloadJson;
+
+    if (sendNow && campaign?.id) {
+      const sendResponse = await listmonkRequest(`/api/campaigns/${campaign.id}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'running' }),
+      });
+
+      if (!sendResponse.ok) {
+        const body = await sendResponse.text().catch(() => '');
+        return res
+          .status(500)
+          .json({ message: body || 'Nem sikerült elindítani a hírlevelet', campaign: { ...campaign, status: 'draft' } });
+      }
+      return res.json({ ...campaign, status: 'running' });
+    }
+
+    return res.json(campaign);
+  } catch (error) {
+    console.error('Newsletter campaign create error', error);
+    return res.status(500).json({ message: 'Nem sikerült menteni a hírlevelet' });
+  }
+});
+
+app.post('/api/admin/newsletter/campaigns/:id/send', authenticateRequest, async (req, res) => {
+  const campaignId = Number(req.params.id);
+
+  if (!campaignId) {
+    return res.status(400).json({ message: 'Érvénytelen kampány azonosító' });
+  }
+
+  if (!listmonkConfigured()) {
+    return res.status(503).json({ message: 'A hírlevél szolgáltatás nincs beállítva' });
+  }
+
+  try {
+    const response = await listmonkRequest(`/api/campaigns/${campaignId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status: 'running' }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      return res.status(500).json({ message: body || 'Nem sikerült elindítani a hírlevelet' });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Newsletter send error', error);
+    return res.status(500).json({ message: 'Nem sikerült elindítani a hírlevelet' });
+  }
+});
+
 function ensureFolderPath(path) {
   const normalized = (path || '').toString().trim().replace(/\\+/g, '/').replace(/\/$/, '');
   if (!normalized) {
@@ -2502,6 +2690,52 @@ app.get('/api/public/mapbox-token', (_req, res) => {
   }
 
   return res.status(200).json({ token: MAPBOX_TOKEN });
+});
+
+app.post('/api/newsletter/subscribe', async (req, res) => {
+  const { email, name } = req.body || {};
+  const normalizedEmail = (email || '').toString().trim().toLowerCase();
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  if (!listmonkConfigured()) {
+    return res.status(503).json({ message: 'A hírlevél szolgáltatás nincs beállítva' });
+  }
+
+  if (!LISTMONK_DEFAULT_LIST_ID) {
+    return res.status(503).json({ message: 'Nincs alapértelmezett hírlevél lista konfigurálva' });
+  }
+
+  try {
+    const payload = {
+      email: normalizedEmail,
+      name: (name || normalizedEmail).toString().trim(),
+      status: 'enabled',
+      lists: [LISTMONK_DEFAULT_LIST_ID],
+      preconfirm_subscriptions: true,
+    };
+
+    const response = await listmonkRequest('/api/subscribers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 409) {
+      return res.status(200).json({ subscribed: true, existing: true });
+    }
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Listmonk subscribe failed (${response.status}): ${body || response.statusText}`);
+    }
+
+    return res.status(200).json({ subscribed: true });
+  } catch (error) {
+    console.error('Newsletter subscribe error', error);
+    return res.status(500).json({ message: 'Nem sikerült feldolgozni a feliratkozást' });
+  }
 });
 
 app.get('/api/page-content/public', async (_req, res) => {

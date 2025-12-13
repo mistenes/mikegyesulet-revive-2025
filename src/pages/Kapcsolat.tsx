@@ -11,6 +11,7 @@ import { Mail, Phone, MapPin, Building2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { subscribeToNewsletter } from "@/services/newsletterService";
 
 const contactFormSchema = z.object({
   name: z.string().trim().min(1, "A név megadása kötelező").max(100, "A név maximum 100 karakter lehet"),
@@ -60,12 +61,14 @@ export default function Kapcsolat() {
       const validatedData = newsletterSchema.parse(newsletterForm);
       setIsSubmitting(true);
 
-      // Here you would normally integrate with a newsletter service
+      await subscribeToNewsletter(validatedData.email);
       toast.success("Sikeresen feliratkoztál a hírlevélre!");
       setNewsletterForm({ email: "", privacy: false });
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast.error(error.errors[0].message);
+      } else if (error instanceof Error) {
+        toast.error(error.message);
       } else {
         toast.error("Hiba történt a feliratkozáskor");
       }

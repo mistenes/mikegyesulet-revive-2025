@@ -78,3 +78,67 @@ export function renderMarkdown(markdown: string): string {
 
   return blocks.join("\n");
 }
+
+export function convertHtmlToMarkdown(html: string): { markdown: string; text: string } {
+  if (!html) return { markdown: "", text: "" };
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return (node.textContent || "").replace(/\s+/g, " ").trim();
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return "";
+    }
+
+    const children = Array.from(node.childNodes).map(walk).filter(Boolean).join("");
+    const content = children || "";
+
+    switch (node.tagName.toLowerCase()) {
+      case "p":
+      case "div":
+        return `${content}\n\n`;
+      case "br":
+        return "\n";
+      case "strong":
+      case "b":
+        return `**${content}**`;
+      case "em":
+      case "i":
+        return `*${content}*`;
+      case "ul":
+        return `${Array.from(node.children)
+          .map((child) => `- ${walk(child)}`)
+          .join("\n")}${children ? "\n\n" : ""}`;
+      case "ol":
+        return `${Array.from(node.children)
+          .map((child, index) => `${index + 1}. ${walk(child)}`)
+          .join("\n")}${children ? "\n\n" : ""}`;
+      case "li":
+        return `${content}\n`;
+      case "a": {
+        const href = node.getAttribute("href") || "";
+        return href ? `[${content}](${href})` : content;
+      }
+      case "img": {
+        const src = node.getAttribute("src") || "";
+        const alt = node.getAttribute("alt") || content || "";
+        return src ? `![${alt}](${src})` : alt;
+      }
+      case "code":
+        return `\`${content}\``;
+      case "pre":
+        return content ? `\n\n\`\`\`${content}\`\`\`\n\n` : "";
+      default:
+        return content;
+    }
+  };
+
+  const markdown = walk(doc.body).replace(/\n{3,}/g, "\n\n").trim();
+  const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+
+  return { markdown, text };
+}

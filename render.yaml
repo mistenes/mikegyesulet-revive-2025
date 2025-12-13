@@ -54,6 +54,20 @@ services:
         value: ""
       - key: GA4_PRIVATE_KEY
         value: ""
+      - key: LISTMONK_URL
+        value: ""
+      - key: LISTMONK_USERNAME
+        value: ""
+      - key: LISTMONK_PASSWORD
+        value: ""
+      - key: LISTMONK_API_KEY
+        value: ""
+      - key: LISTMONK_LIST_ID
+        value: ""
+      - key: LISTMONK_FROM_EMAIL
+        value: ""
+      - key: LISTMONK_FROM_NAME
+        value: "MIK Admin"
     autoDeploy: true
 
 databases:

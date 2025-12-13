@@ -13,6 +13,7 @@ import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+import { subscribeToNewsletter } from "@/services/newsletterService";
 
 type ContactOffice = {
   name?: string;
@@ -77,6 +78,7 @@ export const Contact = () => {
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterPrivacy, setNewsletterPrivacy] = useState(false);
   const [newsletterErrors, setNewsletterErrors] = useState<Record<string, string>>({});
+  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,12 +106,15 @@ export const Contact = () => {
     }
   };
 
-  const handleNewsletterSubmit = (e: React.FormEvent) => {
+  const handleNewsletterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
       newsletterSchema.parse({ email: newsletterEmail, privacy: newsletterPrivacy });
       setNewsletterErrors({});
+      setNewsletterSubmitting(true);
+
+      await subscribeToNewsletter(newsletterEmail);
 
       toast({
         title: "Sikeres feliratkozás!",
@@ -119,6 +124,9 @@ export const Contact = () => {
       setNewsletterEmail("");
       setNewsletterPrivacy(false);
     } catch (error) {
+      if (error instanceof Error && !(error instanceof z.ZodError)) {
+        toast({ title: "Nem sikerült a feliratkozás", description: error.message, variant: "destructive" });
+      }
       if (error instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
         error.errors.forEach((err) => {
@@ -129,6 +137,7 @@ export const Contact = () => {
         setNewsletterErrors(newErrors);
       }
     }
+    setNewsletterSubmitting(false);
   };
 
   const handleClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
@@ -340,9 +349,10 @@ export const Contact = () => {
 
                   <Button
                     type="submit"
+                    disabled={newsletterSubmitting}
                     className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
                   >
-                    Feliratkozás
+                    {newsletterSubmitting ? "Feldolgozás..." : "Feliratkozás"}
                   </Button>
                 </form>
               </div>
