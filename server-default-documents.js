@@ -1,6 +1,5 @@
-import { type Document } from "@/types/documents";
-
-export const defaultDocuments: Document[] = [
+export const defaultDocuments = 
+[
   // Statute
   {
     title: "Alapszabály",
@@ -323,4 +322,5 @@ export const defaultDocuments: Document[] = [
     url: "https://cdn.prod.website-files.com/5dcc3e7be62de18dff4ac43a/5ddc30c8967a3be2a43e0c24_Lendva2003.pdf",
     category: "closing-statement"
   }
-];
+]
+;
