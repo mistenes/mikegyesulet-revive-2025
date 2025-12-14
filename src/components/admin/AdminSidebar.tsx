@@ -24,6 +24,7 @@ import {
   ScrollText,
   Bug,
   Mail,
+  Users,
 } from "lucide-react";
 
 const menuItems = [
@@ -52,6 +53,11 @@ const menuItems = [
     title: "Hírlevél",
     url: "/admin/newsletter",
     icon: Mail,
+  },
+  {
+    title: "Csapat",
+    url: "/admin/tagok",
+    icon: Users,
   },
   {
     title: "Projektek",

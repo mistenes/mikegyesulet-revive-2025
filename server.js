@@ -1190,6 +1190,73 @@ async function ensureDocumentsTables() {
   }
 }
 
+const seedTeamMembers = [
+  // Leadership
+  { name: "Turi Ádám", position: "Elnök", email: "elnok@mikegyesulet.hu", section: "leadership", sort_order: 1 },
+  { name: "Tuba Adrián", position: "Alelnök", email: "adrian.tuba@mikegyesulet.hu", section: "leadership", sort_order: 2 },
+  { name: "Hatos Attila", position: "Alelnök", email: "attila.hatos@mikegyesulet.hu", section: "leadership", sort_order: 3 },
+  // Standing Committee
+  { name: "Hatos Attila", position: "Bánság és regát", email: "", section: "standing_committee", sort_order: 4 },
+  { name: "Somogyi Attila", position: "Burgenland", email: "somogyi@gmx.net", section: "standing_committee", sort_order: 5 },
+  { name: "Szilágyi Dóra Emese", position: "Erdély", email: "", section: "standing_committee", sort_order: 6 },
+  { name: "Heringes Walter", position: "Felvidék", email: "", section: "standing_committee", sort_order: 7 },
+  { name: "Tuba Adrián", position: "Kárpátalja", email: "", section: "standing_committee", sort_order: 8 },
+  { name: "Turi Ádám", position: "Magyarország", email: "", section: "standing_committee", sort_order: 9 },
+  { name: "Bogar Patrik", position: "Muravidék", email: "patrik.bogar@gmail.com", section: "standing_committee", sort_order: 10 },
+  { name: "Németh Alexander", position: "Nyugati Diaszpóra", email: "martin.paszti@hunyouth.org", section: "standing_committee", sort_order: 11 },
+  { name: "Albert Éva", position: "Vajdaság", email: "bognaremese02@gmail.com", section: "standing_committee", sort_order: 12 },
+  { name: "", position: "Horvátország", email: "", section: "standing_committee", sort_order: 13 },
+  // Supervisory Board
+  { name: "Brunner Tibor", position: "Elnök", email: "tibor.brunner@gmail.com", section: "supervisory_board", sort_order: 14 },
+  { name: "Tőkés Lehel", position: "Tag", email: "tokeslehel@gmail.com", section: "supervisory_board", sort_order: 15 },
+  { name: "Boncsarovszky Péter", position: "Tag", email: "peter.boncsarovszky@mikegyesulet.hu", section: "supervisory_board", sort_order: 16 },
+  // HYCA
+  { name: "Mészáros János", position: "Elnök", email: "", section: "hyca", sort_order: 17 },
+  // HYCA Supervisory Board
+  { name: "Búcsú Ákos", position: "Tag", email: "", section: "hyca_supervisory_board", sort_order: 18 },
+  { name: "Bence Norbert", position: "Tag", email: "", section: "hyca_supervisory_board", sort_order: 19 },
+  { name: "Bogar Patrik", position: "Tag", email: "", section: "hyca_supervisory_board", sort_order: 20 },
+  // Operational Team
+  { name: "Bokor Boglárka", position: "Titkár", email: "titkarsag@mikegyesulet.hu", section: "operational_team", sort_order: 21 },
+  { name: "Mészáros János", position: "Gazdasági vezető", email: "janos.meszaros@mikegyesulet.hu", section: "operational_team", sort_order: 22 },
+  { name: "Boncsarovszky Péter", position: "Kommunikációs vezető", email: "peter.boncsarovszky@mikegyesulet.hu", section: "operational_team", sort_order: 23 },
+  { name: "Vincze Barnabás", position: "Kommunikációs gyakornok", email: "barnabas.vincze@mikegyesulet.hu", section: "operational_team", sort_order: 24 },
+];
+
+async function ensureTeamMembersTable() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS team_members(
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT DEFAULT '',
+        position TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        section TEXT NOT NULL,
+        image_url TEXT,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Seed data if empty
+    const count = await client.query('SELECT COUNT(*) AS count FROM team_members');
+    if (Number(count.rows[0]?.count || 0) === 0) {
+      console.log('Seeding team members...');
+      for (const member of seedTeamMembers) {
+        await client.query(
+          `INSERT INTO team_members(name, position, email, section, sort_order)
+           VALUES($1, $2, $3, $4, $5)`,
+          [member.name, member.position, member.email, member.section, member.sort_order]
+        );
+      }
+    }
+  } finally {
+    client.release();
+  }
+}
+
 function mapNewsRow(row) {
   const categoryTranslations = {
     hu: row.category_name_hu || row.category || '',
@@ -4423,6 +4490,91 @@ app.post('/api/admin/newsletter/send', authenticateRequest, async (req, res) => 
   }
 });
 
+// Team Members API
+app.get('/api/team-members', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM team_members ORDER BY sort_order ASC');
+    return res.status(200).json({ items: result.rows });
+  } catch (error) {
+    console.error('List team members error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a tagokat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/team-members', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { name, position, email, section, image_url, sort_order } = req.body;
+    const result = await client.query(
+      `INSERT INTO team_members(name, position, email, section, image_url, sort_order)
+       VALUES($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [name, position, email, section, image_url, sort_order || 0]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Create team member error', error);
+    return res.status(500).json({ message: 'Nem sikerült létrehozni a tagot' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/admin/team-members/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const { name, position, email, section, image_url, sort_order } = req.body;
+    const result = await client.query(
+      `UPDATE team_members SET name = $1, position = $2, email = $3, section = $4, image_url = $5, sort_order = $6, updated_at = NOW()
+       WHERE id = $7 RETURNING *`,
+      [name, position, email, section, image_url, sort_order, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Nem található' });
+    return res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Update team member error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a tagot' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/admin/team-members/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    await client.query('DELETE FROM team_members WHERE id = $1', [id]);
+    return res.status(200).json({ message: 'Törölve' });
+  } catch (error) {
+    console.error('Delete team member error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a tagot' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/team-members/reorder', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { items } = req.body; // Array of { id, sort_order }
+    await client.query('BEGIN');
+    for (const item of items) {
+      await client.query('UPDATE team_members SET sort_order = $1 WHERE id = $2', [item.sort_order, item.id]);
+    }
+    await client.query('COMMIT');
+    return res.status(200).json({ message: 'Sorrend frissítve' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Reorder team members error', error);
+    return res.status(500).json({ message: 'Nem sikerült frissíteni a sorrendet' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ message: 'Nem található erőforrás' });
@@ -4442,6 +4594,7 @@ Promise.all([
   ensurePageContentTable(),
   ensureDocumentsTables(),
   ensureNewsletterTables(),
+  ensureTeamMembersTable(),
 ])
   .then(() => {
     app.listen(PORT, () => {

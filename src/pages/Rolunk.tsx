@@ -1,5 +1,5 @@
 import type React from "react";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 
@@ -9,6 +9,7 @@ import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
+import { getTeamMembers, type TeamMember } from "@/services/teamService";
 
 const regionAnchors: Record<string, string> = {
   "Erdély": "erdely",
@@ -17,6 +18,7 @@ const regionAnchors: Record<string, string> = {
   "Vajdaság": "vajdasag",
   "Horvátország": "horvatorszag",
   "Szlovénia": "szlovenia",
+  "Vajdaság és Horvátország": "vajdasag",
 };
 
 const timeline = [
@@ -27,64 +29,22 @@ const timeline = [
   { year: "2022", event: "EVITA program" },
 ];
 
-const leadership = [
-  {
-    name: "Turi Ádám",
-    position: "Elnök",
-    email: "elnok@mikegyesulet.hu",
-  },
-  {
-    name: "Tuba Adrián",
-    position: "Alelnök",
-    email: "adrian.tuba@mikegyesulet.hu",
-  },
-  {
-    name: "Hatos Attila",
-    position: "Alelnök",
-    email: "attila.hatos@mikegyesulet.hu",
-  },
-];
-
-const standingCommittee = [
-  { name: "Hatos Attila", region: "Bánság és regát", email: "" },
-  { name: "Somogyi Attila", region: "Burgenland", email: "somogyi@gmx.net" },
-  { name: "Szilágyi Dóra Emese", region: "Erdély", email: "" },
-  { name: "Heringes Walter", region: "Felvidék", email: "" },
-  { name: "Tuba Adrián", region: "Kárpátalja", email: "" },
-  { name: "Turi Ádám", region: "Magyarország", email: "" },
-  { name: "Bogar Patrik", region: "Muravidék", email: "patrik.bogar@gmail.com" },
-  { name: "Németh Alexander", region: "Nyugati Diaszpóra", email: "martin.paszti@hunyouth.org" },
-  { name: "Albert Éva", region: "Vajdaság", email: "bognaremese02@gmail.com" },
-  { name: "", region: "Horvátország", email: "" },
-];
-
-const supervisoryBoard = [
-  { name: "Brunner Tibor", position: "Elnök", email: "tibor.brunner@gmail.com" },
-  { name: "Tőkés Lehel", position: "Tag", email: "tokeslehel@gmail.com" },
-  { name: "Boncsarovszky Péter", position: "Tag", email: "peter.boncsarovszky@mikegyesulet.hu" },
-];
-
-const hyca = [
-  { name: "Mészáros János", position: "Elnök", email: "" },
-];
-
-const hycaSupervisoryBoard = [
-  { name: "Búcsú Ákos", position: "Tag", email: "" },
-  { name: "Bence Norbert", position: "Tag", email: "" },
-  { name: "Bogar Patrik", position: "Tag", email: "" },
-];
-
-const operationalTeam = [
-  { name: "Bokor Boglárka", position: "Titkár", email: "titkarsag@mikegyesulet.hu" },
-  { name: "Mészáros János", position: "Gazdasági vezető", email: "janos.meszaros@mikegyesulet.hu" },
-  { name: "Boncsarovszky Péter", position: "Kommunikációs vezető", email: "peter.boncsarovszky@mikegyesulet.hu" },
-  { name: "Vincze Barnabás", position: "Kommunikációs gyakornok", email: "barnabas.vincze@mikegyesulet.hu" },
-];
-
 export default function Rolunk() {
   const { language } = useLanguage();
   const { content: aboutContent } = useSectionContent("about_section");
   const adminPreview = isAdminPreview();
+  const [members, setMembers] = useState<TeamMember[]>([]);
+
+  useEffect(() => {
+    getTeamMembers().then(setMembers).catch(console.error);
+  }, []);
+
+  const leadership = useMemo(() => members.filter(m => m.section === "leadership").sort((a, b) => a.sort_order - b.sort_order), [members]);
+  const standingCommittee = useMemo(() => members.filter(m => m.section === "standing_committee").sort((a, b) => a.sort_order - b.sort_order), [members]);
+  const supervisoryBoard = useMemo(() => members.filter(m => m.section === "supervisory_board").sort((a, b) => a.sort_order - b.sort_order), [members]);
+  const hyca = useMemo(() => members.filter(m => m.section === "hyca").sort((a, b) => a.sort_order - b.sort_order), [members]);
+  const hycaSupervisoryBoard = useMemo(() => members.filter(m => m.section === "hyca_supervisory_board").sort((a, b) => a.sort_order - b.sort_order), [members]);
+  const operationalTeam = useMemo(() => members.filter(m => m.section === "operational_team").sort((a, b) => a.sort_order - b.sort_order), [members]);
 
   const handleHeroClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
     if (notifyAdminFocus("about_section", fieldKey)) {
@@ -99,6 +59,7 @@ export default function Rolunk() {
       title?: string;
       subtitle?: string;
       description?: string;
+      imageUrl?: string;
     };
 
     return {
@@ -107,16 +68,53 @@ export default function Rolunk() {
       description:
         localized.description ||
         "A Magyar Ifjúsági Konferencia Egyesület (MIK) a magyarországi és a határon túli magyar fiatalok legmagasabb szintű egyeztető fóruma.",
+      imageUrl: localized.imageUrl,
     };
   }, [aboutContent, language]);
+
+  const renderMemberCard = (person: TeamMember, isRegion: boolean = false) => (
+    <Card
+      key={person.id}
+      id={isRegion ? regionAnchors[person.position] : undefined}
+      className="p-6 hover:shadow-lg transition-shadow flex flex-col h-full"
+    >
+      <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+        {person.image_url ? (
+          <img src={person.image_url} alt={person.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className={`rounded-full flex items-center justify-center ${isRegion ? 'w-20 h-20' : 'w-24 h-24'} bg-primary/20`}>
+            <span className={`${isRegion ? 'text-2xl' : 'text-3xl'} font-bold text-primary`}>
+              {person.name ? person.name.split(" ").map(n => n[0]).join("") : "?"}
+            </span>
+          </div>
+        )}
+      </div>
+      <h3 className={`${isRegion ? 'text-lg' : 'text-xl'} font-semibold mb-1`}>{person.name}</h3>
+      <p className="text-muted-foreground mb-3">{person.position}</p>
+      {person.email && (
+        <a
+          href={`mailto:${person.email}`}
+          className="inline-flex items-center gap-2 text-primary hover:underline text-sm mt-auto"
+        >
+          <Mail className="h-4 w-4" />
+          Kapcsolat
+        </a>
+      )}
+    </Card>
+  );
 
   return (
     <div className="min-h-screen bg-background relative">
       <Header />
-      
+
       {/* Hero Section */}
-      <section className="pt-32 pb-16 px-4 bg-gradient-to-b from-primary/5 to-background">
-        <div className="container mx-auto max-w-7xl space-y-4">
+      <section className="pt-32 pb-16 px-4 bg-gradient-to-b from-primary/5 to-background relative overflow-hidden">
+        {heroContent.imageUrl && (
+          <div className="absolute inset-0 z-0">
+            <img src={heroContent.imageUrl} alt="Cover" className="w-full h-full object-cover opacity-10" />
+          </div>
+        )}
+        <div className="container mx-auto max-w-7xl space-y-4 relative z-10">
           <h1
             className={`text-5xl md:text-6xl font-bold text-foreground ${adminPreview ? "cursor-pointer" : ""}`}
             style={{ fontFamily: "'Sora', sans-serif" }}
@@ -190,30 +188,9 @@ export default function Rolunk() {
           <p className="text-lg text-muted-foreground mb-12 max-w-3xl">
             A MIK vezető tisztségviselőit a Közgyűlés választja két éves időtartamra. Az egyesület törvényes képviseletét az elnök látja el.
           </p>
-          
+
           <div className="grid md:grid-cols-3 gap-8">
-            {leadership.map((person, index) => (
-              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
-                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
-                  <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center">
-                    <span className="text-4xl font-bold text-primary">
-                      {person.name.split(" ").map(n => n[0]).join("")}
-                    </span>
-                  </div>
-                </div>
-                <h3 className="text-xl font-semibold mb-1">{person.name}</h3>
-                <p className="text-muted-foreground mb-3">{person.position}</p>
-                {person.email && (
-                  <a
-                    href={`mailto:${person.email}`}
-                    className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
-                  >
-                    <Mail className="h-4 w-4" />
-                    Kapcsolat
-                  </a>
-                )}
-              </Card>
-            ))}
+            {leadership.map(person => renderMemberCard(person))}
           </div>
         </div>
       </section>
@@ -225,38 +202,9 @@ export default function Rolunk() {
           <p className="text-lg text-muted-foreground mb-12 max-w-3xl">
             A MIK működése során az Elnökségre az Állandó Bizottság megnevezést használja. Az elnökség az egyesület elnökéből és további 10 elnökségi tagból álló ügyvezető szerve, amely dönt mindazon kérdésekben, amelyet jogszabály vagy alapszabály nem utal a közgyűlés kizárólagos hatáskörébe.
           </p>
-          
+
           <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {standingCommittee.map((person, index) => (
-              <Card
-                key={index}
-                id={regionAnchors[person.region]}
-                className="p-6 hover:shadow-lg transition-shadow"
-              >
-                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
-                  {person.name ? (
-                    <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center">
-                      <span className="text-2xl font-bold text-primary">
-                        {person.name.split(" ").map(n => n[0]).join("")}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="w-20 h-20 bg-muted-foreground/20 rounded-full" />
-                  )}
-                </div>
-                {person.name && <h3 className="text-lg font-semibold mb-1">{person.name}</h3>}
-                <p className="text-muted-foreground mb-3">{person.region}</p>
-                {person.email && (
-                  <a
-                    href={`mailto:${person.email}`}
-                    className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
-                  >
-                    <Mail className="h-4 w-4" />
-                    Kapcsolat
-                  </a>
-                )}
-              </Card>
-            ))}
+            {standingCommittee.map(person => renderMemberCard(person, true))}
           </div>
         </div>
       </section>
@@ -268,28 +216,9 @@ export default function Rolunk() {
           <p className="text-lg text-muted-foreground mb-12 max-w-3xl">
             A három tagból álló felügyelőbizottság feladata a MIK törvényes működésének, valamint a jogszabályok, az alapszabály és az egyesületi határozatok végrehajtásának, betartásának ellenőrzése.
           </p>
-          
+
           <div className="grid md:grid-cols-3 gap-8">
-            {supervisoryBoard.map((person, index) => (
-              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
-                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
-                  <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center">
-                    <span className="text-4xl font-bold text-primary">
-                      {person.name.split(" ").map(n => n[0]).join("")}
-                    </span>
-                  </div>
-                </div>
-                <h3 className="text-xl font-semibold mb-1">{person.name}</h3>
-                <p className="text-muted-foreground mb-3">{person.position}</p>
-                <a
-                  href={`mailto:${person.email}`}
-                  className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
-                >
-                  <Mail className="h-4 w-4" />
-                  Kapcsolat
-                </a>
-              </Card>
-            ))}
+            {supervisoryBoard.map(person => renderMemberCard(person))}
           </div>
         </div>
       </section>
@@ -303,28 +232,7 @@ export default function Rolunk() {
           </p>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {hyca.map((person, index) => (
-              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
-                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
-                  <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center">
-                    <span className="text-4xl font-bold text-primary">
-                      {person.name.split(" ").map(n => n[0]).join("")}
-                    </span>
-                  </div>
-                </div>
-                <h3 className="text-xl font-semibold mb-1">{person.name}</h3>
-                <p className="text-muted-foreground mb-3">{person.position}</p>
-                {person.email && (
-                  <a
-                    href={`mailto:${person.email}`}
-                    className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
-                  >
-                    <Mail className="h-4 w-4" />
-                    Kapcsolat
-                  </a>
-                )}
-              </Card>
-            ))}
+            {hyca.map(person => renderMemberCard(person))}
           </div>
         </div>
       </section>
@@ -338,28 +246,7 @@ export default function Rolunk() {
           </p>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {hycaSupervisoryBoard.map((person, index) => (
-              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
-                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
-                  <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center">
-                    <span className="text-4xl font-bold text-primary">
-                      {person.name.split(" ").map(n => n[0]).join("")}
-                    </span>
-                  </div>
-                </div>
-                <h3 className="text-xl font-semibold mb-1">{person.name}</h3>
-                <p className="text-muted-foreground mb-3">{person.position}</p>
-                {person.email && (
-                  <a
-                    href={`mailto:${person.email}`}
-                    className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
-                  >
-                    <Mail className="h-4 w-4" />
-                    Kapcsolat
-                  </a>
-                )}
-              </Card>
-            ))}
+            {hycaSupervisoryBoard.map(person => renderMemberCard(person))}
           </div>
         </div>
       </section>
@@ -371,28 +258,9 @@ export default function Rolunk() {
           <p className="text-lg text-muted-foreground mb-12 max-w-3xl">
             Az operatív csapat általában elnöki megbízottakból áll, akiknek a feladatuk a végrehajtás.
           </p>
-          
+
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {operationalTeam.map((person, index) => (
-              <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
-                <div className="aspect-square bg-muted rounded-lg mb-4 flex items-center justify-center">
-                  <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center">
-                    <span className="text-3xl font-bold text-primary">
-                      {person.name.split(" ").map(n => n[0]).join("")}
-                    </span>
-                  </div>
-                </div>
-                <h3 className="text-xl font-semibold mb-1">{person.name}</h3>
-                <p className="text-muted-foreground mb-3">{person.position}</p>
-                <a
-                  href={`mailto:${person.email}`}
-                  className="inline-flex items-center gap-2 text-primary hover:underline text-sm"
-                >
-                  <Mail className="h-4 w-4" />
-                  Kapcsolat
-                </a>
-              </Card>
-            ))}
+            {operationalTeam.map(person => renderMemberCard(person))}
           </div>
         </div>
       </section>

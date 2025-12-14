@@ -28,6 +28,7 @@ import AdminBugReport from "./pages/admin/AdminBugReport";
 
 import AdminFooterContent from "./pages/admin/AdminFooterContent";
 import AdminNewsletter from "./pages/admin/AdminNewsletter";
+import AdminTeam from "./pages/admin/AdminTeam";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -257,6 +258,7 @@ const App = () => {
               <Route path="/admin/media" element={<AdminMedia />} />
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/newsletter" element={<AdminNewsletter />} />
+              <Route path="/admin/tagok" element={<AdminTeam />} />
               <Route path="/admin/bugreport" element={<AdminBugReport />} />
               <Route path="/admin/footer-content" element={<AdminFooterContent />} />
               <Route path="/admin/accept-invite" element={<AcceptInvite />} />
