@@ -4407,12 +4407,12 @@ app.post('/api/admin/newsletter/send', authenticateRequest, async (req, res) => 
 
     if (testEmail) {
       // Send test email ONLY
-      await sendNewsletterEmailToSubscribers([{ email: testEmail, name: 'Test User' }], `[TESZT] ${subject}`, htmlContent);
+      await sendNewsletterEmailToSubscribers([{ email: testEmail, name: 'Test User', unsubscribe_token: 'test-token' }], `[TESZT] ${subject}`, htmlContent);
       return res.status(200).json({ message: 'Teszt email elküldve', stats: { sent: 1, failed: 0 } });
     }
 
     // Send to all verified
-    const subscribers = await client.query('SELECT email, name FROM newsletter_subscribers WHERE verified = TRUE');
+    const subscribers = await client.query('SELECT email, name, unsubscribe_token FROM newsletter_subscribers WHERE verified = TRUE');
     const stats = await sendNewsletterEmailToSubscribers(subscribers.rows, subject, htmlContent);
 
     return res.status(200).json({ message: 'Hírlevél kiküldve', stats });
