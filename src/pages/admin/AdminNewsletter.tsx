@@ -36,30 +36,26 @@ export default function AdminNewsletter() {
     const [mode, setMode] = useState<"visual" | "html">("visual");
     const [rawHtml, setRawHtml] = useState("");
 
-    const editor = useEditor({
-        extensions: [StarterKit],
-        content: '<p>Kedves Feliratkozó!</p>',
-        editorProps: {
-            attributes: {
-                class: 'prose prose-sm max-w-none w-full focus:outline-none min-h-[300px] border border-input rounded-md p-4 bg-background',
-            },
-        },
-        onUpdate: ({ editor }) => {
-            // Autosave for visual editor
-            if (mode === "visual") {
-                autoSaveDraft(subject, null, editor.getHTML());
-            }
-        }
-    });
+    // Refs to avoid stale closures in callbacks/autosave
+    const subjectRef = useRef(subject);
+    const currentFilenameRef = useRef(currentFilename);
+    const modeRef = useRef(mode);
+    const rawHtmlRef = useRef(rawHtml);
 
-    const autoSaveDraft = useDebouncedCallback(async (currSubject: string, currJson: any, currHtml: string) => {
+    useEffect(() => { subjectRef.current = subject; }, [subject]);
+    useEffect(() => { currentFilenameRef.current = currentFilename; }, [currentFilename]);
+    useEffect(() => { modeRef.current = mode; }, [mode]);
+    useEffect(() => { rawHtmlRef.current = rawHtml; }, [rawHtml]);
+
+    const autoSaveDraft = useDebouncedCallback(async (currSubject: string, currHtml: string) => {
         setSavingDraft(true);
         try {
+            const filename = currentFilenameRef.current;
             // Priority: Save to Bunny if we have a filename
-            if (currentFilename) {
-                await saveDesignToBunny(currentFilename, {
+            if (filename) {
+                await saveDesignToBunny(filename, {
                     subject: currSubject,
-                    content_json: null, // No longer using JSON design
+                    content_json: null,
                     content_html: currHtml
                 });
             } else {
@@ -79,21 +75,40 @@ export default function AdminNewsletter() {
         }
     }, 2000);
 
+    const editor = useEditor({
+        extensions: [StarterKit],
+        content: '<p>Kedves Feliratkozó!</p>',
+        editorProps: {
+            attributes: {
+                class: 'prose prose-sm max-w-none w-full focus:outline-none min-h-[300px] border border-input rounded-md p-4 bg-background',
+            },
+        },
+        onUpdate: ({ editor }) => {
+            // Autosave for visual editor
+            if (modeRef.current === "visual") {
+                autoSaveDraft(subjectRef.current, editor.getHTML());
+            }
+        }
+    });
+
     // Update raw HTML when entering HTML mode
     const toggleMode = (value: string) => {
         // Sync logic before switching
         if (mode === "visual") {
-            // If going away from visual, maybe capture content?
-            // But 'rawHtml' is the source of truth for sending in HTML mode.
-            // Visual editor content is in `editor`.
+            // capture content?
         }
 
         const newMode = value as "visual" | "html";
 
         if (newMode === "html" && mode === "visual") {
-            setRawHtml(editor?.getHTML() || "");
+            const html = editor?.getHTML() || "";
+            setRawHtml(html);
+            // Also trigger a save when switching, just in case
+            autoSaveDraft(subject, html);
         } else if (newMode === "visual" && mode === "html") {
             editor?.commands.setContent(rawHtml);
+            // Trigger save
+            autoSaveDraft(subject, rawHtml);
         }
 
         setMode(newMode);
@@ -147,7 +162,10 @@ export default function AdminNewsletter() {
         try {
             const data = await loadDesignFromBunny(filename);
             setCurrentFilename(filename);
+            currentFilenameRef.current = filename; // Sync ref immediately
+
             setSubject(data.subject);
+            subjectRef.current = data.subject; // Sync ref immediately
 
             if (data.content_html) {
                 setRawHtml(data.content_html);
@@ -184,7 +202,10 @@ export default function AdminNewsletter() {
         try {
             const draft = await getDraft();
             if (draft) {
-                if (draft.subject) setSubject(draft.subject);
+                if (draft.subject) {
+                    setSubject(draft.subject);
+                    subjectRef.current = draft.subject; // Sync ref immediately
+                }
                 if (draft.content_html) {
                     setRawHtml(draft.content_html);
                     editor?.commands.setContent(draft.content_html);
@@ -395,7 +416,13 @@ export default function AdminNewsletter() {
                                     <Input
                                         placeholder="Hírlevél tárgya..."
                                         value={subject}
-                                        onChange={e => setSubject(e.target.value)}
+                                        onChange={e => {
+                                            const newSubject = e.target.value;
+                                            setSubject(newSubject);
+                                            // Autosave with new subject and current content
+                                            const content = mode === "html" ? rawHtml : (editor?.getHTML() || "");
+                                            autoSaveDraft(newSubject, content);
+                                        }}
                                     />
                                 </div>
 
@@ -463,7 +490,11 @@ export default function AdminNewsletter() {
                                                 </div>
                                                 <Textarea
                                                     value={rawHtml}
-                                                    onChange={(e) => setRawHtml(e.target.value)}
+                                                    onChange={(e) => {
+                                                        const newHtml = e.target.value;
+                                                        setRawHtml(newHtml);
+                                                        autoSaveDraft(subject, newHtml);
+                                                    }}
                                                     className="font-mono text-xs min-h-[300px]"
                                                     placeholder="<html>...</html>"
                                                 />
