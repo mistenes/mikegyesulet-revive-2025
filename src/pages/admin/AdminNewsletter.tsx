@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import EmailEditor, { EditorRef, EmailEditorProps } from "react-email-editor";
-import { getSubscribers, sendNewsletter, type Subscriber } from "@/services/newsletterService";
+import { getSubscribers, sendNewsletter, type Subscriber, getDraft, saveDraft } from "@/services/newsletterService";
 import { toast } from "sonner";
-import { Loader2, Send, Bold, Italic, List, ListOrdered, Code, Eye, FileCode } from "lucide-react";
+import { Loader2, Send, Bold, Italic, List, ListOrdered, Code, Eye, FileCode, Save } from "lucide-react";
+import { useDebouncedCallback } from "use-debounce";
+import StarterKit from '@tiptap/starter-kit';
 
 export default function AdminNewsletter() {
     const { session } = useAdminAuthGuard();
@@ -25,6 +26,9 @@ export default function AdminNewsletter() {
 
     const [subject, setSubject] = useState("");
     const [testEmail, setTestEmail] = useState("");
+
+    const [lastSaved, setLastSaved] = useState<Date | null>(null);
+    const [savingDraft, setSavingDraft] = useState(false);
 
     const [mode, setMode] = useState<"visual" | "html" | "builder">("visual");
     const [rawHtml, setRawHtml] = useState("");
@@ -38,7 +42,29 @@ export default function AdminNewsletter() {
                 class: 'prose prose-sm max-w-none w-full focus:outline-none min-h-[300px] border border-input rounded-md p-4 bg-background',
             },
         },
+        onUpdate: ({ editor }) => {
+            // Autosave for visual editor
+            if (mode === "visual") {
+                autoSaveDraft(subject, null, editor.getHTML());
+            }
+        }
     });
+
+    const autoSaveDraft = useDebouncedCallback(async (currSubject: string, currJson: any, currHtml: string) => {
+        setSavingDraft(true);
+        try {
+            await saveDraft({
+                subject: currSubject,
+                content_json: currJson,
+                content_html: currHtml
+            });
+            setLastSaved(new Date());
+        } catch (err) {
+            console.error("Autosave failed", err);
+        } finally {
+            setSavingDraft(false);
+        }
+    }, 2000);
 
     // Update raw HTML when entering HTML mode
     const toggleMode = (value: string) => {
@@ -60,19 +86,68 @@ export default function AdminNewsletter() {
         setMode(newMode);
     };
 
+    const [draftJson, setDraftJson] = useState<any>(null);
+
     const onLoad: EmailEditorProps['onLoad'] = (unlayer) => {
         // Custom branding
         // Primary color: #FF4524 (from hsl(14 100% 57%))
         // Background: #FFFFFF
         // Text: #333333
         // You can customize more here
-    }
+        unlayer.addEventListener('design:updated', () => {
+            unlayer.exportHtml((data) => {
+                autoSaveDraft(subject, data.design, data.html); // Also saving HTML preview
+            });
+        });
+
+        if (draftJson) {
+            unlayer.loadDesign(draftJson);
+        }
+    };
 
     useEffect(() => {
         if (session) {
             loadSubscribers();
+            loadDraft();
         }
     }, [session]);
+
+    const loadDraft = async () => {
+        try {
+            const draft = await getDraft();
+            if (draft) {
+                if (draft.subject) setSubject(draft.subject);
+                if (draft.content_html) {
+                    setRawHtml(draft.content_html);
+                    editor?.commands.setContent(draft.content_html);
+                }
+                // If we have JSON content, we can't easily load it into unlayer until unlayer is mounted.
+                // We will store it in a ref or state and load it when onLoad fires?
+                // For now, let's just keep it in mind.
+                // Actually, if we want to restore the builder state, we need to know if the last save was builder.
+                // But since we have a unified draft with JSON, we can try to load it if user goes to builder.
+
+                // Let's store the draft JSON in a state to load later
+                if (draft.content_json) {
+                    // We need a state for this
+                    // setDraftJson(draft.content_json);
+                    // But I'll just save it to ref for now if needed? No, state is better.
+                    // I'll add `draftJson` state in next step or use existing mechanism.
+                    // Actually, I can't add state here because `mode` definition is below/above.
+                    // I will just use a temp workaround: store it in a ref in the component scope?
+                    // Or I can just fetch it again when switching modes? No that's bad.
+                    setDraftJson(draft.content_json);
+                }
+                if (draft.content_json && !draft.content_html) {
+                    // If we have JSON but no HTML (or user prefers builder), we might want to switch mode?
+                    // For now, let's update mode if JSON exists
+                    // setMode("builder"); // Optional: auto-switch to builder if JSON exists
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load draft", e);
+        }
+    };
 
     const loadSubscribers = async () => {
         setLoading(true);

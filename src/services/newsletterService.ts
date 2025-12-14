@@ -35,6 +35,23 @@ export async function getSubscribers(): Promise<Subscriber[]> {
     return data.items;
 }
 
+export async function getDraft(): Promise<{ subject: string; content_json: any; content_html: string } | null> {
+    const response = await fetch(`${API_BASE}/api/admin/newsletter/draft`, {
+        credentials: "include"
+    });
+    return handleResponse(response);
+}
+
+export async function saveDraft(data: { subject: string; content_json?: any; content_html: string }): Promise<void> {
+    const response = await fetch(`${API_BASE}/api/admin/newsletter/draft`, {
+        method: "POST",
+        credentials: "include",
+        headers: withCsrfHeader({ "Content-Type": "application/json" }),
+        body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+}
+
 export async function sendNewsletter(subject: string, htmlContent: string, testEmail?: string): Promise<{ message: string; stats?: any }> {
     const response = await fetch(`${API_BASE}/api/admin/newsletter/send`, {
         method: "POST",

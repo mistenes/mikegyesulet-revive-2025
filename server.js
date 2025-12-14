@@ -155,11 +155,11 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const analyticsClient =
   GA_PROPERTY_ID && GA_CLIENT_EMAIL && GA_PRIVATE_KEY
     ? new BetaAnalyticsDataClient({
-        credentials: {
-          client_email: GA_CLIENT_EMAIL,
-          private_key: GA_PRIVATE_KEY,
-        },
-      })
+      credentials: {
+        client_email: GA_CLIENT_EMAIL,
+        private_key: GA_PRIVATE_KEY,
+      },
+    })
     : null;
 
 const analyticsDefaults = {
@@ -598,7 +598,7 @@ async function sendNewsletterEmailToSubscribers(subscribers, subject, htmlConten
       sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
       to: [{ email: sub.email, name: sub.name }], // Personalize if simple
       subject: subject,
-      htmlContent: htmlContent, 
+      htmlContent: htmlContent,
     };
 
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -620,7 +620,7 @@ async function sendNewsletterEmailToSubscribers(subscribers, subject, htmlConten
   if (failed.length > 0) {
     console.error(`Failed to send ${failed.length} newsletter emails out of ${subscribers.length}`);
   }
-  
+
   return { sent: subscribers.length - failed.length, failed: failed.length };
 }
 
@@ -748,14 +748,70 @@ async function ensureNewsletterTables() {
         verified_at TIMESTAMPTZ
       );
     `);
-    
+
     await client.query('CREATE INDEX IF NOT EXISTS newsletter_subscribers_email_idx ON newsletter_subscribers(email);');
     await client.query('CREATE INDEX IF NOT EXISTS newsletter_subscribers_verified_idx ON newsletter_subscribers(verified);');
-    
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS newsletter_drafts (
+        id SERIAL PRIMARY KEY,
+        subject TEXT,
+        content_json JSONB,
+        content_html TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
   } finally {
     client.release();
   }
 }
+
+// ... existing verify/subscribe routes ...
+
+app.get('/api/admin/newsletter/draft', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM newsletter_drafts ORDER BY id DESC LIMIT 1');
+    return res.status(200).json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error fetching draft:', error);
+    return res.status(500).json({ message: 'Error fetching draft' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/newsletter/draft', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { subject, content_json, content_html } = req.body;
+
+    // We'll treat this as a singleton "current draft" for simplicity, or latest.
+    // Let's check if a draft exists
+    const existing = await client.query('SELECT id FROM newsletter_drafts ORDER BY id DESC LIMIT 1');
+
+    if (existing.rows.length > 0) {
+      const id = existing.rows[0].id;
+      await client.query(
+        'UPDATE newsletter_drafts SET subject = $1, content_json = $2, content_html = $3, updated_at = NOW() WHERE id = $4',
+        [subject, content_json, content_html, id]
+      );
+    } else {
+      await client.query(
+        'INSERT INTO newsletter_drafts (subject, content_json, content_html) VALUES ($1, $2, $3)',
+        [subject, content_json, content_html]
+      );
+    }
+
+    return res.status(200).json({ message: 'Draft saved' });
+  } catch (error) {
+    console.error('Error saving draft:', error);
+    return res.status(500).json({ message: 'Error saving draft' });
+  } finally {
+    client.release();
+  }
+});
 
 async function ensureNewsTables() {
   const client = await pool.connect();
@@ -2423,16 +2479,16 @@ app.get('/api/gallery/imagekit-files', authenticateRequest, async (req, res) => 
     const payload = (await response.json()) || [];
     const files = Array.isArray(payload)
       ? payload.map((item) => ({
-          id: item.fileId || item.folderId || `${item.type}:${item.name}`,
-          name: item.name,
-          url: item.url,
-          thumbnailUrl: item.thumbnail,
-          width: item.width,
-          height: item.height,
-          createdAt: item.createdAt,
-          isFolder: item.type === 'folder',
-          path: item.filePath || item.folderPath || `${path.replace(/\/$/, '')}/${item.name}`,
-        }))
+        id: item.fileId || item.folderId || `${item.type}:${item.name}`,
+        name: item.name,
+        url: item.url,
+        thumbnailUrl: item.thumbnail,
+        width: item.width,
+        height: item.height,
+        createdAt: item.createdAt,
+        isFolder: item.type === 'folder',
+        path: item.filePath || item.folderPath || `${path.replace(/\/$/, '')}/${item.name}`,
+      }))
       : [];
 
     return res.status(200).json({ files, folder: path, baseFolder });
@@ -4045,7 +4101,7 @@ app.put('/api/news/:id', authenticateRequest, async (req, res) => {
   } catch (error) {
     console.error('Update news error', error);
     const status = error.status || 500;
-  return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a hírt' });
+    return res.status(status).json({ message: error.message || 'Nem sikerült frissíteni a hírt' });
   } finally {
     client.release();
   }
@@ -4188,7 +4244,7 @@ app.post('/api/newsletter/subscribe', async (req, res) => {
   const client = await pool.connect();
   try {
     const { name, email } = req.body;
-    
+
     if (!email || !email.includes('@')) {
       return res.status(400).json({ message: 'Érvényes email cím megadása kötelező' });
     }
@@ -4196,7 +4252,7 @@ app.post('/api/newsletter/subscribe', async (req, res) => {
     const existing = await client.query('SELECT * FROM newsletter_subscribers WHERE email = $1', [email]);
     if (existing.rows.length) {
       if (existing.rows[0].verified) {
-         return res.status(409).json({ message: 'Ezzel az email címmel már feliratkoztál.' });
+        return res.status(409).json({ message: 'Ezzel az email címmel már feliratkoztál.' });
       } else {
         // Resend verification?
         const token = crypto.randomBytes(32).toString('hex');
@@ -4264,21 +4320,21 @@ app.post('/api/admin/newsletter/send', authenticateRequest, async (req, res) => 
   const client = await pool.connect();
   try {
     const { subject, htmlContent, testEmail } = req.body;
-    
+
     if (!subject || !htmlContent) {
       return res.status(400).json({ message: 'Tárgy és tartalom megadása kötelező' });
     }
 
     if (testEmail) {
       // Send test email ONLY
-       await sendNewsletterEmailToSubscribers([{ email: testEmail, name: 'Test User' }], `[TESZT] ${subject}`, htmlContent);
-       return res.status(200).json({ message: 'Teszt email elküldve', stats: { sent: 1, failed: 0 } });
+      await sendNewsletterEmailToSubscribers([{ email: testEmail, name: 'Test User' }], `[TESZT] ${subject}`, htmlContent);
+      return res.status(200).json({ message: 'Teszt email elküldve', stats: { sent: 1, failed: 0 } });
     }
 
     // Send to all verified
     const subscribers = await client.query('SELECT email, name FROM newsletter_subscribers WHERE verified = TRUE');
     const stats = await sendNewsletterEmailToSubscribers(subscribers.rows, subject, htmlContent);
-    
+
     return res.status(200).json({ message: 'Hírlevél kiküldve', stats });
   } catch (error) {
     console.error('Send newsletter error', error);
