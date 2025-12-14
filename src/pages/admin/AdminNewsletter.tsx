@@ -10,9 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { getSubscribers, sendNewsletter, type Subscriber } from "@/services/newsletterService";
 import { toast } from "sonner";
-import { Loader2, Send, Bold, Italic, List, ListOrdered } from "lucide-react";
+import { Loader2, Send, Bold, Italic, List, ListOrdered, Code, Eye, FileCode } from "lucide-react";
 
 export default function AdminNewsletter() {
     const { session } = useAdminAuthGuard();
@@ -23,6 +25,9 @@ export default function AdminNewsletter() {
     const [subject, setSubject] = useState("");
     const [testEmail, setTestEmail] = useState("");
 
+    const [mode, setMode] = useState<"visual" | "html">("visual");
+    const [rawHtml, setRawHtml] = useState("");
+
     const editor = useEditor({
         extensions: [StarterKit],
         content: '<p>Kedves Feliratkozó!</p>',
@@ -32,6 +37,17 @@ export default function AdminNewsletter() {
             },
         },
     });
+
+    // Update raw HTML when entering HTML mode
+    const toggleMode = (checked: boolean) => {
+        const newMode = checked ? "html" : "visual";
+        if (newMode === "html") {
+            setRawHtml(editor?.getHTML() || "");
+        } else {
+            editor?.commands.setContent(rawHtml);
+        }
+        setMode(newMode);
+    };
 
     useEffect(() => {
         if (session) {
@@ -53,7 +69,9 @@ export default function AdminNewsletter() {
     };
 
     const handleSend = async (isTest: boolean) => {
-        if (!editor || !subject.trim()) {
+        const content = mode === "html" ? rawHtml : editor?.getHTML();
+
+        if (!content || !content.trim() || !subject.trim()) {
             toast.error("A tárgy és a tartalom megadása kötelező");
             return;
         }
@@ -66,9 +84,7 @@ export default function AdminNewsletter() {
         setSending(true);
         try {
             const targetEmail = isTest ? (testEmail || session?.email) : undefined;
-            const html = editor.getHTML();
-
-            const result = await sendNewsletter(subject, html, targetEmail);
+            const result = await sendNewsletter(subject, content, targetEmail);
 
             if (isTest) {
                 toast.success(`Teszt email elküldve ide: ${targetEmail}`);
@@ -170,36 +186,75 @@ export default function AdminNewsletter() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label>Tartalom</Label>
-                                    <div className="border rounded-md">
-                                        <div className="flex items-center gap-1 border-b p-2 bg-muted/40">
-                                            <ToolbarButton
-                                                onClick={() => editor?.chain().focus().toggleBold().run()}
-                                                isActive={editor?.isActive('bold')}
-                                            >
-                                                <Bold className="h-4 w-4" />
-                                            </ToolbarButton>
-                                            <ToolbarButton
-                                                onClick={() => editor?.chain().focus().toggleItalic().run()}
-                                                isActive={editor?.isActive('italic')}
-                                            >
-                                                <Italic className="h-4 w-4" />
-                                            </ToolbarButton>
-                                            <ToolbarButton
-                                                onClick={() => editor?.chain().focus().toggleBulletList().run()}
-                                                isActive={editor?.isActive('bulletList')}
-                                            >
-                                                <List className="h-4 w-4" />
-                                            </ToolbarButton>
-                                            <ToolbarButton
-                                                onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-                                                isActive={editor?.isActive('orderedList')}
-                                            >
-                                                <ListOrdered className="h-4 w-4" />
-                                            </ToolbarButton>
+                                    <div className="flex items-center justify-between">
+                                        <Label>Tartalom</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Label htmlFor="mode-switch" className="text-sm font-medium cursor-pointer">
+                                                {mode === "visual" ? "Vizuális szerkesztő" : "HTML szerkesztő"}
+                                            </Label>
+                                            <Switch
+                                                id="mode-switch"
+                                                checked={mode === "html"}
+                                                onCheckedChange={toggleMode}
+                                            />
                                         </div>
-                                        <EditorContent editor={editor} className="p-0" />
                                     </div>
+
+                                    {mode === "visual" ? (
+                                        <div className="border rounded-md">
+                                            <div className="flex items-center gap-1 border-b p-2 bg-muted/40">
+                                                <ToolbarButton
+                                                    onClick={() => editor?.chain().focus().toggleBold().run()}
+                                                    isActive={editor?.isActive('bold')}
+                                                >
+                                                    <Bold className="h-4 w-4" />
+                                                </ToolbarButton>
+                                                <ToolbarButton
+                                                    onClick={() => editor?.chain().focus().toggleItalic().run()}
+                                                    isActive={editor?.isActive('italic')}
+                                                >
+                                                    <Italic className="h-4 w-4" />
+                                                </ToolbarButton>
+                                                <ToolbarButton
+                                                    onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                                                    isActive={editor?.isActive('bulletList')}
+                                                >
+                                                    <List className="h-4 w-4" />
+                                                </ToolbarButton>
+                                                <ToolbarButton
+                                                    onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+                                                    isActive={editor?.isActive('orderedList')}
+                                                >
+                                                    <ListOrdered className="h-4 w-4" />
+                                                </ToolbarButton>
+                                            </div>
+                                            <EditorContent editor={editor} className="p-0" />
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-4">
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <FileCode className="h-4 w-4" />
+                                                    <span>HTML forráskód</span>
+                                                </div>
+                                                <Textarea
+                                                    value={rawHtml}
+                                                    onChange={(e) => setRawHtml(e.target.value)}
+                                                    className="font-mono text-xs min-h-[300px]"
+                                                    placeholder="<html>...</html>"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <Eye className="h-4 w-4" />
+                                                    <span>Előnézet</span>
+                                                </div>
+                                                <div className="border rounded-md p-4 bg-white min-h-[200px] overflow-auto max-h-[500px]">
+                                                    <div dangerouslySetInnerHTML={{ __html: rawHtml }} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="flex flex-col md:flex-row gap-4 pt-4 border-t">
