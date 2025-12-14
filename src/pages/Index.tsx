@@ -1,4 +1,5 @@
 import { Header } from "@/components/Header";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Hero } from "@/components/Hero";
 import { ImpactStats } from "@/components/ImpactStats";
 import { NewsSection } from "@/components/NewsSection";
@@ -13,6 +14,8 @@ import { NewsletterSignup } from "@/components/NewsletterSignup";
 
 
 const Index = () => {
+  const { language } = useLanguage();
+
   return (
     <div className="min-h-screen relative" style={{ fontFamily: "'Inter', sans-serif" }}>
       <Header />
@@ -25,7 +28,7 @@ const Index = () => {
       <Testimonials />
       <ClosingStatements />
       <Contact />
-      <NewsletterSignup />
+      {language === 'hu' && <NewsletterSignup />}
       <Footer />
     </div>
   );
