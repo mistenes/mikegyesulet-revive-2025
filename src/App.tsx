@@ -25,10 +25,13 @@ import AdminResetPassword from "./pages/admin/AdminResetPassword";
 import AdminFileManager from "./pages/admin/AdminFileManager";
 import AdminDocuments from "./pages/admin/AdminDocuments";
 import AdminBugReport from "./pages/admin/AdminBugReport";
+
 import AdminFooterContent from "./pages/admin/AdminFooterContent";
+import AdminNewsletter from "./pages/admin/AdminNewsletter";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
+import NewsletterVerify from "./pages/NewsletterVerify";
 import Dokumentumok from "./pages/Dokumentumok";
 import Projektek from "./pages/Projektek";
 import ProjectPage from "./pages/ProjectPage";
@@ -202,6 +205,7 @@ const App = () => {
       { path: "/rolunk", element: <Rolunk /> },
       { path: "/regiok", element: <Regiok /> },
       { path: "/kapcsolat", element: <Kapcsolat /> },
+      { path: "/newsletter/verify", element: <NewsletterVerify /> },
       { path: "/dokumentumok", element: <Dokumentumok /> },
       { path: "/projektek", element: <Projektek /> },
       { path: "/projektek/:slug", element: <ProjectPage /> },
@@ -250,6 +254,7 @@ const App = () => {
               <Route path="/admin/file-manager" element={<AdminFileManager />} />
               <Route path="/admin/media" element={<AdminMedia />} />
               <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/newsletter" element={<AdminNewsletter />} />
               <Route path="/admin/bugreport" element={<AdminBugReport />} />
               <Route path="/admin/footer-content" element={<AdminFooterContent />} />
               <Route path="/admin/accept-invite" element={<AcceptInvite />} />

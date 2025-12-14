@@ -9,6 +9,7 @@ import { Testimonials } from "@/components/Testimonials";
 import { ClosingStatements } from "@/components/ClosingStatements";
 import { Contact } from "@/components/Contact";
 import { Footer } from "@/components/Footer";
+import { NewsletterSignup } from "@/components/NewsletterSignup";
 
 
 const Index = () => {
@@ -24,6 +25,7 @@ const Index = () => {
       <Testimonials />
       <ClosingStatements />
       <Contact />
+      <NewsletterSignup />
       <Footer />
     </div>
   );

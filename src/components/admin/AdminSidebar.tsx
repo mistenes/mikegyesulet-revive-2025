@@ -23,6 +23,7 @@ import {
   HardDrive,
   ScrollText,
   Bug,
+  Mail,
 } from "lucide-react";
 
 const menuItems = [
@@ -46,6 +47,11 @@ const menuItems = [
     title: "Hírek",
     url: "/admin/news",
     icon: FileText,
+  },
+  {
+    title: "Hírlevél",
+    url: "/admin/newsletter",
+    icon: Mail,
   },
   {
     title: "Projektek",
@@ -115,10 +121,9 @@ export function AdminSidebar() {
                         to={item.url}
                         end={item.url === "/admin"}
                         className={({ isActive }) =>
-                          `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                            isActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                           }`
                         }
                       >

@@ -544,6 +544,86 @@ async function sendBugReportEmail({ reporterEmail, title, description, stepsToRe
   }
 }
 
+async function sendNewsletterVerificationEmail(email, name, token) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a hírlevélhez');
+  }
+
+  const verifyLink = `${INVITE_BASE_URL.replace(/\/$/, '')}/newsletter/verify?token=${encodeURIComponent(token)}`;
+
+  const payload = {
+    sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+    to: [{ email, name }],
+    subject: 'Megerősítés - Hírlevél feliratkozás',
+    htmlContent: `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>Kedves ${name || 'Érdeklődő'}!</h2>
+      <p>Köszönjük, hogy feliratkoztál a Magyar Ifjúsági Konferencia hírlevelére.</p>
+      <p>Hogy biztosak legyünk benne, te adtad meg ezt az email címet, kérjük, erősítsd meg a feliratkozást az alábbi gombra kattintva:</p>
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${verifyLink}" style="display:inline-block;padding:12px 24px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Feliratkozás megerősítése</a>
+      </p>
+      <p>Ha a gomb nem működik, másold be az alábbi linket a böngésződbe:</p>
+      <p><a href="${verifyLink}">${verifyLink}</a></p>
+      <p>Ha nem te iratkoztál fel, kérjük, hagyd figyelmen kívül ezt az üzenetet.</p>
+    </div>
+  `,
+  };
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Brevo newsletter verify send failed (${response.status}): ${body || response.statusText}`);
+  }
+}
+
+async function sendNewsletterEmailToSubscribers(subscribers, subject, htmlContent) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a hírlevélhez');
+  }
+
+  // Send individually to avoid exposing list in To/CC fields and better deliverability
+  // Note: For large lists, this should be a background job. For MVP, we iterate here.
+  const results = await Promise.allSettled(subscribers.map(async (sub) => {
+    const payload = {
+      sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+      to: [{ email: sub.email, name: sub.name }], // Personalize if simple
+      subject: subject,
+      htmlContent: htmlContent, 
+    };
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': BREVO_API_KEY,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to send to ${sub.email}`);
+    }
+  }));
+
+  const failed = results.filter(r => r.status === 'rejected');
+  if (failed.length > 0) {
+    console.error(`Failed to send ${failed.length} newsletter emails out of ${subscribers.length}`);
+  }
+  
+  return { sent: subscribers.length - failed.length, failed: failed.length };
+}
+
 async function ensureAdminUser() {
   const client = await pool.connect();
   try {
@@ -648,6 +728,30 @@ async function ensureLoginAttemptTable() {
         PRIMARY KEY (email, ip)
       );
     `);
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureNewsletterTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL UNIQUE,
+        name TEXT,
+        verified BOOLEAN NOT NULL DEFAULT FALSE,
+        verification_token TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        verified_at TIMESTAMPTZ
+      );
+    `);
+    
+    await client.query('CREATE INDEX IF NOT EXISTS newsletter_subscribers_email_idx ON newsletter_subscribers(email);');
+    await client.query('CREATE INDEX IF NOT EXISTS newsletter_subscribers_verified_idx ON newsletter_subscribers(verified);');
+    
   } finally {
     client.release();
   }
@@ -4080,6 +4184,110 @@ app.delete('/api/news/:id', authenticateRequest, async (req, res) => {
 
 app.use(express.static(DIST_PATH));
 
+app.post('/api/newsletter/subscribe', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { name, email } = req.body;
+    
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ message: 'Érvényes email cím megadása kötelező' });
+    }
+
+    const existing = await client.query('SELECT * FROM newsletter_subscribers WHERE email = $1', [email]);
+    if (existing.rows.length) {
+      if (existing.rows[0].verified) {
+         return res.status(409).json({ message: 'Ezzel az email címmel már feliratkoztál.' });
+      } else {
+        // Resend verification?
+        const token = crypto.randomBytes(32).toString('hex');
+        await client.query('UPDATE newsletter_subscribers SET verification_token = $1, name = $2, created_at = NOW() WHERE email = $3', [token, name || existing.rows[0].name, email]);
+        await sendNewsletterVerificationEmail(email, name || existing.rows[0].name, token);
+        return res.status(200).json({ message: 'Már regisztráltál, de még nem erősítetted meg. Új megerősítő emailt küldtünk.' });
+      }
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    await client.query(
+      'INSERT INTO newsletter_subscribers (email, name, verification_token) VALUES ($1, $2, $3)',
+      [email, name, token]
+    );
+
+    await sendNewsletterVerificationEmail(email, name, token);
+
+    return res.status(201).json({ message: 'Sikeres feliratkozás! Kérjük, erősítsd meg email címedet.' });
+  } catch (error) {
+    console.error('Newsletter subscribe error', error);
+    return res.status(500).json({ message: 'Hiba történt a feliratkozás során.' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/newsletter/verify', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: 'Hiányzó token' });
+
+    const result = await client.query(
+      'UPDATE newsletter_subscribers SET verified = TRUE, verified_at = NOW(), verification_token = NULL WHERE verification_token = $1 RETURNING *',
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Érvénytelen vagy lejárt token' });
+    }
+
+    return res.status(200).json({ message: 'Sikeres megerősítés! Köszönjük.' });
+  } catch (error) {
+    console.error('Newsletter verify error', error);
+    return res.status(500).json({ message: 'Hiba történt a megerősítés során.' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/newsletter/subscribers', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM newsletter_subscribers ORDER BY created_at DESC');
+    return res.status(200).json({ items: result.rows });
+  } catch (error) {
+    console.error('List subscribers error', error);
+    return res.status(500).json({ message: 'Nem sikerült betölteni a feliratkozókat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/newsletter/send', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { subject, htmlContent, testEmail } = req.body;
+    
+    if (!subject || !htmlContent) {
+      return res.status(400).json({ message: 'Tárgy és tartalom megadása kötelező' });
+    }
+
+    if (testEmail) {
+      // Send test email ONLY
+       await sendNewsletterEmailToSubscribers([{ email: testEmail, name: 'Test User' }], `[TESZT] ${subject}`, htmlContent);
+       return res.status(200).json({ message: 'Teszt email elküldve', stats: { sent: 1, failed: 0 } });
+    }
+
+    // Send to all verified
+    const subscribers = await client.query('SELECT email, name FROM newsletter_subscribers WHERE verified = TRUE');
+    const stats = await sendNewsletterEmailToSubscribers(subscribers.rows, subject, htmlContent);
+    
+    return res.status(200).json({ message: 'Hírlevél kiküldve', stats });
+  } catch (error) {
+    console.error('Send newsletter error', error);
+    return res.status(500).json({ message: 'Nem sikerült kiküldeni a hírlevelet' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ message: 'Nem található erőforrás' });
@@ -4098,6 +4306,7 @@ Promise.all([
   ensureGalleryTables(),
   ensurePageContentTable(),
   ensureDocumentsTables(),
+  ensureNewsletterTables(),
 ])
   .then(() => {
     app.listen(PORT, () => {
