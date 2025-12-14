@@ -23,7 +23,6 @@ import {
   HardDrive,
   ScrollText,
   Bug,
-  MailCheck,
 } from "lucide-react";
 
 const menuItems = [
@@ -47,11 +46,6 @@ const menuItems = [
     title: "Hírek",
     url: "/admin/news",
     icon: FileText,
-  },
-  {
-    title: "Hírlevél",
-    url: "/admin/newsletter",
-    icon: MailCheck,
   },
   {
     title: "Projektek",

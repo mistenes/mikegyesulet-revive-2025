@@ -11,7 +11,6 @@ import { Mail, Phone, MapPin, Building2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { subscribeToNewsletter } from "@/services/newsletterService";
 
 const contactFormSchema = z.object({
   name: z.string().trim().min(1, "A név megadása kötelező").max(100, "A név maximum 100 karakter lehet"),
@@ -20,15 +19,9 @@ const contactFormSchema = z.object({
   privacy: z.boolean().refine(val => val === true, "El kell fogadnod az adatkezelési tájékoztatót")
 });
 
-const newsletterSchema = z.object({
-  email: z.string().trim().email("Érvényes e-mail címet adj meg").max(255, "Az e-mail maximum 255 karakter lehet"),
-  privacy: z.boolean().refine(val => val === true, "El kell fogadnod az adatkezelési tájékoztatót")
-});
-
 export default function Kapcsolat() {
   const { language, t } = useLanguage();
   const [contactForm, setContactForm] = useState({ name: "", email: "", message: "", privacy: false });
-  const [newsletterForm, setNewsletterForm] = useState({ email: "", privacy: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleContactSubmit = async (e: React.FormEvent) => {
@@ -48,29 +41,6 @@ export default function Kapcsolat() {
         toast.error(error.errors[0].message);
       } else {
         toast.error("Hiba történt az üzenet küldésekor");
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleNewsletterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      const validatedData = newsletterSchema.parse(newsletterForm);
-      setIsSubmitting(true);
-
-      await subscribeToNewsletter(validatedData.email);
-      toast.success("Sikeresen feliratkoztál a hírlevélre!");
-      setNewsletterForm({ email: "", privacy: false });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        toast.error(error.errors[0].message);
-      } else if (error instanceof Error) {
-        toast.error(error.message);
-      } else {
-        toast.error("Hiba történt a feliratkozáskor");
       }
     } finally {
       setIsSubmitting(false);
@@ -207,66 +177,64 @@ export default function Kapcsolat() {
         </div>
       </section>
 
-      {/* Contact Form & Newsletter Section */}
+      {/* Contact Form Section */}
       <section className="py-20 px-4 bg-muted/30">
         <div className="container mx-auto max-w-6xl">
-          <div className="grid lg:grid-cols-2 gap-8">
+          <div className="grid gap-8">
             {/* Contact Form */}
             <Card className="shadow-xl border-border/50">
               <CardContent className="p-8">
-                <h2 
+                <h2
                   className="text-2xl font-bold text-foreground mb-6"
                   style={{ fontFamily: "'Sora', sans-serif" }}
                 >
-                  {language === 'hu' ? 'Vedd fel velünk a kapcsolatot' : 'Contact Us'}
+                  {language === 'hu' ? 'Írj nekünk' : 'Write to Us'}
                 </h2>
-                <p className="text-muted-foreground mb-8">
-                  {language === 'hu' 
-                    ? 'Itt üzenhetsz nekünk. Egyszerűbb, mint e-mailt írni, és ugyanolyan hatékony.' 
-                    : 'Send us a message. Simpler than email and just as effective.'}
-                </p>
 
                 <form onSubmit={handleContactSubmit} className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">{language === 'hu' ? 'Név' : 'Name'} *</Label>
-                    <Input
-                      id="name"
-                      value={contactForm.name}
-                      onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                      maxLength={100}
-                      required
-                    />
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">{language === 'hu' ? 'Név *' : 'Name *'}</Label>
+                      <Input
+                        id="name"
+                        value={contactForm.name}
+                        onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                        maxLength={100}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="email">E-mail *</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={contactForm.email}
+                        onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                        maxLength={255}
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">E-mail *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={contactForm.email}
-                      onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-                      maxLength={255}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="message">{language === 'hu' ? 'Üzenet' : 'Message'} *</Label>
+                    <Label htmlFor="message">{language === 'hu' ? 'Üzenet *' : 'Message *'}</Label>
                     <Textarea
                       id="message"
                       value={contactForm.message}
                       onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                      rows={6}
+                      className="min-h-[150px]"
                       maxLength={2000}
                       required
                     />
                   </div>
 
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start space-x-2">
                     <Checkbox
                       id="contact-privacy"
                       checked={contactForm.privacy}
                       onCheckedChange={(checked) => setContactForm({ ...contactForm, privacy: checked as boolean })}
+                      required
                     />
                     <Label htmlFor="contact-privacy" className="text-sm cursor-pointer">
                       {language === 'hu' ? 'Elfogadom az ' : 'I accept the '}
@@ -276,83 +244,14 @@ export default function Kapcsolat() {
                     </Label>
                   </div>
 
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     className="w-full"
                     disabled={isSubmitting}
                   >
                     {isSubmitting ? (language === 'hu' ? 'Küldés...' : 'Sending...') : (language === 'hu' ? 'Üzenet küldése' : 'Send Message')}
                   </Button>
                 </form>
-              </CardContent>
-            </Card>
-
-            {/* Newsletter Form */}
-            <Card className="shadow-xl border-border/50">
-              <CardContent className="p-8">
-                <h2 
-                  className="text-2xl font-bold text-foreground mb-6"
-                  style={{ fontFamily: "'Sora', sans-serif" }}
-                >
-                  {language === 'hu' ? 'Hírlevél' : 'Newsletter'}
-                </h2>
-                <p className="text-muted-foreground mb-8">
-                  {language === 'hu' 
-                    ? 'Iratkozz fel a MIK hírlevelére, ahol havonta egyszer összefoglaljuk neked, hogy mi történt velünk, valamint megosztjuk veled a legnépszerűbb cikkeink a HYCA blog kínálatából.' 
-                    : 'Subscribe to the MIK newsletter where we summarize monthly what happened with us and share our most popular articles from the HYCA blog.'}
-                </p>
-
-                <form onSubmit={handleNewsletterSubmit} className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="newsletter-email">E-mail *</Label>
-                    <Input
-                      id="newsletter-email"
-                      type="email"
-                      value={newsletterForm.email}
-                      onChange={(e) => setNewsletterForm({ ...newsletterForm, email: e.target.value })}
-                      maxLength={255}
-                      required
-                    />
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      id="newsletter-privacy"
-                      checked={newsletterForm.privacy}
-                      onCheckedChange={(checked) => setNewsletterForm({ ...newsletterForm, privacy: checked as boolean })}
-                    />
-                    <Label htmlFor="newsletter-privacy" className="text-sm cursor-pointer">
-                      {language === 'hu' ? 'Elfogadom az ' : 'I accept the '}
-                      <a href="/adatvedelem" className="text-primary hover:underline">
-                        {language === 'hu' ? 'Adatkezelési Tájékoztatót' : 'Privacy Policy'}
-                      </a>
-                    </Label>
-                  </div>
-
-                  <Button 
-                    type="submit" 
-                    className="w-full"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (language === 'hu' ? 'Feliratkozás...' : 'Subscribing...') : (language === 'hu' ? 'Feliratkozás' : 'Subscribe')}
-                  </Button>
-                </form>
-
-                <div className="mt-8 pt-8 border-t border-border">
-                  <h3 className="font-semibold text-foreground mb-4">
-                    {language === 'hu' ? 'Támogass minket!' : 'Support Us!'}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {language === 'hu' 
-                      ? 'Arra kérjük, hogy amennyiben a projektjeink elnyerték tetszését, támogassa munkánkat egy megosztással vagy közvetlenül anyagilag!' 
-                      : 'If you liked our projects, please support our work by sharing or through direct financial support!'}
-                  </p>
-                  <Button variant="outline" className="w-full" asChild>
-                    <a href="mailto:titkarsag@mikegyesulet.hu">
-                      {language === 'hu' ? 'Kapcsolatfelvétel' : 'Contact Us'}
-                    </a>
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           </div>

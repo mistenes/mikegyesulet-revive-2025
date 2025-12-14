@@ -20,7 +20,6 @@ import AdminGallery from "./pages/admin/AdminGallery";
 import AdminMedia from "./pages/admin/AdminMedia";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminRegions from "./pages/admin/AdminRegions";
-import AdminNewsletter from "./pages/admin/AdminNewsletter";
 import AcceptInvite from "./pages/admin/AcceptInvite";
 import AdminResetPassword from "./pages/admin/AdminResetPassword";
 import AdminFileManager from "./pages/admin/AdminFileManager";
@@ -245,7 +244,6 @@ const App = () => {
               <Route path="/admin/regions" element={<AdminRegions />} />
               <Route path="/admin/news/new-article" element={<AdminNewsNewArticle />} />
               <Route path="/admin/news" element={<AdminNews />} />
-              <Route path="/admin/newsletter" element={<AdminNewsletter />} />
               <Route path="/admin/projects" element={<AdminProjects />} />
               <Route path="/admin/gallery" element={<AdminGallery />} />
               <Route path="/admin/documents" element={<AdminDocuments />} />

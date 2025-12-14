@@ -13,7 +13,6 @@ import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
-import { subscribeToNewsletter } from "@/services/newsletterService";
 
 type ContactOffice = {
   name?: string;
@@ -32,11 +31,6 @@ const contactSchema = z.object({
   name: z.string().trim().min(1, "A név megadása kötelező").max(100, "A név maximum 100 karakter lehet"),
   email: z.string().trim().email("Érvénytelen email cím").max(255, "Az email maximum 255 karakter lehet"),
   message: z.string().trim().min(1, "Az üzenet megadása kötelező").max(1000, "Az üzenet maximum 1000 karakter lehet"),
-  privacy: z.boolean().refine((val) => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
-});
-
-const newsletterSchema = z.object({
-  email: z.string().trim().email("Érvénytelen email cím").max(255),
   privacy: z.boolean().refine((val) => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
 });
 
@@ -75,11 +69,6 @@ export const Contact = () => {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const [newsletterEmail, setNewsletterEmail] = useState("");
-  const [newsletterPrivacy, setNewsletterPrivacy] = useState(false);
-  const [newsletterErrors, setNewsletterErrors] = useState<Record<string, string>>({});
-  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -104,40 +93,6 @@ export const Contact = () => {
         setErrors(newErrors);
       }
     }
-  };
-
-  const handleNewsletterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    try {
-      newsletterSchema.parse({ email: newsletterEmail, privacy: newsletterPrivacy });
-      setNewsletterErrors({});
-      setNewsletterSubmitting(true);
-
-      await subscribeToNewsletter(newsletterEmail);
-
-      toast({
-        title: "Sikeres feliratkozás!",
-        description: "Köszönjük, hogy feliratkoztál hírlevelünkre.",
-      });
-
-      setNewsletterEmail("");
-      setNewsletterPrivacy(false);
-    } catch (error) {
-      if (error instanceof Error && !(error instanceof z.ZodError)) {
-        toast({ title: "Nem sikerült a feliratkozás", description: error.message, variant: "destructive" });
-      }
-      if (error instanceof z.ZodError) {
-        const newErrors: Record<string, string> = {};
-        error.errors.forEach((err) => {
-          if (err.path[0]) {
-            newErrors[err.path[0].toString()] = err.message;
-          }
-        });
-        setNewsletterErrors(newErrors);
-      }
-    }
-    setNewsletterSubmitting(false);
   };
 
   const handleClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
@@ -311,53 +266,6 @@ export const Contact = () => {
             </Card>
           </div>
 
-          {/* Newsletter - full width at bottom */}
-          <Card
-            className={`lg:col-span-3 p-6 bg-card border-border shadow-sm transition-all duration-700 delay-150 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-            }`}
-          >
-            <div className="grid md:grid-cols-2 gap-8 items-start">
-              <div>
-                <h3 className="text-2xl font-bold mb-3" style={{ fontFamily: "'Sora', sans-serif" }}>
-                  Hírlevél
-                </h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Iratkozz fel, hogy elsőként értesülj a friss hírekről, eseményekről.
-                </p>
-                <form onSubmit={handleNewsletterSubmit} className="space-y-3">
-                  <Input
-                    type="email"
-                    placeholder="Email cím"
-                    value={newsletterEmail}
-                    onChange={(e) => setNewsletterEmail(e.target.value)}
-                    className={`bg-muted/30 border-border ${newsletterErrors.email ? "border-destructive" : ""}`}
-                  />
-                  {newsletterErrors.email && <p className="text-xs text-destructive">{newsletterErrors.email}</p>}
-
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      id="newsletter-privacy"
-                      checked={newsletterPrivacy}
-                      onCheckedChange={(checked) => setNewsletterPrivacy(checked as boolean)}
-                    />
-                    <label htmlFor="newsletter-privacy" className="text-xs text-muted-foreground cursor-pointer">
-                      Elfogadom az Adatkezelési Tájékoztatót
-                    </label>
-                  </div>
-                  {newsletterErrors.privacy && <p className="text-xs text-destructive">{newsletterErrors.privacy}</p>}
-
-                  <Button
-                    type="submit"
-                    disabled={newsletterSubmitting}
-                    className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
-                  >
-                    {newsletterSubmitting ? "Feldolgozás..." : "Feliratkozás"}
-                  </Button>
-                </form>
-              </div>
-            </div>
-          </Card>
         </div>
       </div>
     </section>
