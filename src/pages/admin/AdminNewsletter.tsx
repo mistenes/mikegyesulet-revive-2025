@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import EmailEditor, { EditorRef, EmailEditorProps } from "react-email-editor";
 import { getSubscribers, sendNewsletter, type Subscriber, getDraft, saveDraft, listDesignsFromBunny, saveDesignToBunny, loadDesignFromBunny, deleteDesignFromBunny } from "@/services/newsletterService";
 import { toast } from "sonner";
 import { Loader2, Send, Bold, Italic, List, ListOrdered, Code, Eye, FileCode, Save, Plus, Trash2, FileJson } from "lucide-react";
@@ -34,9 +33,8 @@ export default function AdminNewsletter() {
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [savingDraft, setSavingDraft] = useState(false);
 
-    const [mode, setMode] = useState<"visual" | "html" | "builder">("visual");
+    const [mode, setMode] = useState<"visual" | "html">("visual");
     const [rawHtml, setRawHtml] = useState("");
-    const emailEditorRef = useRef<EditorRef>(null);
 
     const editor = useEditor({
         extensions: [StarterKit],
@@ -61,14 +59,14 @@ export default function AdminNewsletter() {
             if (currentFilename) {
                 await saveDesignToBunny(currentFilename, {
                     subject: currSubject,
-                    content_json: currJson,
+                    content_json: null, // No longer using JSON design
                     content_html: currHtml
                 });
             } else {
                 // Fallback to old DB draft
                 await saveDraft({
                     subject: currSubject,
-                    content_json: currJson,
+                    content_json: null,
                     content_html: currHtml
                 });
             }
@@ -90,7 +88,7 @@ export default function AdminNewsletter() {
             // Visual editor content is in `editor`.
         }
 
-        const newMode = value as "visual" | "html" | "builder";
+        const newMode = value as "visual" | "html";
 
         if (newMode === "html" && mode === "visual") {
             setRawHtml(editor?.getHTML() || "");
@@ -101,24 +99,7 @@ export default function AdminNewsletter() {
         setMode(newMode);
     };
 
-    const [draftJson, setDraftJson] = useState<any>(null);
 
-    const onLoad: EmailEditorProps['onLoad'] = (unlayer) => {
-        // Custom branding
-        // Primary color: #FF4524 (from hsl(14 100% 57%))
-        // Background: #FFFFFF
-        // Text: #333333
-        // You can customize more here
-        unlayer.addEventListener('design:updated', () => {
-            unlayer.exportHtml((data) => {
-                autoSaveDraft(subject, data.design, data.html); // Also saving HTML preview
-            });
-        });
-
-        if (draftJson) {
-            unlayer.loadDesign(draftJson);
-        }
-    };
 
     useEffect(() => {
         if (session) {
@@ -174,13 +155,9 @@ export default function AdminNewsletter() {
             }
 
             if (data.content_json) {
-                setDraftJson(data.content_json);
-                // If editor is already loaded, reload design
-                if (emailEditorRef.current) {
-                    emailEditorRef.current.editor.loadDesign(data.content_json);
-                }
+                // Ignore JSON content for now as builder is removed
             } else {
-                setDraftJson(null);
+                // setDraftJson(null);
             }
 
             toast.success(`Betöltve: ${filename}`);
@@ -211,28 +188,6 @@ export default function AdminNewsletter() {
                 if (draft.content_html) {
                     setRawHtml(draft.content_html);
                     editor?.commands.setContent(draft.content_html);
-                }
-                // If we have JSON content, we can't easily load it into unlayer until unlayer is mounted.
-                // We will store it in a ref or state and load it when onLoad fires?
-                // For now, let's just keep it in mind.
-                // Actually, if we want to restore the builder state, we need to know if the last save was builder.
-                // But since we have a unified draft with JSON, we can try to load it if user goes to builder.
-
-                // Let's store the draft JSON in a state to load later
-                if (draft.content_json) {
-                    // We need a state for this
-                    // setDraftJson(draft.content_json);
-                    // But I'll just save it to ref for now if needed? No, state is better.
-                    // I'll add `draftJson` state in next step or use existing mechanism.
-                    // Actually, I can't add state here because `mode` definition is below/above.
-                    // I will just use a temp workaround: store it in a ref in the component scope?
-                    // Or I can just fetch it again when switching modes? No that's bad.
-                    setDraftJson(draft.content_json);
-                }
-                if (draft.content_json && !draft.content_html) {
-                    // If we have JSON but no HTML (or user prefers builder), we might want to switch mode?
-                    // For now, let's update mode if JSON exists
-                    // setMode("builder"); // Optional: auto-switch to builder if JSON exists
                 }
             }
         } catch (e) {
@@ -287,12 +242,7 @@ export default function AdminNewsletter() {
                 });
         };
 
-        if (mode === "builder" && emailEditorRef.current) {
-            setSending(true); // Start loading state while exporting
-            emailEditorRef.current.editor.exportHtml((data) => {
-                proceed(data.html);
-            });
-        } else if (mode === "html") {
+        if (mode === "html") {
             proceed(rawHtml);
         } else {
             proceed(editor?.getHTML() || "");
@@ -469,14 +419,6 @@ export default function AdminNewsletter() {
                                             >
                                                 HTML Kód
                                             </Button>
-                                            <Button
-                                                size="sm"
-                                                variant={mode === "builder" ? "default" : "ghost"}
-                                                onClick={() => toggleMode("builder")}
-                                                className="h-7 text-xs bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
-                                            >
-                                                Drag & Drop Designer
-                                            </Button>
                                         </div>
                                     </div>
 
@@ -538,25 +480,7 @@ export default function AdminNewsletter() {
                                         </div>
                                     )}
 
-                                    {mode === "builder" && (
-                                        <div className="border rounded-md overflow-hidden min-h-[600px] bg-white">
-                                            <EmailEditor
-                                                ref={emailEditorRef}
-                                                onLoad={onLoad}
-                                                minHeight="600px"
-                                                options={{
-                                                    appearance: {
-                                                        theme: "light",
-                                                        panels: {
-                                                            tools: {
-                                                                dock: 'left'
-                                                            }
-                                                        }
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                    )}
+
                                 </div>
 
                                 <div className="flex flex-col md:flex-row gap-4 pt-4 border-t">
