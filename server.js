@@ -603,18 +603,17 @@ async function sendNewsletterEmailToSubscribers(subscribers, subject, htmlConten
     // Use a robust footer compatible with most email clients
     const footerHtml = `
       <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-family: sans-serif; font-size: 12px; color: #6b7280; text-align: center;">
-        <p>Ezt a hírlevelet azért kaptad, mert feliratkoztál a Magyar Ifjúsági Konferencia hírlevelére.</p>
-        <p>
-          <a href="${unsubscribeUrl}" style="color: #6b7280; text-decoration: underline;">Leiratkozás</a>
-        </p>
-        <p>Magyar Ifjúsági Konferencia Egyesület<br>1055 Budapest, Nagy Ignác utca 16.</p>
-      </div>
+      <p>Ezt a hírlevelet azért kaptad, mert feliratkoztál a Magyar Ifjúsági Konferencia hírlevelére.</p>
+      <p>
+        <a href="${unsubscribeUrl}" style="color: #6b7280; text-decoration: underline;">Leiratkozás</a>
+      </p>
+    </div>
     `;
 
     // Check if html body ends with </body>
     let finalHtml = htmlContent;
     if (finalHtml.includes('</body>')) {
-      finalHtml = finalHtml.replace('</body>', `${footerHtml}</body>`);
+      finalHtml = finalHtml.replace('</body>', `${footerHtml}</body > `);
     } else {
       finalHtml += footerHtml;
     }
@@ -639,14 +638,14 @@ async function sendNewsletterEmailToSubscribers(subscribers, subject, htmlConten
     if (!response.ok) {
       // Log detailed error for debugging
       const errText = await response.text();
-      console.error(`Failed sending to ${sub.email}: ${response.status} ${errText}`);
-      throw new Error(`Failed to send to ${sub.email}`);
+      console.error(`Failed sending to ${sub.email}: ${response.status} ${errText} `);
+      throw new Error(`Failed to send to ${sub.email} `);
     }
   }));
 
   const failed = results.filter(r => r.status === 'rejected');
   if (failed.length > 0) {
-    console.error(`Failed to send ${failed.length} newsletter emails out of ${subscribers.length}`);
+    console.error(`Failed to send ${failed.length} newsletter emails out of ${subscribers.length} `);
   }
 
   return { sent: subscribers.length - failed.length, failed: failed.length };
@@ -656,18 +655,18 @@ async function ensureAdminUser() {
   const client = await pool.connect();
   try {
     await client.query(`
-      CREATE TABLE IF NOT EXISTS admin_users (
-        email TEXT PRIMARY KEY,
-        password_hash TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        mfa_secret TEXT,
-        mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-        recovery_codes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-        must_reset_password BOOLEAN NOT NULL DEFAULT FALSE,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        last_login_at TIMESTAMPTZ,
-        last_password_change TIMESTAMPTZ
-      );
+      CREATE TABLE IF NOT EXISTS admin_users(
+      email TEXT PRIMARY KEY,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      mfa_secret TEXT,
+      mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      recovery_codes TEXT[] NOT NULL DEFAULT ARRAY[]:: TEXT[],
+      must_reset_password BOOLEAN NOT NULL DEFAULT FALSE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_login_at TIMESTAMPTZ,
+      last_password_change TIMESTAMPTZ
+    );
     `);
 
     await client.query('ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS mfa_secret TEXT');
@@ -689,9 +688,9 @@ async function ensureAdminUser() {
 
       const passwordHash = createPasswordHash(adminPassword);
       await client.query(
-        `INSERT INTO admin_users (email, password_hash)
-         VALUES ($1, $2)
-         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash`,
+        `INSERT INTO admin_users(email, password_hash)
+    VALUES($1, $2)
+         ON CONFLICT(email) DO UPDATE SET password_hash = EXCLUDED.password_hash`,
         [adminEmail, passwordHash],
       );
       console.log('Default admin user ensured');
@@ -707,36 +706,36 @@ async function ensureAdminSecurityTables() {
     await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
     await client.query(`
-      CREATE TABLE IF NOT EXISTS admin_password_history (
-        id SERIAL PRIMARY KEY,
-        email TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS admin_password_history(
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
     await client.query('CREATE INDEX IF NOT EXISTS admin_password_history_email_idx ON admin_password_history(email);');
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS admin_user_tokens (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email TEXT NOT NULL,
-        token_hash TEXT NOT NULL,
-        type TEXT NOT NULL,
-        expires_at TIMESTAMPTZ NOT NULL,
-        used BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS admin_user_tokens(
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      email TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      type TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
     await client.query('CREATE UNIQUE INDEX IF NOT EXISTS admin_user_tokens_hash_idx ON admin_user_tokens(token_hash);');
     await client.query('CREATE INDEX IF NOT EXISTS admin_user_tokens_email_idx ON admin_user_tokens(email);');
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS admin_mfa_enrollments (
-        email TEXT PRIMARY KEY,
-        secret TEXT NOT NULL,
-        recovery_codes TEXT[] NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS admin_mfa_enrollments(
+      email TEXT PRIMARY KEY,
+      secret TEXT NOT NULL,
+      recovery_codes TEXT[] NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
   } finally {
     client.release();
@@ -747,14 +746,14 @@ async function ensureLoginAttemptTable() {
   const client = await pool.connect();
   try {
     await client.query(`
-      CREATE TABLE IF NOT EXISTS admin_login_attempts (
-        email TEXT NOT NULL,
-        ip TEXT NOT NULL,
-        failed_attempts INTEGER NOT NULL DEFAULT 0,
-        last_failed_at TIMESTAMPTZ,
-        locked_until TIMESTAMPTZ,
-        PRIMARY KEY (email, ip)
-      );
+      CREATE TABLE IF NOT EXISTS admin_login_attempts(
+      email TEXT NOT NULL,
+      ip TEXT NOT NULL,
+      failed_attempts INTEGER NOT NULL DEFAULT 0,
+      last_failed_at TIMESTAMPTZ,
+      locked_until TIMESTAMPTZ,
+      PRIMARY KEY(email, ip)
+    );
     `);
   } finally {
     client.release();
@@ -766,17 +765,17 @@ async function ensureNewsletterTables() {
   try {
     await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
     await client.query(`
-      CREATE TABLE IF NOT EXISTS newsletter_subscribers (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email TEXT NOT NULL UNIQUE,
-        name TEXT,
-        verified BOOLEAN NOT NULL DEFAULT FALSE,
-        verification_token TEXT,
-        unsubscribe_token TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        verified_at TIMESTAMPTZ,
-        unsubscribed_at TIMESTAMPTZ
-      );
+      CREATE TABLE IF NOT EXISTS newsletter_subscribers(
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      email TEXT NOT NULL UNIQUE,
+      name TEXT,
+      verified BOOLEAN NOT NULL DEFAULT FALSE,
+      verification_token TEXT,
+      unsubscribe_token TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      verified_at TIMESTAMPTZ,
+      unsubscribed_at TIMESTAMPTZ
+    );
     `);
 
     // Add columns if they don't exist
@@ -786,15 +785,15 @@ async function ensureNewsletterTables() {
     // Generate unsubscribe tokens for existing users who might be missing it
     await client.query(`
       UPDATE newsletter_subscribers 
-      SET unsubscribe_token = encode(digest(random()::text, 'sha256'), 'hex') 
+      SET unsubscribe_token = encode(digest(random():: text, 'sha256'), 'hex') 
       WHERE unsubscribe_token IS NULL
-    `);
+      `);
 
     await client.query('CREATE INDEX IF NOT EXISTS newsletter_subscribers_email_idx ON newsletter_subscribers(email);');
     await client.query('CREATE INDEX IF NOT EXISTS newsletter_subscribers_verified_idx ON newsletter_subscribers(verified);');
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS newsletter_drafts (
+      CREATE TABLE IF NOT EXISTS newsletter_drafts(
         id SERIAL PRIMARY KEY,
         subject TEXT,
         content_json JSONB,
@@ -900,32 +899,32 @@ async function ensureNewsTables() {
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS news_categories (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name_hu TEXT NOT NULL,
-        name_en TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS news_categories(
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name_hu TEXT NOT NULL,
+      name_en TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS news_articles (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        category TEXT NOT NULL,
-        category_id UUID REFERENCES news_categories(id),
-        image_url TEXT,
-        image_alt TEXT,
-        sticky BOOLEAN NOT NULL DEFAULT FALSE,
-        news_date DATE NOT NULL DEFAULT CURRENT_DATE,
-        published BOOLEAN NOT NULL DEFAULT FALSE,
-        published_at TIMESTAMPTZ,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        slug_hu TEXT,
-        slug_en TEXT,
-        language_availability TEXT NOT NULL DEFAULT 'both',
-        translations JSONB NOT NULL
-      );
+      CREATE TABLE IF NOT EXISTS news_articles(
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      category TEXT NOT NULL,
+      category_id UUID REFERENCES news_categories(id),
+      image_url TEXT,
+      image_alt TEXT,
+      sticky BOOLEAN NOT NULL DEFAULT FALSE,
+      news_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      published BOOLEAN NOT NULL DEFAULT FALSE,
+      published_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      slug_hu TEXT,
+      slug_en TEXT,
+      language_availability TEXT NOT NULL DEFAULT 'both',
+      translations JSONB NOT NULL
+    );
     `);
 
     await client.query('DROP INDEX IF EXISTS news_slug_hu_idx;');
@@ -988,22 +987,22 @@ async function ensureProjectsTables() {
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS projects (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        sort_order INTEGER NOT NULL DEFAULT 0,
-        hero_image_url TEXT,
-        hero_image_alt TEXT,
-        location TEXT,
-        date_range TEXT,
-        link_url TEXT,
-        slug_hu TEXT,
-        slug_en TEXT,
-        language_availability TEXT NOT NULL DEFAULT 'both',
-        published BOOLEAN NOT NULL DEFAULT TRUE,
-        translations JSONB NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS projects(
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      hero_image_url TEXT,
+      hero_image_alt TEXT,
+      location TEXT,
+      date_range TEXT,
+      link_url TEXT,
+      slug_hu TEXT,
+      slug_en TEXT,
+      language_availability TEXT NOT NULL DEFAULT 'both',
+      published BOOLEAN NOT NULL DEFAULT TRUE,
+      translations JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
 
     await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug_hu TEXT;");
@@ -1042,11 +1041,11 @@ async function ensureProjectsTables() {
       let slugEn = collapseRepeatedOneSuffix(row.slug_en || slugifyText(normalizedTranslations.en?.title || ''));
 
       if (!slugHu) {
-        slugHu = slugifyText(`projekt-${row.id}`);
+        slugHu = slugifyText(`projekt - ${row.id} `);
       }
 
       if (!slugEn) {
-        slugEn = slugifyText(`project-${row.id}`);
+        slugEn = slugifyText(`project - ${row.id} `);
       }
 
       slugHu = ensureUniqueSlug(slugHu, usedHu);
@@ -1079,20 +1078,20 @@ async function ensureGalleryTables() {
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS gallery_albums (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        title TEXT NOT NULL,
-        subtitle TEXT DEFAULT '',
-        event_date DATE,
-        slug TEXT NOT NULL DEFAULT '',
-        cover_image_url TEXT NOT NULL,
-        cover_image_alt TEXT DEFAULT '',
-        images JSONB NOT NULL DEFAULT '[]',
-        sort_order INTEGER NOT NULL DEFAULT 0,
-        published BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS gallery_albums(
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      subtitle TEXT DEFAULT '',
+      event_date DATE,
+      slug TEXT NOT NULL DEFAULT '',
+      cover_image_url TEXT NOT NULL,
+      cover_image_alt TEXT DEFAULT '',
+      images JSONB NOT NULL DEFAULT '[]',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      published BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
 
     await client.query(
@@ -1132,19 +1131,19 @@ async function ensurePageContentTable() {
   const client = await pool.connect();
   try {
     await client.query(`
-      CREATE TABLE IF NOT EXISTS page_content (
-        section_key TEXT PRIMARY KEY,
-        translations JSONB NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS page_content(
+      section_key TEXT PRIMARY KEY,
+      translations JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
 
     for (const [sectionKey, translations] of Object.entries(defaultPageContent)) {
       await client.query(
-        `INSERT INTO page_content (section_key, translations)
-         VALUES ($1, $2)
-         ON CONFLICT (section_key) DO NOTHING`,
+        `INSERT INTO page_content(section_key, translations)
+    VALUES($1, $2)
+         ON CONFLICT(section_key) DO NOTHING`,
         [sectionKey, translations],
       );
     }
@@ -1160,17 +1159,17 @@ async function ensureDocumentsTables() {
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS documents (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        title TEXT NOT NULL,
-        title_en TEXT NOT NULL,
-        location TEXT,
-        event_date TEXT DEFAULT '',
-        url TEXT NOT NULL,
-        category TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS documents(
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      title_en TEXT NOT NULL,
+      location TEXT,
+      event_date TEXT DEFAULT '',
+      url TEXT NOT NULL,
+      category TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     `);
 
     await client.query('CREATE INDEX IF NOT EXISTS documents_category_idx ON documents(category);');
@@ -1180,8 +1179,8 @@ async function ensureDocumentsTables() {
     if ((count.rows[0]?.count || 0) === 0) {
       for (const doc of defaultDocumentSeed) {
         await client.query(
-          `INSERT INTO documents (title, title_en, location, event_date, url, category)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+          `INSERT INTO documents(title, title_en, location, event_date, url, category)
+    VALUES($1, $2, $3, $4, $5, $6)`,
           [doc.title, doc.titleEn || doc.title, doc.location || null, doc.date || '', doc.url, doc.category],
         );
       }
@@ -1329,7 +1328,7 @@ function buildUniqueTargetPath(targetPath = '', usedPaths = new Set()) {
   let candidate = cleaned;
 
   while (usedPaths.has(candidate)) {
-    candidate = `${directory}${baseName}-${counter}${extension}`;
+    candidate = `${directory}${baseName} -${counter}${extension} `;
     counter += 1;
   }
 
@@ -1499,7 +1498,7 @@ function ensureUniqueSlug(base, usedSet) {
   let suffix = 1;
 
   while (usedSet.has(candidate)) {
-    candidate = `${safeBase}-${suffix}`;
+    candidate = `${safeBase} -${suffix} `;
     suffix += 1;
   }
 
@@ -1525,7 +1524,7 @@ async function generateUniqueGallerySlug(client, title, excludeId) {
       return candidate;
     }
 
-    candidate = `${base}-${suffix}`;
+    candidate = `${base} -${suffix} `;
     suffix += 1;
   }
 }
@@ -1563,21 +1562,21 @@ async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
 
   if (slugHu) {
     params.push(slugHu);
-    conditions.push(`slug_hu = $${params.length}`);
+    conditions.push(`slug_hu = $${params.length} `);
   }
 
   if (slugEn) {
     params.push(slugEn);
-    conditions.push(`slug_en = $${params.length}`);
+    conditions.push(`slug_en = $${params.length} `);
   }
 
   if (!conditions.length) return;
 
-  let query = `SELECT id, slug_hu, slug_en FROM news_articles WHERE (${conditions.join(' OR ')}) AND published = TRUE`;
+  let query = `SELECT id, slug_hu, slug_en FROM news_articles WHERE(${conditions.join(' OR ')}) AND published = TRUE`;
 
   if (excludeId) {
     params.push(excludeId);
-    query += ` AND id <> $${params.length}`;
+    query += ` AND id <> $${params.length} `;
   }
 
   const existing = await client.query(query, params);
@@ -1585,7 +1584,7 @@ async function validateUniqueSlugs(client, { slugHu, slugEn, excludeId }) {
     const conflict = existing.rows[0];
     const conflictSlug = conflict.slug_hu === slugHu ? slugHu : slugEn;
     const language = conflict.slug_hu === slugHu ? 'magyar' : 'angol';
-    const message = `A(z) ${language} slug (${conflictSlug}) már létezik.`;
+    const message = `A(z) ${language} slug(${conflictSlug}) már létezik.`;
     const error = new Error(message);
     error.status = 409;
     throw error;
@@ -1608,12 +1607,12 @@ async function recordFailedLogin(client, emailKey, ip) {
   const lockedUntil = shouldLock ? new Date(Date.now() + LOGIN_LOCK_DURATION_MS) : current?.locked_until || null;
 
   await client.query(
-    `INSERT INTO admin_login_attempts (email, ip, failed_attempts, last_failed_at, locked_until)
-     VALUES ($1, $2, $3, NOW(), $4)
-     ON CONFLICT (email, ip) DO UPDATE SET
-       failed_attempts = EXCLUDED.failed_attempts,
-       last_failed_at = EXCLUDED.last_failed_at,
-       locked_until = EXCLUDED.locked_until`,
+    `INSERT INTO admin_login_attempts(email, ip, failed_attempts, last_failed_at, locked_until)
+    VALUES($1, $2, $3, NOW(), $4)
+     ON CONFLICT(email, ip) DO UPDATE SET
+    failed_attempts = EXCLUDED.failed_attempts,
+      last_failed_at = EXCLUDED.last_failed_at,
+      locked_until = EXCLUDED.locked_until`,
     [emailKey, ip, nextFailures, lockedUntil],
   );
 
@@ -1634,7 +1633,7 @@ async function ensureAdminSessionsTable() {
     await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
     await client.query(`
-      CREATE TABLE IF NOT EXISTS admin_sessions (
+      CREATE TABLE IF NOT EXISTS admin_sessions(
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         email TEXT NOT NULL,
         refresh_token_hash TEXT NOT NULL,
@@ -1675,14 +1674,14 @@ async function getSessionByRefreshHash(client, refreshHash) {
 async function persistSession(client, sessionId, email, refreshToken, csrfToken, tokenNonce) {
   const refreshTokenHash = hashToken(refreshToken);
   await client.query(
-    `INSERT INTO admin_sessions (id, email, refresh_token_hash, csrf_token, token_nonce)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (id) DO UPDATE SET
-       refresh_token_hash = EXCLUDED.refresh_token_hash,
-       csrf_token = EXCLUDED.csrf_token,
-       token_nonce = EXCLUDED.token_nonce,
-       revoked = FALSE,
-       updated_at = NOW()`,
+    `INSERT INTO admin_sessions(id, email, refresh_token_hash, csrf_token, token_nonce)
+    VALUES($1, $2, $3, $4, $5)
+     ON CONFLICT(id) DO UPDATE SET
+    refresh_token_hash = EXCLUDED.refresh_token_hash,
+      csrf_token = EXCLUDED.csrf_token,
+      token_nonce = EXCLUDED.token_nonce,
+      revoked = FALSE,
+      updated_at = NOW()`,
     [sessionId, email, refreshTokenHash, csrfToken, tokenNonce],
   );
 }
@@ -1691,11 +1690,11 @@ async function updateSessionWithRotation(client, sessionId, refreshToken, csrfTo
   const refreshTokenHash = hashToken(refreshToken);
   await client.query(
     `UPDATE admin_sessions SET
-       refresh_token_hash = $1,
-       csrf_token = $2,
-       token_nonce = $3,
-       revoked = FALSE,
-     updated_at = NOW()
+    refresh_token_hash = $1,
+      csrf_token = $2,
+      token_nonce = $3,
+      revoked = FALSE,
+      updated_at = NOW()
    WHERE id = $4`,
     [refreshTokenHash, csrfToken, tokenNonce, sessionId],
   );
@@ -2048,7 +2047,7 @@ app.get('/api/admin/security/mfa', authenticateRequest, async (req, res) => {
 app.post('/api/admin/security/mfa/prepare', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   try {
-    const secret = speakeasy.generateSecret({ name: `MIK Admin (${req.user.email})` });
+    const secret = speakeasy.generateSecret({ name: `MIK Admin(${req.user.email})` });
     const recoveryCodes = generateRecoveryCodes();
     await storeMfaEnrollment(client, req.user.email, secret.base32, recoveryCodes);
 
@@ -2140,7 +2139,7 @@ app.post('/api/admin/security/mfa/disable', authenticateRequest, async (req, res
 
     await client.query(
       `UPDATE admin_users
-       SET mfa_enabled = FALSE, mfa_secret = NULL, recovery_codes = ARRAY[]::TEXT[]
+       SET mfa_enabled = FALSE, mfa_secret = NULL, recovery_codes = ARRAY[]:: TEXT[]
        WHERE email = $1`,
       [req.user.email],
     );
@@ -2251,9 +2250,9 @@ app.post('/api/admin/users/invite', authenticateRequest, async (req, res) => {
     const passwordHash = createPasswordHash(randomPassword);
 
     await client.query(
-      `INSERT INTO admin_users (email, password_hash, must_reset_password, is_active, created_at)
-       VALUES ($1, $2, TRUE, TRUE, NOW())
-       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_reset_password = TRUE, is_active = TRUE`,
+      `INSERT INTO admin_users(email, password_hash, must_reset_password, is_active, created_at)
+    VALUES($1, $2, TRUE, TRUE, NOW())
+       ON CONFLICT(email) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_reset_password = TRUE, is_active = TRUE`,
       [normalizedEmail, passwordHash],
     );
 
@@ -2425,7 +2424,7 @@ function ensureFolderPath(path) {
     return '/';
   }
 
-  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+  return normalized.startsWith('/') ? normalized : `/ ${normalized} `;
 }
 
 function normalizeFolderPath(baseFolder, requestedFolder) {

@@ -12,9 +12,9 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import EmailEditor, { EditorRef, EmailEditorProps } from "react-email-editor";
-import { getSubscribers, sendNewsletter, type Subscriber, getDraft, saveDraft } from "@/services/newsletterService";
+import { getSubscribers, sendNewsletter, type Subscriber, getDraft, saveDraft, listDesignsFromBunny, saveDesignToBunny, loadDesignFromBunny, deleteDesignFromBunny } from "@/services/newsletterService";
 import { toast } from "sonner";
-import { Loader2, Send, Bold, Italic, List, ListOrdered, Code, Eye, FileCode, Save } from "lucide-react";
+import { Loader2, Send, Bold, Italic, List, ListOrdered, Code, Eye, FileCode, Save, Plus, Trash2, FileJson } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 import StarterKit from '@tiptap/starter-kit';
 
@@ -26,6 +26,10 @@ export default function AdminNewsletter() {
 
     const [subject, setSubject] = useState("");
     const [testEmail, setTestEmail] = useState("");
+    const [currentFilename, setCurrentFilename] = useState<string | null>(null);
+    const [savedDesigns, setSavedDesigns] = useState<string[]>([]);
+    const [loadingDesigns, setLoadingDesigns] = useState(false);
+    const [newDesignName, setNewDesignName] = useState("");
 
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [savingDraft, setSavingDraft] = useState(false);
@@ -53,11 +57,22 @@ export default function AdminNewsletter() {
     const autoSaveDraft = useDebouncedCallback(async (currSubject: string, currJson: any, currHtml: string) => {
         setSavingDraft(true);
         try {
-            await saveDraft({
-                subject: currSubject,
-                content_json: currJson,
-                content_html: currHtml
-            });
+            // Priority: Save to Bunny if we have a filename
+            if (currentFilename) {
+                await saveDesignToBunny(currentFilename, {
+                    subject: currSubject,
+                    content_json: currJson,
+                    content_html: currHtml
+                });
+            } else {
+                // Fallback to old DB draft
+                await saveDraft({
+                    subject: currSubject,
+                    content_json: currJson,
+                    content_html: currHtml
+                });
+            }
+
             setLastSaved(new Date());
         } catch (err) {
             console.error("Autosave failed", err);
@@ -108,9 +123,85 @@ export default function AdminNewsletter() {
     useEffect(() => {
         if (session) {
             loadSubscribers();
-            loadDraft();
+            loadDraft(); // Still load DB draft initially as fallback
+            loadDesigns();
         }
     }, [session]);
+
+    const loadDesigns = async () => {
+        setLoadingDesigns(true);
+        try {
+            const list = await listDesignsFromBunny();
+            setSavedDesigns(list);
+        } catch (e) {
+            console.error("Failed to list designs", e);
+            toast.error("Nem sikerült betölteni a mentett terveket");
+        } finally {
+            setLoadingDesigns(false);
+        }
+    };
+
+    const handleCreateDesign = async () => {
+        if (!newDesignName.trim()) return;
+
+        try {
+            const filename = newDesignName.trim();
+            // Create empty design
+            await saveDesignToBunny(filename, {
+                subject: "Új hírlevél",
+                content_html: "<p>Kezdd el itt...</p>",
+                content_json: null
+            });
+
+            await loadDesigns();
+            setNewDesignName("");
+            handleLoadDesign(filename.endsWith('.json') ? filename : `${filename}.json`);
+            toast.success("Design létrehozva!");
+        } catch (e) {
+            toast.error("Hiba a létrehozáskor");
+        }
+    };
+
+    const handleLoadDesign = async (filename: string) => {
+        try {
+            const data = await loadDesignFromBunny(filename);
+            setCurrentFilename(filename);
+            setSubject(data.subject);
+
+            if (data.content_html) {
+                setRawHtml(data.content_html);
+                editor?.commands.setContent(data.content_html);
+            }
+
+            if (data.content_json) {
+                setDraftJson(data.content_json);
+                // If editor is already loaded, reload design
+                if (emailEditorRef.current) {
+                    emailEditorRef.current.editor.loadDesign(data.content_json);
+                }
+            } else {
+                setDraftJson(null);
+            }
+
+            toast.success(`Betöltve: ${filename}`);
+        } catch (e) {
+            toast.error("Hiba a betöltéskor");
+        }
+    };
+
+    const handleDeleteDesign = async (filename: string) => {
+        if (!confirm(`Biztosan törölni szeretnéd: ${filename}?`)) return;
+        try {
+            await deleteDesignFromBunny(filename);
+            await loadDesigns();
+            if (currentFilename === filename) {
+                setCurrentFilename(null);
+            }
+            toast.success("Törölve");
+        } catch (e) {
+            toast.error("Hiba a törléskor");
+        }
+    };
 
     const loadDraft = async () => {
         try {
@@ -229,7 +320,8 @@ export default function AdminNewsletter() {
                 <Tabs defaultValue="list">
                     <TabsList>
                         <TabsTrigger value="list">Feliratkozók</TabsTrigger>
-                        <TabsTrigger value="send">Hírlevél küldése</TabsTrigger>
+                        <TabsTrigger value="designs">Mentett Tervek</TabsTrigger>
+                        <TabsTrigger value="send">Szerkesztés & Küldés</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="list" className="space-y-4">
@@ -282,11 +374,74 @@ export default function AdminNewsletter() {
                         </Card>
                     </TabsContent>
 
+                    <TabsContent value="designs" className="space-y-4">
+                        <Card className="p-6">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                                <h3 className="text-xl font-semibold">Mentett Tervek</h3>
+                                <div className="flex gap-2 w-full md:w-auto">
+                                    <Input
+                                        placeholder="Új terv neve..."
+                                        value={newDesignName}
+                                        onChange={e => setNewDesignName(e.target.value)}
+                                        className="max-w-[200px]"
+                                    />
+                                    <Button onClick={handleCreateDesign} disabled={loadingDesigns}>
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Új Létrehozása
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {loadingDesigns ? (
+                                <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {savedDesigns.length === 0 && <p className="text-muted-foreground p-4">Nincs mentett terv.</p>}
+                                    {savedDesigns.map(name => (
+                                        <div key={name} className={`border rounded-lg p-4 flex justify-between items-center ${currentFilename === name ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'bg-card'}`}>
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <div className="bg-muted p-2 rounded-md">
+                                                    <FileJson className="h-5 w-5 text-muted-foreground" />
+                                                </div>
+                                                <span className="font-medium truncate" title={name}>{name}</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button size="sm" variant="secondary" onClick={() => handleLoadDesign(name)}>
+                                                    Betöltés
+                                                </Button>
+                                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDeleteDesign(name)}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </Card>
+                    </TabsContent>
+
                     <TabsContent value="send" className="space-y-4">
                         <Card className="p-6 space-y-6">
                             <div className="grid gap-4">
                                 <div className="space-y-2">
-                                    <Label>Tárgy</Label>
+                                    <div className="flex justify-between items-center">
+                                        <Label>Tárgy</Label>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            {currentFilename ? (
+                                                <Badge variant="outline" className="gap-1">
+                                                    <FileJson className="h-3 w-3" />
+                                                    {currentFilename}
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="secondary">Helyi Piszkozat (DB)</Badge>
+                                            )}
+                                            {savingDraft ? (
+                                                <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Mentés...</span>
+                                            ) : (
+                                                <span>{lastSaved ? `Mentve: ${lastSaved.toLocaleTimeString()}` : 'Nem mentett'}</span>
+                                            )}
+                                        </div>
+                                    </div>
                                     <Input
                                         placeholder="Hírlevél tárgya..."
                                         value={subject}
