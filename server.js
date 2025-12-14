@@ -591,14 +591,39 @@ async function sendNewsletterEmailToSubscribers(subscribers, subject, htmlConten
     throw new Error('Brevo nincs konfigurálva a hírlevélhez');
   }
 
-  // Send individually to avoid exposing list in To/CC fields and better deliverability
-  // Note: For large lists, this should be a background job. For MVP, we iterate here.
+  // Send individually to personally signing the unsubscribe link
   const results = await Promise.allSettled(subscribers.map(async (sub) => {
+    // Determine unsubscribe URL
+    // If we don't have an unsubscribe token, we should probably generate one, 
+    // but we ran a migration above. If it's still missing, we could fallback or fail.
+    // Assuming token exists.
+    const unsubscribeUrl = `${INVITE_BASE_URL.replace(/\/$/, '')}/newsletter/unsubscribe?token=${sub.unsubscribe_token}`;
+
+    // Append footer
+    // Use a robust footer compatible with most email clients
+    const footerHtml = `
+      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-family: sans-serif; font-size: 12px; color: #6b7280; text-align: center;">
+        <p>Ezt a hírlevelet azért kaptad, mert feliratkoztál a Magyar Ifjúsági Konferencia hírlevelére.</p>
+        <p>
+          <a href="${unsubscribeUrl}" style="color: #6b7280; text-decoration: underline;">Leiratkozás</a>
+        </p>
+        <p>Magyar Ifjúsági Konferencia Egyesület<br>1055 Budapest, Nagy Ignác utca 16.</p>
+      </div>
+    `;
+
+    // Check if html body ends with </body>
+    let finalHtml = htmlContent;
+    if (finalHtml.includes('</body>')) {
+      finalHtml = finalHtml.replace('</body>', `${footerHtml}</body>`);
+    } else {
+      finalHtml += footerHtml;
+    }
+
     const payload = {
       sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
-      to: [{ email: sub.email, name: sub.name }], // Personalize if simple
+      to: [{ email: sub.email, name: sub.name }],
       subject: subject,
-      htmlContent: htmlContent,
+      htmlContent: finalHtml,
     };
 
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -612,6 +637,9 @@ async function sendNewsletterEmailToSubscribers(subscribers, subject, htmlConten
     });
 
     if (!response.ok) {
+      // Log detailed error for debugging
+      const errText = await response.text();
+      console.error(`Failed sending to ${sub.email}: ${response.status} ${errText}`);
       throw new Error(`Failed to send to ${sub.email}`);
     }
   }));
@@ -744,9 +772,22 @@ async function ensureNewsletterTables() {
         name TEXT,
         verified BOOLEAN NOT NULL DEFAULT FALSE,
         verification_token TEXT,
+        unsubscribe_token TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        verified_at TIMESTAMPTZ
+        verified_at TIMESTAMPTZ,
+        unsubscribed_at TIMESTAMPTZ
       );
+    `);
+
+    // Add columns if they don't exist
+    await client.query('ALTER TABLE newsletter_subscribers ADD COLUMN IF NOT EXISTS unsubscribe_token TEXT');
+    await client.query('ALTER TABLE newsletter_subscribers ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMPTZ');
+
+    // Generate unsubscribe tokens for existing users who might be missing it
+    await client.query(`
+      UPDATE newsletter_subscribers 
+      SET unsubscribe_token = encode(digest(random()::text, 'sha256'), 'hex') 
+      WHERE unsubscribe_token IS NULL
     `);
 
     await client.query('CREATE INDEX IF NOT EXISTS newsletter_subscribers_email_idx ON newsletter_subscribers(email);');
@@ -768,6 +809,45 @@ async function ensureNewsletterTables() {
 }
 
 // ... existing verify/subscribe routes ...
+
+
+
+app.post('/api/newsletter/unsubscribe', async (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ message: 'Token is required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `UPDATE newsletter_subscribers 
+       SET verified = FALSE, unsubscribed_at = NOW() 
+       WHERE unsubscribe_token = $1 AND verified = TRUE
+       RETURNING id, email`,
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      // Could be already unsubscribed or invalid token. 
+      // Check if it exists at all to give better error? 
+      // For security / privacy, generic success or "not found" is maybe better.
+      // Let's check if the token exists but is already unsubscribed.
+      const check = await client.query('SELECT id FROM newsletter_subscribers WHERE unsubscribe_token = $1', [token]);
+      if (check.rows.length > 0) {
+        return res.status(200).json({ message: 'Már leiratkoztál.' });
+      }
+      return res.status(404).json({ message: 'A leiratkozási link érvénytelen.' });
+    }
+
+    return res.status(200).json({ message: 'Sikeresen leiratkoztál a hírlevélről.' });
+  } catch (error) {
+    console.error('Error unsubscribing:', error);
+    return res.status(500).json({ message: 'Hiba a leiratkozás során' });
+  } finally {
+    client.release();
+  }
+});
 
 app.get('/api/admin/newsletter/draft', authenticateRequest, async (req, res) => {
   const client = await pool.connect();

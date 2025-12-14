@@ -32,6 +32,7 @@ import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
 import NewsletterVerify from "./pages/NewsletterVerify";
+import NewsletterUnsubscribe from "./pages/NewsletterUnsubscribe";
 import Dokumentumok from "./pages/Dokumentumok";
 import Projektek from "./pages/Projektek";
 import ProjectPage from "./pages/ProjectPage";
@@ -206,6 +207,7 @@ const App = () => {
       { path: "/regiok", element: <Regiok /> },
       { path: "/kapcsolat", element: <Kapcsolat /> },
       { path: "/newsletter/verify", element: <NewsletterVerify /> },
+      { path: "/newsletter/unsubscribe", element: <NewsletterUnsubscribe /> },
       { path: "/dokumentumok", element: <Dokumentumok /> },
       { path: "/projektek", element: <Projektek /> },
       { path: "/projektek/:slug", element: <ProjectPage /> },
