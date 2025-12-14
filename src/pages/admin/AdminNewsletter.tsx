@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,6 +12,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import EmailEditor, { EditorRef, EmailEditorProps } from "react-email-editor";
 import { getSubscribers, sendNewsletter, type Subscriber } from "@/services/newsletterService";
 import { toast } from "sonner";
 import { Loader2, Send, Bold, Italic, List, ListOrdered, Code, Eye, FileCode } from "lucide-react";
@@ -25,8 +26,9 @@ export default function AdminNewsletter() {
     const [subject, setSubject] = useState("");
     const [testEmail, setTestEmail] = useState("");
 
-    const [mode, setMode] = useState<"visual" | "html">("visual");
+    const [mode, setMode] = useState<"visual" | "html" | "builder">("visual");
     const [rawHtml, setRawHtml] = useState("");
+    const emailEditorRef = useRef<EditorRef>(null);
 
     const editor = useEditor({
         extensions: [StarterKit],
@@ -39,15 +41,32 @@ export default function AdminNewsletter() {
     });
 
     // Update raw HTML when entering HTML mode
-    const toggleMode = (checked: boolean) => {
-        const newMode = checked ? "html" : "visual";
-        if (newMode === "html") {
+    const toggleMode = (value: string) => {
+        // Sync logic before switching
+        if (mode === "visual") {
+            // If going away from visual, maybe capture content?
+            // But 'rawHtml' is the source of truth for sending in HTML mode.
+            // Visual editor content is in `editor`.
+        }
+
+        const newMode = value as "visual" | "html" | "builder";
+
+        if (newMode === "html" && mode === "visual") {
             setRawHtml(editor?.getHTML() || "");
-        } else {
+        } else if (newMode === "visual" && mode === "html") {
             editor?.commands.setContent(rawHtml);
         }
+
         setMode(newMode);
     };
+
+    const onLoad: EmailEditorProps['onLoad'] = (unlayer) => {
+        // Custom branding
+        // Primary color: #FF4524 (from hsl(14 100% 57%))
+        // Background: #FFFFFF
+        // Text: #333333
+        // You can customize more here
+    }
 
     useEffect(() => {
         if (session) {
@@ -68,34 +87,49 @@ export default function AdminNewsletter() {
         }
     };
 
-    const handleSend = async (isTest: boolean) => {
-        const content = mode === "html" ? rawHtml : editor?.getHTML();
+    const handleSend = (isTest: boolean) => {
+        const targetEmail = isTest ? (testEmail || session?.email) : undefined;
 
-        if (!content || !content.trim() || !subject.trim()) {
-            toast.error("A tárgy és a tartalom megadása kötelező");
-            return;
-        }
-
-        if (isTest && !testEmail && !session?.email) {
-            toast.error("Teszt email cím megadása kötelező (vagy be kell jelentkezni)");
-            return;
-        }
-
-        setSending(true);
-        try {
-            const targetEmail = isTest ? (testEmail || session?.email) : undefined;
-            const result = await sendNewsletter(subject, content, targetEmail);
-
-            if (isTest) {
-                toast.success(`Teszt email elküldve ide: ${targetEmail}`);
-            } else {
-                toast.success(`Hírlevél elküldve! Kiküldve: ${result.stats?.sent || 0}, Hiba: ${result.stats?.failed || 0}`);
+        const proceed = (htmlContent: string) => {
+            if (!htmlContent || !htmlContent.trim() || !subject.trim()) {
+                toast.error("A tárgy és a tartalom megadása kötelező");
+                setSending(false);
+                return;
             }
-        } catch (e: any) {
-            console.error(e);
-            toast.error(e.message || "Hiba a küldés során");
-        } finally {
-            setSending(false);
+
+            if (isTest && !targetEmail) {
+                toast.error("Teszt email cím megadása kötelező");
+                setSending(false);
+                return;
+            }
+
+            setSending(true);
+            sendNewsletter(subject, htmlContent, targetEmail)
+                .then((result) => {
+                    if (isTest) {
+                        toast.success(`Teszt email elküldve ide: ${targetEmail}`);
+                    } else {
+                        toast.success(`Hírlevél elküldve! Kiküldve: ${result.stats?.sent || 0}, Hiba: ${result.stats?.failed || 0}`);
+                    }
+                })
+                .catch((e: any) => {
+                    console.error(e);
+                    toast.error(e.message || "Hiba a küldés során");
+                })
+                .finally(() => {
+                    setSending(false);
+                });
+        };
+
+        if (mode === "builder" && emailEditorRef.current) {
+            setSending(true); // Start loading state while exporting
+            emailEditorRef.current.editor.exportHtml((data) => {
+                proceed(data.html);
+            });
+        } else if (mode === "html") {
+            proceed(rawHtml);
+        } else {
+            proceed(editor?.getHTML() || "");
         }
     };
 
@@ -185,22 +219,38 @@ export default function AdminNewsletter() {
                                     />
                                 </div>
 
-                                <div className="space-y-2">
+                                <div className="flex flex-col gap-4">
                                     <div className="flex items-center justify-between">
                                         <Label>Tartalom</Label>
-                                        <div className="flex items-center gap-2">
-                                            <Label htmlFor="mode-switch" className="text-sm font-medium cursor-pointer">
-                                                {mode === "visual" ? "Vizuális szerkesztő" : "HTML szerkesztő"}
-                                            </Label>
-                                            <Switch
-                                                id="mode-switch"
-                                                checked={mode === "html"}
-                                                onCheckedChange={toggleMode}
-                                            />
+                                        <div className="flex items-center gap-2 bg-muted p-1 rounded-lg">
+                                            <Button
+                                                size="sm"
+                                                variant={mode === "visual" ? "default" : "ghost"}
+                                                onClick={() => toggleMode("visual")}
+                                                className="h-7 text-xs"
+                                            >
+                                                Szöveges (Visual)
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant={mode === "html" ? "default" : "ghost"}
+                                                onClick={() => toggleMode("html")}
+                                                className="h-7 text-xs"
+                                            >
+                                                HTML Kód
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant={mode === "builder" ? "default" : "ghost"}
+                                                onClick={() => toggleMode("builder")}
+                                                className="h-7 text-xs bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                                            >
+                                                Drag & Drop Designer
+                                            </Button>
                                         </div>
                                     </div>
 
-                                    {mode === "visual" ? (
+                                    {mode === "visual" && (
                                         <div className="border rounded-md">
                                             <div className="flex items-center gap-1 border-b p-2 bg-muted/40">
                                                 <ToolbarButton
@@ -230,7 +280,9 @@ export default function AdminNewsletter() {
                                             </div>
                                             <EditorContent editor={editor} className="p-0" />
                                         </div>
-                                    ) : (
+                                    )}
+
+                                    {mode === "html" && (
                                         <div className="grid gap-4">
                                             <div className="space-y-2">
                                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -253,6 +305,26 @@ export default function AdminNewsletter() {
                                                     <div dangerouslySetInnerHTML={{ __html: rawHtml }} />
                                                 </div>
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {mode === "builder" && (
+                                        <div className="border rounded-md overflow-hidden min-h-[600px] bg-white">
+                                            <EmailEditor
+                                                ref={emailEditorRef}
+                                                onLoad={onLoad}
+                                                minHeight="600px"
+                                                options={{
+                                                    appearance: {
+                                                        theme: "light",
+                                                        panels: {
+                                                            tools: {
+                                                                dock: 'left'
+                                                            }
+                                                        }
+                                                    }
+                                                }}
+                                            />
                                         </div>
                                     )}
                                 </div>
