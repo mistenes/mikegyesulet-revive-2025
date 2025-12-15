@@ -28,7 +28,7 @@ export default function AdminNewsletter() {
     const [currentFilename, setCurrentFilename] = useState<string | null>(null);
     const [savedDesigns, setSavedDesigns] = useState<string[]>([]);
     const [loadingDesigns, setLoadingDesigns] = useState(false);
-    const [newDesignName, setNewDesignName] = useState("");
+
 
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [savingDraft, setSavingDraft] = useState(false);
@@ -50,16 +50,39 @@ export default function AdminNewsletter() {
     const autoSaveDraft = useDebouncedCallback(async (currSubject: string, currHtml: string) => {
         setSavingDraft(true);
         try {
-            const filename = currentFilenameRef.current;
-            // Priority: Save to Bunny if we have a filename
-            if (filename) {
-                await saveDesignToBunny(filename, {
+            // Generate filename from subject
+            const sanitizedSubject = currSubject.trim().replace(/[^a-z0-9áéíóöőúüűÁÉÍÓÖŐÚÜŰ\s\-_]/gi, '').trim();
+
+            if (sanitizedSubject) {
+                const newFilename = `${sanitizedSubject}.json`;
+                const oldFilename = currentFilenameRef.current;
+
+                // Save to Bunny
+                await saveDesignToBunny(newFilename, {
                     subject: currSubject,
                     content_json: null,
                     content_html: currHtml
                 });
+
+                // If filename changed (rename), delete old one and update state
+                if (oldFilename && oldFilename !== newFilename) {
+                    try {
+                        // Only delete if it was a real file (ends with .json) and different
+                        if (oldFilename.endsWith('.json')) {
+                            await deleteDesignFromBunny(oldFilename);
+                        }
+                    } catch (e) {
+                        console.error("Failed to delete old draft during rename", e);
+                    }
+                }
+
+                if (oldFilename !== newFilename) {
+                    setCurrentFilename(newFilename);
+                    // Update list to show new name immediately
+                    loadDesigns();
+                }
             } else {
-                // Fallback to old DB draft
+                // No subject, fallback to DB draft
                 await saveDraft({
                     subject: currSubject,
                     content_json: null,
@@ -137,26 +160,8 @@ export default function AdminNewsletter() {
         }
     };
 
-    const handleCreateDesign = async () => {
-        if (!newDesignName.trim()) return;
+    // Manual creation handler removed
 
-        try {
-            const filename = newDesignName.trim();
-            // Create empty design
-            await saveDesignToBunny(filename, {
-                subject: "Új hírlevél",
-                content_html: "<p>Kezdd el itt...</p>",
-                content_json: null
-            });
-
-            await loadDesigns();
-            setNewDesignName("");
-            handleLoadDesign(filename.endsWith('.json') ? filename : `${filename}.json`);
-            toast.success("Design létrehozva!");
-        } catch (e) {
-            toast.error("Hiba a létrehozáskor");
-        }
-    };
 
     const handleLoadDesign = async (filename: string) => {
         try {
@@ -347,20 +352,11 @@ export default function AdminNewsletter() {
 
                     <TabsContent value="designs" className="space-y-4">
                         <Card className="p-6">
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                            <div className="mb-6">
                                 <h3 className="text-xl font-semibold">Mentett Tervek</h3>
-                                <div className="flex gap-2 w-full md:w-auto">
-                                    <Input
-                                        placeholder="Új terv neve..."
-                                        value={newDesignName}
-                                        onChange={e => setNewDesignName(e.target.value)}
-                                        className="max-w-[200px]"
-                                    />
-                                    <Button onClick={handleCreateDesign} disabled={loadingDesigns}>
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Új Létrehozása
-                                    </Button>
-                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    A tervek automatikusan mentésre kerülnek a tárgy mező kitöltésekor.
+                                </p>
                             </div>
 
                             {loadingDesigns ? (
@@ -535,6 +531,6 @@ export default function AdminNewsletter() {
                     </TabsContent>
                 </Tabs>
             </div>
-        </AdminLayout>
+        </AdminLayout >
     );
 }
