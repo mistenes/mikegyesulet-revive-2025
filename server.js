@@ -2828,11 +2828,23 @@ app.get('/api/page-content/public', async (_req, res) => {
   try {
     let result;
     try {
+      // 1. Try selecting everything (ideal state)
       result = await client.query('SELECT section_key, translations, is_visible FROM page_content WHERE published = TRUE');
     } catch (err) {
       if (err.code === '42703') { // Undefined column
-        console.warn('is_visible column missing, falling back');
-        result = await client.query('SELECT section_key, translations FROM page_content WHERE published = TRUE');
+        // 2. Try falling back to missing is_visible (but keeping published check)
+        try {
+          // This might fail if 'published' column is ALSO missing
+          result = await client.query('SELECT section_key, translations FROM page_content WHERE published = TRUE');
+        } catch (err2) {
+          if (err2.code === '42703') {
+            // 3. Fallback to basic query (no filters) - crucial for unmigrated DBs
+            console.warn('published/is_visible columns missing, loading all content');
+            result = await client.query('SELECT section_key, translations FROM page_content');
+          } else {
+            throw err2;
+          }
+        }
       } else {
         throw err;
       }
@@ -3011,14 +3023,31 @@ app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) =
   const isVisible = req.body?.isVisible;
 
   try {
-    const result = await client.query(
-      `INSERT INTO page_content (section_key, translations, is_visible)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (section_key)
-       DO UPDATE SET translations = EXCLUDED.translations, is_visible = EXCLUDED.is_visible, updated_at = NOW()
-       RETURNING section_key, translations, is_visible`,
-      [sectionKey, translations, isVisible ?? true],
-    );
+    let result;
+    try {
+      result = await client.query(
+        `INSERT INTO page_content (section_key, translations, is_visible)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (section_key)
+         DO UPDATE SET translations = EXCLUDED.translations, is_visible = EXCLUDED.is_visible, updated_at = NOW()
+         RETURNING section_key, translations, is_visible`,
+        [sectionKey, translations, isVisible ?? true],
+      );
+    } catch (err) {
+      if (err.code === '42703') { // Undefined column is_visible
+        console.warn('is_visible column missing during save, falling back to legacy save');
+        result = await client.query(
+          `INSERT INTO page_content (section_key, translations)
+           VALUES ($1, $2)
+           ON CONFLICT (section_key)
+           DO UPDATE SET translations = EXCLUDED.translations, updated_at = NOW()
+           RETURNING section_key, translations`,
+          [sectionKey, translations],
+        );
+      } else {
+        throw err;
+      }
+    }
 
     const row = result.rows[0];
     return res.status(200).json({ sectionKey: row.section_key, translations: row.translations, isVisible: row.is_visible });
