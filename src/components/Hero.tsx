@@ -76,6 +76,7 @@ export const Hero = () => {
 
   const stats = useMemo<HeroStats["stats"]>(() => {
     if (!statsSection) return [];
+    if (statsSection.isVisible === false && !isAdminPreview()) return [];
     return (
       (statsSection[language]?.stats || statsSection.hu?.stats || []) as HeroStats["stats"]
     ).filter(Boolean);
