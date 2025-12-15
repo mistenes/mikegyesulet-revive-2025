@@ -12,15 +12,22 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Switch } from "@/components/ui/switch";
 import {
   ChevronLeft,
+  ChevronRight,
   Clock,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileText,
   Image as ImageIcon,
   Languages,
+  Layout,
   Loader2,
+  Pencil,
+  Plus,
   RefreshCw,
   Save,
   Search,
+  Trash2,
   Upload,
   UserCircle,
 } from "lucide-react";
