@@ -391,6 +391,12 @@ export default function AdminPages() {
     }
   };
 
+  const handleFieldSelect = (sectionKey: SectionKey, fieldKey: string) => {
+    setSelectedField({ sectionKey, fieldKey });
+    scrollToSection(sectionKey);
+    setTimeout(() => scrollToField(sectionKey, fieldKey), 100);
+  };
+
   const focusFromPreview = useCallback(
     (sectionKey: SectionKey, fieldKey: string) => {
       const targetTab = sectionTabMap[sectionKey];
@@ -1101,7 +1107,7 @@ export default function AdminPages() {
                 <div className="flex items-center gap-2">
                   <div onClick={(e) => e.stopPropagation()}>
                     <Switch
-                      checked={(contentStore[section.key] as any)?.isVisible !== false}
+                      checked={(pageContent[section.key] as any)?.isVisible !== false}
                       onCheckedChange={(checked) => handleVisibilityToggle(section.key, checked)}
                       className="scale-75"
                     />
