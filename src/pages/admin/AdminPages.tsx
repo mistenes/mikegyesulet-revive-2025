@@ -1086,9 +1086,18 @@ export default function AdminPages() {
                     ? "bg-primary/10 border-primary/50 text-foreground ring-1 ring-primary/20"
                     : "bg-background border-border hover:border-primary/50 hover:bg-muted/50 text-muted-foreground hover:text-foreground",
                 )}
-              >
-                </div>
-                <span className="text-xs text-muted-foreground">Ugrás</span>
+                  <div className="flex-1 text-left">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
+                    <p className="font-medium leading-tight">{section.label}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                     {(contentStore[section.key] as any)?.isVisible === false ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                     ) : (
+                        <Eye className="h-4 w-4 text-primary/40" />
+                     )}
+                     {isActive && <ChevronRight className="h-4 w-4 text-primary" />}
+                  </div>
               </button>
         );
           })}
