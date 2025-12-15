@@ -2832,18 +2832,16 @@ app.get('/api/page-content/public', async (_req, res) => {
       result = await client.query('SELECT section_key, translations, is_visible FROM page_content WHERE published = TRUE');
     } catch (err) {
       if (err.code === '42703') { // Undefined column
-        // 2. Try falling back to missing is_visible (but keeping published check)
+        console.warn('Database schema out of date, attempting auto-migration...');
         try {
-          // This might fail if 'published' column is ALSO missing
-          result = await client.query('SELECT section_key, translations FROM page_content WHERE published = TRUE');
-        } catch (err2) {
-          if (err2.code === '42703') {
-            // 3. Fallback to basic query (no filters) - crucial for unmigrated DBs
-            console.warn('published/is_visible columns missing, loading all content');
-            result = await client.query('SELECT section_key, translations FROM page_content');
-          } else {
-            throw err2;
-          }
+          await client.query('ALTER TABLE page_content ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE');
+          await client.query('ALTER TABLE page_content ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT TRUE');
+          // Retry original query
+          result = await client.query('SELECT section_key, translations, is_visible FROM page_content WHERE published = TRUE');
+        } catch (migrationErr) {
+          console.error('Auto-migration failed', migrationErr);
+          // Fallback to legacy if migration fails
+          result = await client.query('SELECT section_key, translations FROM page_content');
         }
       } else {
         throw err;
@@ -2879,8 +2877,15 @@ app.get('/api/page-content', authenticateRequest, async (_req, res) => {
       result = await client.query('SELECT section_key, translations, is_visible FROM page_content');
     } catch (err) {
       if (err.code === '42703') { // Undefined column
-        console.warn('is_visible column missing in admin, falling back');
-        result = await client.query('SELECT section_key, translations FROM page_content');
+        console.warn('Schema missing in admin, attempting auto-migration...');
+        try {
+          await client.query('ALTER TABLE page_content ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE');
+          await client.query('ALTER TABLE page_content ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT TRUE');
+          result = await client.query('SELECT section_key, translations, is_visible FROM page_content');
+        } catch (migrationErr) {
+          console.error('Auto-migration failed', migrationErr);
+          result = await client.query('SELECT section_key, translations FROM page_content');
+        }
       } else {
         throw err;
       }
@@ -3035,14 +3040,18 @@ app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) =
       );
     } catch (err) {
       if (err.code === '42703') { // Undefined column is_visible
-        console.warn('is_visible column missing during save, falling back to legacy save');
+        console.warn('Schema missing during save, attempting auto-migration...');
+        await client.query('ALTER TABLE page_content ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE');
+        await client.query('ALTER TABLE page_content ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT TRUE');
+
+        // Retry the original query
         result = await client.query(
-          `INSERT INTO page_content (section_key, translations)
-           VALUES ($1, $2)
+          `INSERT INTO page_content (section_key, translations, is_visible)
+           VALUES ($1, $2, $3)
            ON CONFLICT (section_key)
-           DO UPDATE SET translations = EXCLUDED.translations, updated_at = NOW()
-           RETURNING section_key, translations`,
-          [sectionKey, translations],
+           DO UPDATE SET translations = EXCLUDED.translations, is_visible = EXCLUDED.is_visible, updated_at = NOW()
+           RETURNING section_key, translations, is_visible`,
+          [sectionKey, translations, isVisible ?? true],
         );
       } else {
         throw err;
