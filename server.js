@@ -2491,7 +2491,7 @@ function ensureFolderPath(path) {
     return '/';
   }
 
-  return normalized.startsWith('/') ? normalized : `/ ${normalized} `;
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
 }
 
 function normalizeFolderPath(baseFolder, requestedFolder) {
