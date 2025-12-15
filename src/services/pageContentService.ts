@@ -79,11 +79,14 @@ export async function getAllSections(): Promise<PageContentResponse> {
 }
 
 export async function saveSection(sectionKey: string, content: LocalizedSectionContent) {
+  // Extract isVisible to send as separate field, but keep it in content for cache
+  const isVisible = content.isVisible;
+
   const response = await fetch(`${API_BASE}/api/page-content/${encodeURIComponent(sectionKey)}`, {
     method: "PUT",
     credentials: "include",
     headers: withCsrfHeader({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ translations: content }),
+    body: JSON.stringify({ translations: content, isVisible }),
   });
 
   const data = await handleResponse<{
