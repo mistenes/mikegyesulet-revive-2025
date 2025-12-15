@@ -2,19 +2,19 @@ import { LanguageCode } from "./language";
 
 export type SectionContent = Record<string, unknown>;
 
-export type LocalizedSectionContent = Record<LanguageCode, SectionContent>;
+export type LocalizedSectionContent = Record<LanguageCode, SectionContent> & { isVisible?: boolean };
 
 export type PageContentStore = Record<string, LocalizedSectionContent>;
 
 export type PageContentMetadata = {
   lastEditedAt?: string;
   lastEditedBy?:
-    | string
-    | {
-        id?: string;
-        name?: string;
-        email?: string;
-      };
+  | string
+  | {
+    id?: string;
+    name?: string;
+    email?: string;
+  };
 };
 
 export type PageContentResponse = {

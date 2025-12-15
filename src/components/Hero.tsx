@@ -90,6 +90,10 @@ export const Hero = () => {
 
   const loading = heroLoading || statsLoading;
 
+  if (!loading && !content) {
+    return null;
+  }
+
   return (
     <section className="relative min-h-screen flex items-center pt-32 sm:pt-28 md:pt-24 overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
       {/* Animated background elements */}
@@ -188,11 +192,11 @@ export const Hero = () => {
             <div className="grid grid-cols-3 gap-6 pt-8 border-t border-border/50">
               {loading
                 ? [0, 1, 2].map((index) => (
-                    <div key={index} className="space-y-2">
-                      <Skeleton className="h-8 w-16" />
-                      <Skeleton className="h-4 w-20" />
-                    </div>
-                  ))
+                  <div key={index} className="space-y-2">
+                    <Skeleton className="h-8 w-16" />
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                ))
                 : stats.map((stat, index) => (
                   <div
                     key={index}
@@ -208,13 +212,13 @@ export const Hero = () => {
                       className="text-3xl font-bold text-primary"
                       style={{
                         fontFamily: "'Sora', sans-serif",
-                        }}
-                      >
-                        {stat.value}
-                      </div>
-                      <div className="text-sm text-muted-foreground">{stat.label}</div>
+                      }}
+                    >
+                      {stat.value}
                     </div>
-                  ))}
+                    <div className="text-sm text-muted-foreground">{stat.label}</div>
+                  </div>
+                ))}
             </div>
           </div>
 

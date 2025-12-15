@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   ChevronLeft,
   Clock,
@@ -579,6 +580,33 @@ export default function AdminPages() {
   const handleUploadClick = (target: FieldTarget) => {
     setUploadTarget(target);
     fileInputRef.current?.click();
+  };
+
+  const handleVisibilityToggle = async (sectionKey: string, isVisible: boolean) => {
+    const section = ensureSection(sectionKey);
+    const updatedSection = { ...section, isVisible };
+
+    // Update local state first for responsiveness
+    setPageContent(prev => ({
+      ...prev,
+      [sectionKey]: updatedSection
+    }));
+
+    try {
+      setSavingSection(sectionKey);
+      await saveSection(sectionKey, updatedSection);
+      toast.success(isVisible ? "Szekció bekapcsolva" : "Szekció kikapcsolva");
+    } catch (e) {
+      console.error(e);
+      toast.error("Hiba a mentés során");
+      // Revert on error
+      setPageContent(prev => ({
+        ...prev,
+        [sectionKey]: section
+      }));
+    } finally {
+      setSavingSection(null);
+    }
   };
 
   const renderImageBrowserDialog = () => (
@@ -1199,39 +1227,39 @@ export default function AdminPages() {
                 </div>
               </Card>
 
-                <div className="space-y-6">
-                  {renderBlockNavigator()}
-                  {sectionGroups[selectedPage].map((section, index) => {
-                    const isActive = selectedField?.sectionKey === section.key;
-                    return (
-                      <div
-                        key={section.key}
-                        ref={registerSectionRef(section.key)}
-                        className={cn(
-                          "rounded-2xl border bg-card/70 shadow-sm transition-all overflow-hidden",
-                          isActive ? "ring-2 ring-primary border-primary shadow-lg" : "hover:border-primary/40",
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-muted/40">
-                          <div className="flex items-center gap-3">
-                            <span className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold text-sm flex items-center justify-center">
-                              {index + 1}
-                            </span>
-                            <div>
-                              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
-                              <h3 className="text-lg font-semibold">{section.label}</h3>
-                            </div>
+              <div className="space-y-6">
+                {renderBlockNavigator()}
+                {sectionGroups[selectedPage].map((section, index) => {
+                  const isActive = selectedField?.sectionKey === section.key;
+                  return (
+                    <div
+                      key={section.key}
+                      ref={registerSectionRef(section.key)}
+                      className={cn(
+                        "rounded-2xl border bg-card/70 shadow-sm transition-all overflow-hidden",
+                        isActive ? "ring-2 ring-primary border-primary shadow-lg" : "hover:border-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-muted/40">
+                        <div className="flex items-center gap-3">
+                          <span className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold text-sm flex items-center justify-center">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
+                            <h3 className="text-lg font-semibold">{section.label}</h3>
                           </div>
-                          <div className="text-xs text-muted-foreground">Kattints az élő előnézetre a blokk kiemeléséhez</div>
                         </div>
-                        <div className="p-4 md:p-6">
-                          {renderSectionEditor(section.key, { wrapInCard: false, isActive })}
-                        </div>
+                        <div className="text-xs text-muted-foreground">Kattints az élő előnézetre a blokk kiemeléséhez</div>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="p-4 md:p-6">
+                        {renderSectionEditor(section.key, { wrapInCard: false, isActive })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            </div>
 
             {renderPreview()}
           </div>

@@ -53,6 +53,8 @@ export const ImpactStats = () => {
     }
   };
 
+  if (content.isVisible === false && !adminPreview) return null;
+
   return (
     <section ref={sectionRef} className="py-24 bg-muted/30 relative overflow-hidden">
       {/* Background decoration */}
@@ -61,9 +63,8 @@ export const ImpactStats = () => {
       <div className="container px-4 relative z-10">
         <div className="text-center mb-16">
           <div
-            className={`transition-all duration-700 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}
+            className={`transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+              }`}
           >
             <p
               className={`text-sm font-semibold text-primary uppercase tracking-wider mb-3 ${adminPreview ? "cursor-pointer" : ""}`}
@@ -99,17 +100,15 @@ export const ImpactStats = () => {
             return (
               <div
                 key={index}
-                className={`group transition-all duration-700 delay-${index * 100} ${
-                  isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-                }`}
+                className={`group transition-all duration-700 delay-${index * 100} ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+                  }`}
                 style={{ transitionDelay: `${index * 150}ms` }}
               >
                 <div className="relative bg-card border border-border rounded-2xl p-8 hover:shadow-xl transition-all duration-300 hover:-translate-y-2">
                   {/* Icon */}
                   <div
-                    className={`inline-flex p-4 bg-primary/10 rounded-xl mb-6 group-hover:scale-110 transition-transform duration-300 ${
-                      adminPreview ? "cursor-pointer" : ""
-                    }`}
+                    className={`inline-flex p-4 bg-primary/10 rounded-xl mb-6 group-hover:scale-110 transition-transform duration-300 ${adminPreview ? "cursor-pointer" : ""
+                      }`}
                     onClick={(event) => handleClick(event, "stats")}
                     role={adminPreview ? "button" : undefined}
                     tabIndex={adminPreview ? 0 : undefined}

@@ -32,6 +32,8 @@ export const About = () => {
     return (aboutSection[language] || aboutSection.hu || null) as AboutContent | null;
   }, [aboutSection, language]);
 
+  if (content && (content as any).isVisible === false) return null;
+
   return (
     <section id="rolunk" className="py-24 bg-background">
       <div className="container px-4">

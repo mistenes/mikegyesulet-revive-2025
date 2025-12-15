@@ -63,12 +63,14 @@ export const RegionsSection = () => {
     return (regionsSection[language] || regionsSection.hu || null) as RegionsContent | null;
   }, [language, regionsSection]);
 
-  const handleAdminFocus = (event: React.MouseEvent<HTMLElement>, fieldKey: keyof RegionsContent) => {
+  const handleAdminFocus = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
     if (notifyAdminFocus("regions_section", fieldKey)) {
       event.preventDefault();
       event.stopPropagation();
     }
   };
+
+  if (content && (content as any).isVisible === false && !adminPreview) return null;
 
   const scrollingImages = useMemo(() => {
     const customImages = (content?.scrollImages as ScrollImage[] | undefined)
@@ -93,9 +95,8 @@ export const RegionsSection = () => {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Scrolling Images */}
           <div
-            className={`relative h-[600px] transition-all duration-700 ${
-              isVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-12"
-            }`}
+            className={`relative h-[600px] transition-all duration-700 ${isVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-12"
+              }`}
           >
             <div className="grid grid-cols-2 gap-4 h-full">
               {/* Column 1 - Scrolling Up */}
@@ -134,100 +135,99 @@ export const RegionsSection = () => {
 
           {/* Content */}
           <div
-            className={`space-y-6 transition-all duration-700 delay-200 ${
-              isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-12"
-            }`}
+            className={`space-y-6 transition-all duration-700 delay-200 ${isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-12"
+              }`}
           >
-              {isLoading ? (
-                <div className="space-y-4">
-                  <Skeleton className="h-10 w-28" />
-                  <Skeleton className="h-10 w-3/4" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-5/6" />
-                </div>
-              ) : (
-                <>
-                  <div
-                    className={`inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full border border-primary/20 ${adminPreview ? "cursor-pointer" : ""}`}
-                    onClick={(event) => handleAdminFocus(event, "eyebrow")}
-                    role={adminPreview ? "button" : undefined}
-                    tabIndex={adminPreview ? 0 : undefined}
-                  >
-                    <MapPin className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-semibold text-primary uppercase tracking-wider">
-                      {content?.eyebrow || "RÉGIÓK"}
-                    </span>
-                  </div>
-                  <h2
-                    className={`text-4xl md:text-5xl font-bold text-foreground leading-tight ${adminPreview ? "cursor-pointer" : ""}`}
-                    style={{ fontFamily: "'Sora', sans-serif" }}
-                    onClick={(event) => handleAdminFocus(event, "title")}
-                    role={adminPreview ? "button" : undefined}
-                    tabIndex={adminPreview ? 0 : undefined}
-                  >
-                    {content?.title}
-                  </h2>
-
-                  <p
-                    className={`text-lg text-muted-foreground leading-relaxed ${adminPreview ? "cursor-pointer" : ""}`}
-                    onClick={(event) => handleAdminFocus(event, "description")}
-                    role={adminPreview ? "button" : undefined}
-                    tabIndex={adminPreview ? 0 : undefined}
-                  >
-                    {content?.description}
-                  </p>
-
-                  <div className="flex flex-wrap gap-3 pt-4">
-                    {(content?.chips || []).map((region, i) => (
-                      <Button
-                        key={i}
-                        asChild={Boolean(regionAnchors[region])}
-                        variant="outline"
-                        className="rounded-full border-border bg-muted/50 hover:border-primary hover:bg-primary/5 text-sm font-medium text-foreground px-4 py-2 h-auto"
-                        onClick={(event) => handleAdminFocus(event, "chips")}
-                      >
-                        {regionAnchors[region] ? (
-                          <Link to={`/regiok#${regionAnchors[region]}`}>{region}</Link>
-                        ) : (
-                          <span>{region}</span>
-                        )}
-                      </Button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {isLoading ? (
-                <Skeleton className="h-12 w-48 mt-2" />
-              ) : (
-                <Button
-                  size="lg"
-                  className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl mt-6"
-                  asChild
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-28" />
+                <Skeleton className="h-10 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+              </div>
+            ) : (
+              <>
+                <div
+                  className={`inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full border border-primary/20 ${adminPreview ? "cursor-pointer" : ""}`}
+                  onClick={(event) => handleAdminFocus(event, "eyebrow")}
+                  role={adminPreview ? "button" : undefined}
+                  tabIndex={adminPreview ? 0 : undefined}
                 >
-                  {content?.buttonUrl?.startsWith("http") ? (
-                    <a
-                      href={content.buttonUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center"
-                      onClick={(event) => handleAdminFocus(event, "buttonText")}
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary uppercase tracking-wider">
+                    {content?.eyebrow || "RÉGIÓK"}
+                  </span>
+                </div>
+                <h2
+                  className={`text-4xl md:text-5xl font-bold text-foreground leading-tight ${adminPreview ? "cursor-pointer" : ""}`}
+                  style={{ fontFamily: "'Sora', sans-serif" }}
+                  onClick={(event) => handleAdminFocus(event, "title")}
+                  role={adminPreview ? "button" : undefined}
+                  tabIndex={adminPreview ? 0 : undefined}
+                >
+                  {content?.title}
+                </h2>
+
+                <p
+                  className={`text-lg text-muted-foreground leading-relaxed ${adminPreview ? "cursor-pointer" : ""}`}
+                  onClick={(event) => handleAdminFocus(event, "description")}
+                  role={adminPreview ? "button" : undefined}
+                  tabIndex={adminPreview ? 0 : undefined}
+                >
+                  {content?.description}
+                </p>
+
+                <div className="flex flex-wrap gap-3 pt-4">
+                  {(content?.chips || []).map((region, i) => (
+                    <Button
+                      key={i}
+                      asChild={Boolean(regionAnchors[region])}
+                      variant="outline"
+                      className="rounded-full border-border bg-muted/50 hover:border-primary hover:bg-primary/5 text-sm font-medium text-foreground px-4 py-2 h-auto"
+                      onClick={(event) => handleAdminFocus(event, "chips")}
                     >
-                      {content?.buttonText || "Fedezd fel a régiókat"}
-                      <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                    </a>
-                  ) : (
-                    <Link
-                      to={getLocalizedPath(content?.buttonUrl || "/regiok", language)}
-                      className="inline-flex items-center"
-                      onClick={(event) => handleAdminFocus(event, "buttonText")}
-                    >
-                      {content?.buttonText || "Fedezd fel a régiókat"}
-                      <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                    </Link>
-                  )}
-                </Button>
-              )}
+                      {regionAnchors[region] ? (
+                        <Link to={`/regiok#${regionAnchors[region]}`}>{region}</Link>
+                      ) : (
+                        <span>{region}</span>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {isLoading ? (
+              <Skeleton className="h-12 w-48 mt-2" />
+            ) : (
+              <Button
+                size="lg"
+                className="group bg-foreground hover:bg-foreground/90 text-background font-semibold px-8 py-6 text-base transition-all duration-300 hover:scale-105 hover:shadow-xl mt-6"
+                asChild
+              >
+                {content?.buttonUrl?.startsWith("http") ? (
+                  <a
+                    href={content.buttonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center"
+                    onClick={(event) => handleAdminFocus(event, "buttonText")}
+                  >
+                    {content?.buttonText || "Fedezd fel a régiókat"}
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                ) : (
+                  <Link
+                    to={getLocalizedPath(content?.buttonUrl || "/regiok", language)}
+                    className="inline-flex items-center"
+                    onClick={(event) => handleAdminFocus(event, "buttonText")}
+                  >
+                    {content?.buttonText || "Fedezd fel a régiókat"}
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>

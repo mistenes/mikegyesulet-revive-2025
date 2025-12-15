@@ -84,7 +84,7 @@ export const NewsSection = () => {
     };
   };
 
-  const handleAdminFocus = (event: React.MouseEvent<HTMLElement>, fieldKey: keyof NewsSectionContent) => {
+  const handleClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
     if (notifyAdminFocus("news_section", fieldKey)) {
       event.preventDefault();
       event.stopPropagation();
@@ -98,75 +98,76 @@ export const NewsSection = () => {
     notifyAdminFocus("news_section", "title");
   };
 
+  if ((content as any).isVisible === false && !adminPreview) return null;
+
   return (
     <section ref={sectionRef} className="py-24 bg-gradient-subtle">
       <div className="container px-4">
         <div
-          className={`mb-12 transition-all duration-700 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
+          className={`mb-12 transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+            }`}
         >
-            {contentLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-3 w-24" />
-                <Skeleton className="h-10 w-3/4" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-11 w-32" />
-              </div>
-            ) : (
-              <>
-                <p
-                  className={`text-sm font-semibold text-primary mb-2 uppercase tracking-wider ${adminPreview ? "cursor-pointer" : ""}`}
-                  onClick={(event) => handleAdminFocus(event, "subtitle")}
-                  role={adminPreview ? "button" : undefined}
-                  tabIndex={adminPreview ? 0 : undefined}
-                >
-                  {sectionContent?.subtitle}
-                </p>
-                <h2
-                  className={`text-4xl md:text-5xl font-bold text-foreground mb-4 ${adminPreview ? "cursor-pointer" : ""}`}
-                  style={{ fontFamily: "'Sora', sans-serif" }}
-                  onClick={(event) => handleAdminFocus(event, "title")}
-                  role={adminPreview ? "button" : undefined}
-                  tabIndex={adminPreview ? 0 : undefined}
-                >
-                  {sectionContent?.title}
-                </h2>
-                <p
-                  className={`text-lg text-muted-foreground mb-6 max-w-2xl ${adminPreview ? "cursor-pointer" : ""}`}
-                  onClick={(event) => handleAdminFocus(event, "description")}
-                  role={adminPreview ? "button" : undefined}
-                  tabIndex={adminPreview ? 0 : undefined}
-                >
-                  {sectionContent?.description}
-                </p>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300"
-                >
-                  {sectionContent?.buttonUrl?.startsWith("http") ? (
-                    <a
-                      href={sectionContent.buttonUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center"
-                      onClick={(event) => handleAdminFocus(event, "buttonText")}
-                    >
-                      {sectionContent.buttonText}
-                      <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                    </a>
-                  ) : (
-                    <Link
-                      to={getLocalizedPath(sectionContent?.buttonUrl || "/news", language)}
-                      className="inline-flex items-center"
-                      onClick={(event) => handleAdminFocus(event, "buttonText")}
-                    >
-                      {sectionContent?.buttonText}
-                      <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                    </Link>
-                  )}
-                </Button>
+          {contentLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-10 w-3/4" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-11 w-32" />
+            </div>
+          ) : (
+            <>
+              <p
+                className={`text-sm font-semibold text-primary mb-2 uppercase tracking-wider ${adminPreview ? "cursor-pointer" : ""}`}
+                onClick={(event) => handleClick(event, "subtitle")}
+                role={adminPreview ? "button" : undefined}
+                tabIndex={adminPreview ? 0 : undefined}
+              >
+                {sectionContent?.subtitle}
+              </p>
+              <h2
+                className={`text-4xl md:text-5xl font-bold text-foreground mb-4 ${adminPreview ? "cursor-pointer" : ""}`}
+                style={{ fontFamily: "'Sora', sans-serif" }}
+                onClick={(event) => handleClick(event, "title")}
+                role={adminPreview ? "button" : undefined}
+                tabIndex={adminPreview ? 0 : undefined}
+              >
+                {sectionContent?.title}
+              </h2>
+              <p
+                className={`text-lg text-muted-foreground mb-6 max-w-2xl ${adminPreview ? "cursor-pointer" : ""}`}
+                onClick={(event) => handleClick(event, "description")}
+                role={adminPreview ? "button" : undefined}
+                tabIndex={adminPreview ? 0 : undefined}
+              >
+                {sectionContent?.description}
+              </p>
+              <Button
+                asChild
+                variant="outline"
+                className="group border-2 border-foreground hover:bg-foreground hover:text-background font-semibold transition-all duration-300"
+              >
+                {sectionContent?.buttonUrl?.startsWith("http") ? (
+                  <a
+                    href={sectionContent.buttonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center"
+                    onClick={(event) => handleClick(event, "buttonText")}
+                  >
+                    {sectionContent.buttonText}
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                ) : (
+                  <Link
+                    to={getLocalizedPath(sectionContent?.buttonUrl || "/news", language)}
+                    className="inline-flex items-center"
+                    onClick={(event) => handleClick(event, "buttonText")}
+                  >
+                    {sectionContent?.buttonText}
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                )}
+              </Button>
             </>
           )}
         </div>
@@ -187,11 +188,10 @@ export const NewsSection = () => {
         ) : news.length > 0 ? (
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Featured newest article */}
-              <Link to={`/news/${renderArticle(news[0]).slug}`} className="block h-full" onClick={handleArticleClick}>
+            <Link to={`/news/${renderArticle(news[0]).slug}`} className="block h-full" onClick={handleArticleClick}>
               <Card
-                className={`group overflow-hidden border-border hover:shadow-xl transition-all duration-700 hover:-translate-y-2 cursor-pointer h-full ${
-                  isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-                }`}
+                className={`group overflow-hidden border-border hover:shadow-xl transition-all duration-700 hover:-translate-y-2 cursor-pointer h-full ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+                  }`}
               >
                 <div className="relative h-[400px] overflow-hidden">
                   <img
@@ -228,11 +228,10 @@ export const NewsSection = () => {
               {news.slice(1, 4).map((item, index) => {
                 const translation = renderArticle(item);
                 return (
-                    <Link key={item.id} to={`/news/${translation.slug}`} className="block" onClick={handleArticleClick}>
+                  <Link key={item.id} to={`/news/${translation.slug}`} className="block" onClick={handleArticleClick}>
                     <Card
-                      className={`group overflow-hidden border-border hover:shadow-xl transition-all duration-700 hover:-translate-y-2 cursor-pointer ${
-                        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-                      }`}
+                      className={`group overflow-hidden border-border hover:shadow-xl transition-all duration-700 hover:-translate-y-2 cursor-pointer ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+                        }`}
                       style={{ transitionDelay: `${(index + 1) * 100}ms` }}
                     >
                       <div className="flex flex-col sm:flex-row">

@@ -56,14 +56,15 @@ export const Testimonials = () => {
     }
   };
 
+  if (content && (content as any).isVisible === false && !adminPreview) return null;
+
   return (
     <section ref={sectionRef} className="py-24 bg-background">
       <div className="container px-4">
         <div className="text-center mb-16">
           <div
-            className={`transition-all duration-700 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}
+            className={`transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+              }`}
           >
             <p
               className={`text-sm font-semibold text-primary uppercase tracking-wider mb-3 ${adminPreview ? "cursor-pointer" : ""}`}
@@ -97,9 +98,8 @@ export const Testimonials = () => {
           {testimonials.map((testimonial, index) => (
             <Card
               key={`${testimonial.author}-${index}`}
-              className={`p-8 bg-card border-border hover:shadow-2xl transition-all duration-700 hover:-translate-y-2 ${
-                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-              }`}
+              className={`p-8 bg-card border-border hover:shadow-2xl transition-all duration-700 hover:-translate-y-2 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+                }`}
               style={{ transitionDelay: `${index * 150}ms` }}
             >
               <div className="space-y-6">

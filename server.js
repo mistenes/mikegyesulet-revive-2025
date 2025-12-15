@@ -1619,6 +1619,19 @@ function mapPageContentRows(rows) {
   const store = { ...defaultPageContent };
   rows.forEach((row) => {
     store[row.section_key] = row.translations || { hu: {}, en: {} };
+    // Add visibility flag to the checked language versions (or top level if structure allows, 
+    // but typically we want it on the content object or handled separately. 
+    // Based on types, LocalizedSectionContent is Record<LanguageCode, SectionContent>.
+    // SectionContent is Record<string, unknown>.
+    // We'll inject isVisible into each language variant for easier consumption on frontend
+    // or we might need to adjust the type to hold it at root.
+    // The current type definition suggests LocalizedSectionContent is just the languages.
+    // Let's attach it to the translations objects for now, or check how we planned it.
+    // Plan: "Update LocalizedSectionContent to include optional isVisible?: boolean"
+    // So it should be on the object that contains keys 'hu', 'en'. 
+    // Wait, LocalizedSectionContent IS the object { hu: {...}, en: {...} }
+    // So we can add isVisible to IT.
+    store[row.section_key].isVisible = row.is_visible !== false; // Default true if null/undefined
   });
   return store;
 }
@@ -2813,7 +2826,7 @@ app.get('/api/public/mapbox-token', (_req, res) => {
 app.get('/api/page-content/public', async (_req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query('SELECT section_key, translations FROM page_content');
+    const result = await client.query('SELECT section_key, translations, is_visible FROM page_content WHERE published = TRUE');
     return res.status(200).json({ sections: mapPageContentRows(result.rows) });
   } catch (error) {
     console.error('Public page content error', error);
@@ -2839,7 +2852,7 @@ app.get('/api/documents', async (_req, res) => {
 app.get('/api/page-content', authenticateRequest, async (_req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query('SELECT section_key, translations FROM page_content');
+    const result = await client.query('SELECT section_key, translations, is_visible FROM page_content');
     return res.status(200).json({ sections: mapPageContentRows(result.rows) });
   } catch (error) {
     console.error('Admin page content error', error);
@@ -2975,18 +2988,20 @@ app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) =
     return res.status(400).json({ message: 'Érvénytelen tartalom' });
   }
 
+  const isVisible = req.body?.isVisible;
+
   try {
     const result = await client.query(
-      `INSERT INTO page_content (section_key, translations)
-       VALUES ($1, $2)
+      `INSERT INTO page_content (section_key, translations, is_visible)
+       VALUES ($1, $2, $3)
        ON CONFLICT (section_key)
-       DO UPDATE SET translations = EXCLUDED.translations, updated_at = NOW()
-       RETURNING section_key, translations`,
-      [sectionKey, translations],
+       DO UPDATE SET translations = EXCLUDED.translations, is_visible = EXCLUDED.is_visible, updated_at = NOW()
+       RETURNING section_key, translations, is_visible`,
+      [sectionKey, translations, isVisible ?? true],
     );
 
     const row = result.rows[0];
-    return res.status(200).json({ sectionKey: row.section_key, translations: row.translations });
+    return res.status(200).json({ sectionKey: row.section_key, translations: row.translations, isVisible: row.is_visible });
   } catch (error) {
     console.error('Save page content error', error);
     return res.status(500).json({ message: 'Nem sikerült menteni a tartalmat' });

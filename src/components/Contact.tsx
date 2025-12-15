@@ -55,8 +55,8 @@ export const Contact = () => {
     const localized = (sectionContent?.[language]?.offices || sectionContent?.hu?.offices) as ContactOffice[] | undefined;
     const fallback =
       (defaultPageContent.contact_section?.[language]?.offices || defaultPageContent.contact_section?.hu?.offices) as
-        | ContactOffice[]
-        | undefined;
+      | ContactOffice[]
+      | undefined;
 
     return localized || fallback || [];
   }, [language, sectionContent]);
@@ -102,13 +102,14 @@ export const Contact = () => {
     }
   };
 
+  if (content && (content as any).isVisible === false && !adminPreview) return null;
+
   return (
     <section ref={sectionRef} id="kapcsolat" className="py-20 bg-muted/20">
       <div className="container px-4">
         <div
-          className={`text-center mb-12 transition-all duration-700 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
+          className={`text-center mb-12 transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+            }`}
         >
           <p
             className={`text-sm font-semibold text-primary uppercase tracking-wider mb-2 ${adminPreview ? "cursor-pointer" : ""}`}
@@ -140,9 +141,8 @@ export const Contact = () => {
         <div className="grid lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
           {/* Contact Form - Takes 2 columns */}
           <Card
-            className={`lg:col-span-2 p-6 bg-card border-border shadow-lg transition-all duration-700 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-            }`}
+            className={`lg:col-span-2 p-6 bg-card border-border shadow-lg transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+              }`}
           >
             <h3 className="text-2xl font-bold text-foreground mb-6" style={{ fontFamily: "'Sora', sans-serif" }}>
               Üzenet Küldése
@@ -205,9 +205,8 @@ export const Contact = () => {
 
           {/* Contact Info & Office Hours - Takes 1 column */}
           <div
-            className={`space-y-6 transition-all duration-700 delay-100 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-            }`}
+            className={`space-y-6 transition-all duration-700 delay-100 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+              }`}
           >
             {/* Quick Contact */}
             <Card className="p-6 bg-gradient-primary text-primary-foreground border-0 shadow-lg">
