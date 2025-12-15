@@ -94,6 +94,8 @@ export const Hero = () => {
     return null;
   }
 
+  if (heroSection?.isVisible === false && !adminPreview) return null;
+
   return (
     <section className="relative min-h-screen flex items-center pt-32 sm:pt-28 md:pt-24 overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
       {/* Animated background elements */}
