@@ -2826,7 +2826,17 @@ app.get('/api/public/mapbox-token', (_req, res) => {
 app.get('/api/page-content/public', async (_req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query('SELECT section_key, translations, is_visible FROM page_content WHERE published = TRUE');
+    let result;
+    try {
+      result = await client.query('SELECT section_key, translations, is_visible FROM page_content WHERE published = TRUE');
+    } catch (err) {
+      if (err.code === '42703') { // Undefined column
+        console.warn('is_visible column missing, falling back');
+        result = await client.query('SELECT section_key, translations FROM page_content WHERE published = TRUE');
+      } else {
+        throw err;
+      }
+    }
     return res.status(200).json({ sections: mapPageContentRows(result.rows) });
   } catch (error) {
     console.error('Public page content error', error);
@@ -2852,7 +2862,17 @@ app.get('/api/documents', async (_req, res) => {
 app.get('/api/page-content', authenticateRequest, async (_req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query('SELECT section_key, translations, is_visible FROM page_content');
+    let result;
+    try {
+      result = await client.query('SELECT section_key, translations, is_visible FROM page_content');
+    } catch (err) {
+      if (err.code === '42703') { // Undefined column
+        console.warn('is_visible column missing in admin, falling back');
+        result = await client.query('SELECT section_key, translations FROM page_content');
+      } else {
+        throw err;
+      }
+    }
     return res.status(200).json({ sections: mapPageContentRows(result.rows) });
   } catch (error) {
     console.error('Admin page content error', error);
