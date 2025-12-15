@@ -1086,210 +1086,211 @@ export default function AdminPages() {
                     ? "bg-primary/10 border-primary/50 text-foreground ring-1 ring-primary/20"
                     : "bg-background border-border hover:border-primary/50 hover:bg-muted/50 text-muted-foreground hover:text-foreground",
                 )}
-                  <div className="flex-1 text-left">
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
-                    <p className="font-medium leading-tight">{section.label}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     {(contentStore[section.key] as any)?.isVisible === false ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                     ) : (
-                        <Eye className="h-4 w-4 text-primary/40" />
-                     )}
-                     {isActive && <ChevronRight className="h-4 w-4 text-primary" />}
-                  </div>
+              >
+                <div className="flex-1 text-left">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
+                  <p className="font-medium leading-tight">{section.label}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(contentStore[section.key] as any)?.isVisible === false ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-primary/40" />
+                  )}
+                  {isActive && <ChevronRight className="h-4 w-4 text-primary" />}
+                </div>
               </button>
-        );
+            );
           })}
-      </div>
+        </div>
       </Card >
     );
-};
+  };
 
 
-const renderPreview = () => {
-  if (!selectedPage) return null;
-  const livePreviewUrl = `${liveTabPaths[selectedPage]}?adminPreview=1`;
+  const renderPreview = () => {
+    if (!selectedPage) return null;
+    const livePreviewUrl = `${liveTabPaths[selectedPage]}?adminPreview=1`;
 
-  return (
-    <Card className="p-4 lg:p-6 space-y-6 sticky top-4">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <ExternalLink className="h-5 w-5 text-primary" />
-            <div>
-              <p className="font-semibold">Publikus oldal</p>
-              <p className="text-xs text-muted-foreground">A látogatók által látott verzió az aktuális fül alapján</p>
+    return (
+      <Card className="p-4 lg:p-6 space-y-6 sticky top-4">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <ExternalLink className="h-5 w-5 text-primary" />
+              <div>
+                <p className="font-semibold">Publikus oldal</p>
+                <p className="text-xs text-muted-foreground">A látogatók által látott verzió az aktuális fül alapján</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLivePreviewKey(Date.now().toString())}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Újratöltés
+              </Button>
+              <Button asChild size="sm" variant="secondary" className="gap-2">
+                <a href={livePreviewUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Megnyitás
+                </a>
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLivePreviewKey(Date.now().toString())}
-              className="gap-2"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Újratöltés
-            </Button>
-            <Button asChild size="sm" variant="secondary" className="gap-2">
-              <a href={livePreviewUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Megnyitás
-              </a>
-            </Button>
+          <div className="rounded-xl border overflow-hidden bg-muted/20">
+            <iframe
+              key={`${selectedPage}-${livePreviewKey}`}
+              src={livePreviewUrl}
+              title="Publikus oldal előnézete"
+              className="w-full h-[520px] bg-background"
+            />
           </div>
         </div>
-        <div className="rounded-xl border overflow-hidden bg-muted/20">
-          <iframe
-            key={`${selectedPage}-${livePreviewKey}`}
-            src={livePreviewUrl}
-            title="Publikus oldal előnézete"
-            className="w-full h-[520px] bg-background"
-          />
+      </Card>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Betöltés...</p>
         </div>
       </div>
-    </Card>
-  );
-};
+    );
+  }
 
-if (isLoading) {
-  return (
-    <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-        <p className="mt-4 text-muted-foreground">Betöltés...</p>
-      </div>
-    </div>
-  );
-}
+  if (!session) return null;
 
-if (!session) return null;
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AdminLayout>
+    );
+  }
 
-if (loading) {
   return (
     <AdminLayout>
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="space-y-6">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
+            <FileText className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
+              Oldal Tartalmak
+            </h1>
+            <p className="text-muted-foreground">Válaszd ki a publikus oldalt, nézd meg ki és mikor módosította, majd szerkeszd tartalmát élő előnézet mellett.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Languages className="h-4 w-4 text-muted-foreground" />
+          <Tabs value={activeLanguage} onValueChange={(val) => setActiveLanguage(val as LanguageCode)}>
+            <TabsList>
+              <TabsTrigger value="hu">Magyar</TabsTrigger>
+              <TabsTrigger value="en">English</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {!selectedPage ? (
+          <div className="space-y-6">
+            <div className="rounded-lg border bg-card">
+              <div className="p-6 border-b">
+                <h2 className="text-xl font-semibold">Válassz szerkesztendő oldalt</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  A publikus oldalhoz tartozó utolsó módosítás és szerkesztő is megjelenik itt.
+                </p>
+              </div>
+              <div className="p-6">{renderPageList()}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid xl:grid-cols-[1.1fr,0.9fr] gap-6 items-start">
+            <div className="space-y-6">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <Button variant="ghost" className="gap-2" onClick={handleBackToList}>
+                  <ChevronLeft className="h-4 w-4" /> Vissza a listához
+                </Button>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" /> {formatEditedAt(pageMetadata[selectedPage])}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <UserCircle className="h-4 w-4" /> {formatEditorName(pageMetadata[selectedPage])}
+                  </div>
+                </div>
+              </div>
+
+              <Card className="p-4 bg-muted/40 border-dashed">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Publikus útvonal</p>
+                    <p className="font-semibold text-lg">{liveTabPaths[selectedPage]}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{pageDefinitions[selectedPage].description}</p>
+                  </div>
+                  <Button size="sm" variant="secondary" className="gap-2" onClick={() => setLivePreviewKey(Date.now().toString())}>
+                    <RefreshCw className="h-4 w-4" /> Oldal frissítése
+                  </Button>
+                </div>
+              </Card>
+
+              <div className="space-y-6">
+                {renderBlockNavigator()}
+                {sectionGroups[selectedPage].map((section, index) => {
+                  const isActive = selectedField?.sectionKey === section.key;
+                  return (
+                    <div
+                      key={section.key}
+                      ref={registerSectionRef(section.key)}
+                      className={cn(
+                        "rounded-2xl border bg-card/70 shadow-sm transition-all overflow-hidden",
+                        isActive ? "ring-2 ring-primary border-primary shadow-lg" : "hover:border-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-muted/40">
+                        <div className="flex items-center gap-3">
+                          <span className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold text-sm flex items-center justify-center">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
+                            <h3 className="text-lg font-semibold">{section.label}</h3>
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">Kattints az élő előnézetre a blokk kiemeléséhez</div>
+                      </div>
+                      <div className="p-4 md:p-6">
+                        {renderSectionEditor(section.key, { wrapInCard: false, isActive })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {renderPreview()}
+          </div>
+        )}
       </div>
+
+      {renderImageBrowserDialog()}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
     </AdminLayout>
   );
-}
-
-return (
-  <AdminLayout>
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
-          <FileText className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-            Oldal Tartalmak
-          </h1>
-          <p className="text-muted-foreground">Válaszd ki a publikus oldalt, nézd meg ki és mikor módosította, majd szerkeszd tartalmát élő előnézet mellett.</p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Languages className="h-4 w-4 text-muted-foreground" />
-        <Tabs value={activeLanguage} onValueChange={(val) => setActiveLanguage(val as LanguageCode)}>
-          <TabsList>
-            <TabsTrigger value="hu">Magyar</TabsTrigger>
-            <TabsTrigger value="en">English</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      {!selectedPage ? (
-        <div className="space-y-6">
-          <div className="rounded-lg border bg-card">
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-semibold">Válassz szerkesztendő oldalt</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                A publikus oldalhoz tartozó utolsó módosítás és szerkesztő is megjelenik itt.
-              </p>
-            </div>
-            <div className="p-6">{renderPageList()}</div>
-          </div>
-        </div>
-      ) : (
-        <div className="grid xl:grid-cols-[1.1fr,0.9fr] gap-6 items-start">
-          <div className="space-y-6">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <Button variant="ghost" className="gap-2" onClick={handleBackToList}>
-                <ChevronLeft className="h-4 w-4" /> Vissza a listához
-              </Button>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" /> {formatEditedAt(pageMetadata[selectedPage])}
-                </div>
-                <div className="flex items-center gap-2">
-                  <UserCircle className="h-4 w-4" /> {formatEditorName(pageMetadata[selectedPage])}
-                </div>
-              </div>
-            </div>
-
-            <Card className="p-4 bg-muted/40 border-dashed">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Publikus útvonal</p>
-                  <p className="font-semibold text-lg">{liveTabPaths[selectedPage]}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{pageDefinitions[selectedPage].description}</p>
-                </div>
-                <Button size="sm" variant="secondary" className="gap-2" onClick={() => setLivePreviewKey(Date.now().toString())}>
-                  <RefreshCw className="h-4 w-4" /> Oldal frissítése
-                </Button>
-              </div>
-            </Card>
-
-            <div className="space-y-6">
-              {renderBlockNavigator()}
-              {sectionGroups[selectedPage].map((section, index) => {
-                const isActive = selectedField?.sectionKey === section.key;
-                return (
-                  <div
-                    key={section.key}
-                    ref={registerSectionRef(section.key)}
-                    className={cn(
-                      "rounded-2xl border bg-card/70 shadow-sm transition-all overflow-hidden",
-                      isActive ? "ring-2 ring-primary border-primary shadow-lg" : "hover:border-primary/40",
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-muted/40">
-                      <div className="flex items-center gap-3">
-                        <span className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold text-sm flex items-center justify-center">
-                          {index + 1}
-                        </span>
-                        <div>
-                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Blokk</p>
-                          <h3 className="text-lg font-semibold">{section.label}</h3>
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">Kattints az élő előnézetre a blokk kiemeléséhez</div>
-                    </div>
-                    <div className="p-4 md:p-6">
-                      {renderSectionEditor(section.key, { wrapInCard: false, isActive })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {renderPreview()}
-        </div>
-      )}
-    </div>
-
-    {renderImageBrowserDialog()}
-    <input
-      ref={fileInputRef}
-      type="file"
-      accept="image/*"
-      className="hidden"
-      onChange={handleFileInputChange}
-    />
-  </AdminLayout>
-);
 }
