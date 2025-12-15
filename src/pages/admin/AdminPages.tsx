@@ -1092,11 +1092,13 @@ export default function AdminPages() {
                   <p className="font-medium leading-tight">{section.label}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {(contentStore[section.key] as any)?.isVisible === false ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-primary/40" />
-                  )}
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <Switch
+                      checked={(contentStore[section.key] as any)?.isVisible !== false}
+                      onCheckedChange={(checked) => handleVisibilityToggle(section.key, checked)}
+                      className="scale-75"
+                    />
+                  </div>
                   {isActive && <ChevronRight className="h-4 w-4 text-primary" />}
                 </div>
               </button>
