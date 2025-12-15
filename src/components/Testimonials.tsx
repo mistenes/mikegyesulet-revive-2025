@@ -56,7 +56,7 @@ export const Testimonials = () => {
     }
   };
 
-  if (content && (content as any).isVisible === false && !adminPreview) return null;
+  if (sectionContent?.isVisible === false && !adminPreview) return null;
 
   return (
     <section ref={sectionRef} className="py-24 bg-background">

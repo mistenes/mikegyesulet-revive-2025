@@ -102,7 +102,7 @@ export const Contact = () => {
     }
   };
 
-  if (content && (content as any).isVisible === false && !adminPreview) return null;
+  if (sectionContent?.isVisible === false && !adminPreview) return null;
 
   return (
     <section ref={sectionRef} id="kapcsolat" className="py-20 bg-muted/20">

@@ -41,7 +41,7 @@ export const ClosingStatements = () => {
     }
   };
 
-  if (content && (content as any).isVisible === false && !adminPreview) return null;
+  if (sectionContent?.isVisible === false && !adminPreview) return null;
 
   return (
     <section id="dokumentumok" className="py-24 bg-gradient-subtle">

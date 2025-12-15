@@ -7,6 +7,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLocalizedPath } from "@/lib/localePaths";
+import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
 type AboutContent = {
   badge?: string;
@@ -32,7 +33,9 @@ export const About = () => {
     return (aboutSection[language] || aboutSection.hu || null) as AboutContent | null;
   }, [aboutSection, language]);
 
-  if (content && (content as any).isVisible === false) return null;
+  const adminPreview = isAdminPreview();
+
+  if (aboutSection?.isVisible === false && !adminPreview) return null;
 
   return (
     <section id="rolunk" className="py-24 bg-background">

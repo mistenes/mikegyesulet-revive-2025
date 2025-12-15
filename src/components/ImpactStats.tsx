@@ -53,7 +53,7 @@ export const ImpactStats = () => {
     }
   };
 
-  if (content.isVisible === false && !adminPreview) return null;
+  if (sectionContent?.isVisible === false && !adminPreview) return null;
 
   return (
     <section ref={sectionRef} className="py-24 bg-muted/30 relative overflow-hidden">

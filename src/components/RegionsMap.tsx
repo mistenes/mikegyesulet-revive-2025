@@ -121,6 +121,8 @@ export const RegionsMap = () => {
     }
   };
 
+  if (mapSection?.isVisible === false && !adminPreview) return null;
+
   const initializeMap = useCallback((token?: string) => {
     const tokenToUse = token || mapboxToken;
     if (!mapContainer.current || !tokenToUse) return;
@@ -164,7 +166,7 @@ export const RegionsMap = () => {
 
       // Enable scroll zoom
       map.current.scrollZoom.enable();
-      
+
       // Wait for map to load before adding markers
       map.current.on('load', () => {
         if (!map.current) return;
@@ -356,12 +358,11 @@ export const RegionsMap = () => {
       className="py-24 bg-gradient-subtle relative overflow-hidden"
     >
       <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent" />
-      
+
       <div className="container px-4 relative z-10">
         <div
-          className={`text-center mb-12 transition-all duration-700 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-          }`}
+          className={`text-center mb-12 transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+            }`}
         >
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 rounded-full border border-accent/20 mb-6">
             <MapPin className="h-4 w-4 text-accent" />
@@ -387,7 +388,7 @@ export const RegionsMap = () => {
             {mapContentLoading
               ? ""
               : mapContent.description ||
-                "Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit."}
+              "Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit."}
           </p>
         </div>
 
@@ -400,9 +401,8 @@ export const RegionsMap = () => {
           </div>
         ) : !isMapInitialized && !mapboxToken && (
           <div
-            className={`max-w-2xl mx-auto mb-8 p-6 bg-card border border-border rounded-2xl shadow-lg transition-all duration-700 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-            }`}
+            className={`max-w-2xl mx-auto mb-8 p-6 bg-card border border-border rounded-2xl shadow-lg transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+              }`}
           >
             <div className="flex items-start gap-3 mb-4">
               <div className="bg-primary/10 p-2 rounded-lg">
@@ -424,9 +424,8 @@ export const RegionsMap = () => {
         )}
 
         <div
-          className={`max-w-6xl mx-auto transition-all duration-700 delay-200 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-          }`}
+          className={`max-w-6xl mx-auto transition-all duration-700 delay-200 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+            }`}
         >
           <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-border/50 backdrop-blur-sm">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none z-10" />
@@ -448,7 +447,7 @@ export const RegionsMap = () => {
                 </div>
               </div>
             )}
-            
+
             {/* Integrated Legend Overlay */}
             {isMapInitialized && (
               <div className="absolute bottom-6 left-6 right-6 z-20 pointer-events-none">

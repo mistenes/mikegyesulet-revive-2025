@@ -70,7 +70,7 @@ export const RegionsSection = () => {
     }
   };
 
-  if (content && (content as any).isVisible === false && !adminPreview) return null;
+  if (regionsSection?.isVisible === false && !adminPreview) return null;
 
   const scrollingImages = useMemo(() => {
     const customImages = (content?.scrollImages as ScrollImage[] | undefined)
