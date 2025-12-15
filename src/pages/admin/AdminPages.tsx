@@ -1031,6 +1031,25 @@ export default function AdminPages() {
           isActive ? "ring-2 ring-primary border-primary shadow-lg" : "hover:border-primary/40",
         )}
       >
+        <div className="flex items-center justify-between gap-4 mb-6 pb-6 border-b border-border/50">
+          <div>
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              {definition?.label || sectionKey}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {definition?.description}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-full border border-border/50">
+            <Switch
+              checked={(content as any).isVisible !== false}
+              onCheckedChange={(checked) => handleVisibilityToggle(sectionKey, checked)}
+            />
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {(content as any).isVisible !== false ? "Látható" : "Rejtett"}
+            </span>
+          </div>
+        </div>
         {editorContent}
       </Card>
     );

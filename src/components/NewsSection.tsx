@@ -98,7 +98,7 @@ export const NewsSection = () => {
     notifyAdminFocus("news_section", "title");
   };
 
-  if ((content as any).isVisible === false && !adminPreview) return null;
+  if ((sectionContent as any)?.isVisible === false && !adminPreview) return null;
 
   return (
     <section ref={sectionRef} className="py-24 bg-gradient-subtle">
