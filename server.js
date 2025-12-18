@@ -52,7 +52,9 @@ const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BU
 const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
 const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
 function decodeGaPrivateKey(value) {
-  if (!value) return '';
+  if (!value) {
+    return { key: '', valid: false };
+  }
 
   const trimmed = value.trim();
   const candidates = [trimmed];
@@ -71,17 +73,17 @@ function decodeGaPrivateKey(value) {
   for (const candidate of candidates) {
     const normalized = candidate.replace(/\\n/g, '\n');
     if (normalized.includes('BEGIN PRIVATE KEY')) {
-      return normalized;
+      return { key: normalized, valid: true };
     }
   }
 
-  return candidates[0].replace(/\\n/g, '\n');
+  return { key: candidates[0].replace(/\\n/g, '\n'), valid: false };
 }
 
 const GA_MEASUREMENT_ID = process.env.VITE_GA_MEASUREMENT_ID || process.env.GA_MEASUREMENT_ID || '';
 const GA_PROPERTY_ID = process.env.GA4_PROPERTY_ID || process.env.GA_PROPERTY_ID || '';
 const GA_CLIENT_EMAIL = process.env.GA4_CLIENT_EMAIL || process.env.GA_CLIENT_EMAIL || '';
-const GA_PRIVATE_KEY = decodeGaPrivateKey(
+const { key: GA_PRIVATE_KEY, valid: GA_PRIVATE_KEY_VALID } = decodeGaPrivateKey(
   process.env.GA4_PRIVATE_KEY ||
   process.env.GA_PRIVATE_KEY ||
   process.env.GA4_PRIVATE_KEY_BASE64 ||
@@ -187,7 +189,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const analyticsPropertyIdValid = GA_PROPERTY_ID && !GA_PROPERTY_ID.startsWith('G-');
 
 const analyticsClient =
-  analyticsPropertyIdValid && GA_CLIENT_EMAIL && GA_PRIVATE_KEY
+  analyticsPropertyIdValid && GA_CLIENT_EMAIL && GA_PRIVATE_KEY_VALID && GA_PRIVATE_KEY
     ? new BetaAnalyticsDataClient({
       credentials: {
         client_email: GA_CLIENT_EMAIL,
@@ -223,19 +225,23 @@ function getAnalyticsConfigStatus() {
 
   if (!GA_PROPERTY_ID) missingEnv.push('GA4_PROPERTY_ID');
   if (!GA_CLIENT_EMAIL) missingEnv.push('GA4_CLIENT_EMAIL');
-  if (!GA_PRIVATE_KEY) missingEnv.push('GA4_PRIVATE_KEY (vagy GA4_PRIVATE_KEY_BASE64)');
+  if (!GA_PRIVATE_KEY || !GA_PRIVATE_KEY_VALID) missingEnv.push('GA4_PRIVATE_KEY (vagy GA4_PRIVATE_KEY_BASE64)');
 
   const propertyLooksLikeMeasurementId = GA_PROPERTY_ID?.startsWith('G-');
 
   let message = '';
+  const hints = [];
 
   if (missingEnv.length) {
     message = `A Google Analytics nincs beállítva. Állítsd be a következő környezeti változókat a Renderen: ${missingEnv.join(', ')}.`;
   } else if (propertyLooksLikeMeasurementId) {
     message = 'A GA4 property ID nem lehet a G- kezdetű Measurement ID. Add meg a numerikus GA4 property azonosítót (pl. 123456789).';
+  } else if (!GA_PRIVATE_KEY_VALID) {
+    message = 'A GA4 privát kulcs formátuma érvénytelen. Használj PEM formátumot (-----BEGIN PRIVATE KEY-----) vagy base64-kódolt változatot.';
+    hints.push('Győződj meg róla, hogy a kulcs tartalmazza a BEGIN/END PRIVATE KEY blokkokat és a sorvégeket \\n helyett új sorokkal.');
   }
 
-  return { missingEnv, propertyLooksLikeMeasurementId, message };
+  return { missingEnv, propertyLooksLikeMeasurementId, message, invalidPrivateKey: !GA_PRIVATE_KEY_VALID, hints };
 }
 
 async function getRealtimeActiveUsersSum() {
