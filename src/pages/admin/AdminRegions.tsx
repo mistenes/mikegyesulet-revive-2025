@@ -39,6 +39,7 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getSettings, type SettingsStore } from "@/services/settingsService";
 
 const REGIONS_FOLDER = "regiok";
 const REGION_COVER_FOLDER = "regions";
@@ -117,6 +118,7 @@ export default function AdminRegions() {
   const [regionImportError, setRegionImportError] = useState<string | null>(null);
   const [regionImporting, setRegionImporting] = useState(false);
   const [regionImportSaving, setRegionImportSaving] = useState(false);
+  const [importerEnabled, setImporterEnabled] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const regionImportFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -139,6 +141,24 @@ export default function AdminRegions() {
 
   const hasApprovedImport = approvedImportCount > 0;
   const hasApprovedRegionImport = approvedRegionImportCount > 0;
+
+  useEffect(() => {
+    const applySetting = (settings: SettingsStore) => {
+      setImporterEnabled(Boolean(settings.general.regions_importer_enabled?.value ?? true));
+    };
+
+    applySetting(getSettings());
+
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsStore>).detail;
+      if (detail) {
+        applySetting(detail);
+      }
+    };
+
+    window.addEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+    return () => window.removeEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -808,231 +828,251 @@ export default function AdminRegions() {
               Frissítés
             </Button>
             <Button onClick={handleSave} disabled={saving || loading}>
-              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-              Mentés
+              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />} Mentés
             </Button>
           </div>
         </div>
 
-        <Card className="p-6 space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <div>
-                <p className="text-sm text-muted-foreground">CSV import</p>
-                <h2 className="text-lg font-semibold">Régiók betöltése</h2>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                A feltöltés előtt minden jelenlegi régió törlődik. A CSV tartalmazza az "A régió neve", "Régió Borítókép"
-                és "[EN] Region Name" oszlopokat. A borítóképek letöltve, majd a /regions mappába feltöltve kerülnek
-                mentésre.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                type="button"
-                onClick={() => toggleAllRegionImportApprovals(true)}
-                disabled={!regionImportPreview.length}
-              >
-                <ShieldCheck className="h-4 w-4 mr-2" /> Összes jóváhagyása
-              </Button>
-              <Button
-                onClick={handleRegionImportSubmit}
-                type="button"
-                disabled={
-                  !hasApprovedRegionImport || regionImportSaving || regionImporting || !regionImportPreview.length
-                }
-                className="gap-2"
-              >
-                {regionImportSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importálás
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                type="button"
-                onClick={() => regionImportFileInputRef.current?.click()}
-                disabled={regionImporting}
-              >
-                {regionImporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />} CSV feltöltés
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-4 items-center justify-between text-sm">
-            <div className="text-muted-foreground">
-              Jóváhagyva: {approvedRegionImportCount}/{regionImportPreview.length || 0}. Legalább egy régiót jóvá kell hagynod az importáláshoz.
-            </div>
-            <Badge variant={hasApprovedRegionImport && regionImportPreview.length ? "default" : "outline"}>
-              {hasApprovedRegionImport && regionImportPreview.length ? "Importálásra kész" : "Jóváhagyás szükséges"}
-            </Badge>
-          </div>
-
-          {regionImportError && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 whitespace-pre-line">
-              {regionImportError}
-            </div>
-          )}
-
-          {regionImportPreview.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              Tölts fel egy CSV fájlt a régiókhoz. A sorok előnézetben jelennek meg, a kiválasztottakat jóváhagyás után tudod importálni.
-            </div>
+        <div className="flex flex-wrap gap-2">
+          {importerEnabled ? (
+            <Badge variant="secondary">CSV import engedélyezve</Badge>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {regionImportPreview.map((item) => (
-                <div key={item.row} className="rounded-lg border bg-muted/40 p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <Badge variant="outline">Sor {item.row}</Badge>
-                      <Badge variant="secondary">{item.slug}</Badge>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Switch
-                        checked={item.approved}
-                        onCheckedChange={(checked) => toggleRegionImportApproval(item.row, checked)}
-                      />
-                      <span>Jóváhagyva</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold">{item.nameHu}</h3>
-                    {item.nameEn && <p className="text-xs text-muted-foreground">EN: {item.nameEn}</p>}
-                  </div>
-
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.nameHu} className="h-28 w-full object-cover rounded-md" />
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Nincs borítókép</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <input
-            ref={regionImportFileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleRegionImportInputChange}
-          />
-        </Card>
-
-        <Card className="p-6 space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">CSV import</p>
-              <h2 className="text-lg font-semibold">Régiók és szervezetek betöltése</h2>
-              <p className="text-sm text-muted-foreground">
-                A feltöltés előtt minden jelenlegi régió törlődik. A CSV-ben legyen benne a Név, Melyik régióhoz tartozik?,
-                Rövid bemutatkozó szöveg, Leírás (EN), E-mail cím, Logó, weboldal és közösségi linkek.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                type="button"
-                onClick={() => toggleAllImportApprovals(true)}
-                disabled={!importPreview.length}
-              >
-                <ShieldCheck className="h-4 w-4 mr-2" /> Összes jóváhagyása
-              </Button>
-              <Button
-                onClick={handleImportSubmit}
-                type="button"
-                disabled={!hasApprovedImport || importSaving || importing || !importPreview.length}
-                className="gap-2"
-              >
-                {importSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importálás
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                type="button"
-                onClick={() => importFileInputRef.current?.click()}
-                disabled={importing}
-              >
-                {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />} CSV feltöltés
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-4 items-center justify-between text-sm">
-            <div className="text-muted-foreground">
-              Jóváhagyva: {approvedImportCount}/{importPreview.length || 0}. Legalább egy sort jóvá kell hagynod az importáláshoz.
-            </div>
-            <Badge variant={hasApprovedImport && importPreview.length ? "default" : "outline"}>
-              {hasApprovedImport && importPreview.length ? "Importálásra kész" : "Jóváhagyás szükséges"}
+            <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
+              CSV import kikapcsolva a Beállításokban
             </Badge>
-          </div>
-
-          {importError && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 whitespace-pre-line">
-              {importError}
-            </div>
           )}
+        </div>
 
-          {importPreview.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                Tölts fel egy CSV fájlt a Webflow exportból. A sorok előnézetben jelennek meg, a kiválasztottakat jóváhagyás
-                után tudod importálni.
-              </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {importPreview.map((item) => (
-                <div key={item.row} className="rounded-lg border bg-muted/40 p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <Badge variant="outline">Sor {item.row}</Badge>
-                      <Badge variant="secondary">{item.regionName}</Badge>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Switch
-                        checked={item.approved}
-                        onCheckedChange={(checked) => toggleImportApproval(item.row, checked)}
-                      />
-                      <span>Jóváhagyva</span>
-                    </div>
+        {importerEnabled ? (
+          <>
+            <Card className="p-6 space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">CSV import</p>
+                    <h2 className="text-lg font-semibold">Régiók betöltése</h2>
                   </div>
-
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold">{item.orgName}</h3>
-                    <p className="text-sm text-muted-foreground line-clamp-3">
-                      {item.orgDescription || "Nincs leírás megadva"}
-                    </p>
-                    {item.orgDescriptionEn && (
-                      <p className="text-xs text-muted-foreground">EN: {item.orgDescriptionEn}</p>
-                    )}
-                  </div>
-
-                  {item.logoUrl ? (
-                    <img src={item.logoUrl} alt={item.orgName} className="h-24 w-full object-contain bg-white rounded-md" />
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Nincs logó</p>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
-                    {item.email && <span>Email: {item.email}</span>}
-                    {item.website && <span>Web: {item.website}</span>}
-                    {item.facebookUrl && <span>Facebook: {item.facebookUrl}</span>}
-                    {item.instagramUrl && <span>Instagram: {item.instagramUrl}</span>}
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    A feltöltés előtt minden jelenlegi régió törlődik. A CSV tartalmazza az "A régió neve", "Régió Borítókép"
+                    és "[EN] Region Name" oszlopokat. A borítóképek letöltve, majd a /regions mappába feltöltve kerülnek
+                    mentésre.
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => toggleAllRegionImportApprovals(true)}
+                    disabled={!regionImportPreview.length}
+                  >
+                    <ShieldCheck className="h-4 w-4 mr-2" /> Összes jóváhagyása
+                  </Button>
+                  <Button
+                    onClick={handleRegionImportSubmit}
+                    type="button"
+                    disabled={
+                      !hasApprovedRegionImport || regionImportSaving || regionImporting || !regionImportPreview.length
+                    }
+                    className="gap-2"
+                  >
+                    {regionImportSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importálás
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => regionImportFileInputRef.current?.click()}
+                    disabled={regionImporting}
+                  >
+                    {regionImporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />} CSV feltöltés
+                  </Button>
+                </div>
+              </div>
 
-          <input
-            ref={importFileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleImportInputChange}
-          />
-        </Card>
+              <div className="flex flex-wrap gap-4 items-center justify-between text-sm">
+                <div className="text-muted-foreground">
+                  Jóváhagyva: {approvedRegionImportCount}/{regionImportPreview.length || 0}. Legalább egy régiót jóvá kell hagynod az importáláshoz.
+                </div>
+                <Badge variant={hasApprovedRegionImport && regionImportPreview.length ? "default" : "outline"}>
+                  {hasApprovedRegionImport && regionImportPreview.length ? "Importálásra kész" : "Jóváhagyás szükséges"}
+                </Badge>
+              </div>
+
+              {regionImportError && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 whitespace-pre-line">
+                  {regionImportError}
+                </div>
+              )}
+
+              {regionImportPreview.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Tölts fel egy CSV fájlt a régiókhoz. A sorok előnézetben jelennek meg, a kiválasztottakat jóváhagyás után tudod importálni.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {regionImportPreview.map((item) => (
+                    <div key={item.row} className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <Badge variant="outline">Sor {item.row}</Badge>
+                          <Badge variant="secondary">{item.slug}</Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Switch
+                            checked={item.approved}
+                            onCheckedChange={(checked) => toggleRegionImportApproval(item.row, checked)}
+                          />
+                          <span>Jóváhagyva</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold">{item.nameHu}</h3>
+                        {item.nameEn && <p className="text-xs text-muted-foreground">EN: {item.nameEn}</p>}
+                      </div>
+
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.nameHu} className="h-28 w-full object-cover rounded-md" />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Nincs borítókép</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <input
+                ref={regionImportFileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleRegionImportInputChange}
+              />
+            </Card>
+
+            <Card className="p-6 space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">CSV import</p>
+                  <h2 className="text-lg font-semibold">Régiók és szervezetek betöltése</h2>
+                  <p className="text-sm text-muted-foreground">
+                    A feltöltés előtt minden jelenlegi régió törlődik. A CSV-ben legyen benne a Név, Melyik régióhoz tartozik?,
+                    Rövid bemutatkozó szöveg, Leírás (EN), E-mail cím, Logó, weboldal és közösségi linkek.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => toggleAllImportApprovals(true)}
+                    disabled={!importPreview.length}
+                  >
+                    <ShieldCheck className="h-4 w-4 mr-2" /> Összes jóváhagyása
+                  </Button>
+                  <Button
+                    onClick={handleImportSubmit}
+                    type="button"
+                    disabled={!hasApprovedImport || importSaving || importing || !importPreview.length}
+                    className="gap-2"
+                  >
+                    {importSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importálás
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => importFileInputRef.current?.click()}
+                    disabled={importing}
+                  >
+                    {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />} CSV feltöltés
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-4 items-center justify-between text-sm">
+                <div className="text-muted-foreground">
+                  Jóváhagyva: {approvedImportCount}/{importPreview.length || 0}. Legalább egy sort jóvá kell hagynod az importáláshoz.
+                </div>
+                <Badge variant={hasApprovedImport && importPreview.length ? "default" : "outline"}>
+                  {hasApprovedImport && importPreview.length ? "Importálásra kész" : "Jóváhagyás szükséges"}
+                </Badge>
+              </div>
+
+              {importError && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 whitespace-pre-line">
+                  {importError}
+                </div>
+              )}
+
+              {importPreview.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Tölts fel egy CSV fájlt a Webflow exportból. A sorok előnézetben jelennek meg, a kiválasztottakat jóváhagyás
+                  után tudod importálni.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {importPreview.map((item) => (
+                    <div key={item.row} className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <Badge variant="outline">Sor {item.row}</Badge>
+                          <Badge variant="secondary">{item.regionName}</Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Switch
+                            checked={item.approved}
+                            onCheckedChange={(checked) => toggleImportApproval(item.row, checked)}
+                          />
+                          <span>Jóváhagyva</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold">{item.orgName}</h3>
+                        <p className="text-sm text-muted-foreground line-clamp-3">
+                          {item.orgDescription || "Nincs leírás megadva"}
+                        </p>
+                        {item.orgDescriptionEn && (
+                          <p className="text-xs text-muted-foreground">EN: {item.orgDescriptionEn}</p>
+                        )}
+                      </div>
+
+                      {item.logoUrl ? (
+                        <img src={item.logoUrl} alt={item.orgName} className="h-24 w-full object-contain bg-white rounded-md" />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Nincs logó</p>
+                      )}
+
+                      <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+                        {item.email && <span>Email: {item.email}</span>}
+                        {item.website && <span>Web: {item.website}</span>}
+                        {item.facebookUrl && <span>Facebook: {item.facebookUrl}</span>}
+                        {item.instagramUrl && <span>Instagram: {item.instagramUrl}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleImportInputChange}
+              />
+            </Card>
+          </>
+        ) : (
+          <Card className="p-6 border-dashed border-amber-200 bg-amber-50/50 text-amber-900">
+            <h2 className="text-lg font-semibold mb-2">CSV import kikapcsolva</h2>
+            <p className="text-sm">
+              A régiók CSV importálása jelenleg tiltva van a Beállítások menüben. Kapcsold be a "Régió CSV import" kapcsolót a használathoz.
+            </p>
+          </Card>
+        )}
 
         <div className="grid md:grid-cols-[260px,1fr] gap-5">
           <Card className="p-4 space-y-3">

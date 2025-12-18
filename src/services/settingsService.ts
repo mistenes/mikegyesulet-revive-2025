@@ -41,6 +41,24 @@ const defaultSettings: SettingsStore = {
       type: "toggle",
       description: "Kapcsolja ki, ha nem szeretné megjeleníteni a fejlesztés alatt álló értesítést.",
     },
+    documents_importer_enabled: {
+      label: "Dokumentum CSV import engedélyezése",
+      value: true,
+      type: "toggle",
+      description: "Kapcsold ki, ha el akarod rejteni a dokumentum importert az admin felületen.",
+    },
+    news_importer_enabled: {
+      label: "Hír CSV import engedélyezése",
+      value: true,
+      type: "toggle",
+      description: "Kapcsold ki, ha el akarod rejteni a Webflow hír importert az admin felületen.",
+    },
+    regions_importer_enabled: {
+      label: "Régió CSV import engedélyezése",
+      value: true,
+      type: "toggle",
+      description: "Kapcsold ki, ha el akarod rejteni a régiók CSV importereit az admin felületen.",
+    },
   },
 };
 

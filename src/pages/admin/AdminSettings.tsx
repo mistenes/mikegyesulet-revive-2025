@@ -259,6 +259,50 @@ export default function AdminSettings() {
               />
             </div>
 
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-background/60 p-4">
+                <div className="space-y-1">
+                  <Label className="text-base">Dokumentum CSV import</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Engedélyezd, hogy a dokumentumok oldalán megjelenjen a CSV importáló szakasz.
+                  </p>
+                </div>
+                <Switch
+                  checked={Boolean(formData.documents_importer_enabled ?? true)}
+                  onCheckedChange={(checked) => setFormData({ ...formData, documents_importer_enabled: checked })}
+                  aria-label="Dokumentum CSV import bekapcsolása"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-background/60 p-4">
+                <div className="space-y-1">
+                  <Label className="text-base">Hír CSV import</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Engedélyezd, hogy a hírek oldalán megjelenjen a Webflow CSV importáló szakasz.
+                  </p>
+                </div>
+                <Switch
+                  checked={Boolean(formData.news_importer_enabled ?? true)}
+                  onCheckedChange={(checked) => setFormData({ ...formData, news_importer_enabled: checked })}
+                  aria-label="Hír CSV import bekapcsolása"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-background/60 p-4">
+                <div className="space-y-1">
+                  <Label className="text-base">Régió CSV import</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Engedélyezd, hogy a régiók kezelésénél megjelenjenek a CSV importálási szakaszok.
+                  </p>
+                </div>
+                <Switch
+                  checked={Boolean(formData.regions_importer_enabled ?? true)}
+                  onCheckedChange={(checked) => setFormData({ ...formData, regions_importer_enabled: checked })}
+                  aria-label="Régió CSV import bekapcsolása"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>Oldal neve</Label>
               <Input

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -9,22 +12,33 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
+  Bold,
   Calendar,
+  Code,
   Eye,
-  Folder,
   FileSpreadsheet,
+  Folder,
   GripVertical,
+  Heading1,
+  Heading2,
+  Heading3,
+  Heading4,
   Image as ImageIcon,
+  Italic,
+  List,
+  ListOrdered,
   Loader2,
   Pencil,
   Plus,
   Save,
   Search,
   ShieldCheck,
+  Strikethrough,
   Trash,
   Upload,
 } from "lucide-react";
@@ -50,6 +64,8 @@ import { renderMarkdown } from "@/utils/markdown";
 import { translateNewsToEnglish } from "@/services/translationService";
 import type { NewsArticle, NewsCategory, NewsInput, NewsTranslation } from "@/types/news";
 import type { LanguageCode } from "@/types/language";
+import { getSettings, type SettingsStore } from "@/services/settingsService";
+import { cn } from "@/lib/utils";
 
 const NEWS_FOLDER = "hirek";
 
@@ -90,6 +106,172 @@ const createEmptyNews = (): NewsFormState => ({
   },
 });
 
+type NewsRichTextEditorProps = {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  label?: string;
+};
+
+function NewsRichTextEditor({ value, onChange, placeholder, disabled, label }: NewsRichTextEditorProps) {
+  const lastMarkdownRef = useRef(value);
+  const focusEditor = () => {
+    if (!disabled) {
+      editor?.chain().focus().run();
+    }
+  };
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3, 4] },
+        bulletList: { HTMLAttributes: { class: "list-disc pl-5" } },
+        orderedList: { HTMLAttributes: { class: "list-decimal pl-5" } },
+        codeBlock: { HTMLAttributes: { class: "rounded-md bg-muted/60 p-3 font-mono text-sm" } },
+      }),
+      Placeholder.configure({ placeholder: placeholder || "Írd be a tartalmat" }),
+    ],
+    content: value ? renderMarkdown(value) : "",
+    editable: !disabled,
+    onUpdate: ({ editor: instance }) => {
+      const html = instance.getHTML();
+      const { markdown } = convertHtmlToMarkdown(html);
+      if (markdown === lastMarkdownRef.current) return;
+      lastMarkdownRef.current = markdown;
+      onChange(markdown);
+    },
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    if (value === lastMarkdownRef.current) return;
+    const html = value ? renderMarkdown(value) : "";
+    lastMarkdownRef.current = value;
+    editor.commands.setContent(html || "", false);
+  }, [editor, value]);
+
+  useEffect(() => {
+    editor?.setEditable(!disabled);
+  }, [disabled, editor]);
+
+  const isActive = (name: string, attrs?: Record<string, unknown>) => editor?.isActive(name, attrs);
+
+  return (
+    <div
+      className="space-y-2"
+      onMouseDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button")) return;
+        focusEditor();
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {label ? <span className="text-sm font-medium text-muted-foreground">{label}</span> : null}
+        <div className="flex flex-wrap items-center gap-1">
+          <Button
+            type="button"
+            variant={isActive("bold") ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => editor?.chain().focus().toggleBold().run()}
+            aria-label="Félkövér"
+            disabled={!editor || disabled}
+          >
+            <Bold className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant={isActive("italic") ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
+            aria-label="Dőlt"
+            disabled={!editor || disabled}
+          >
+            <Italic className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant={isActive("strike") ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => editor?.chain().focus().toggleStrike().run()}
+            aria-label="Áthúzás"
+            disabled={!editor || disabled}
+          >
+            <Strikethrough className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant={isActive("bulletList") ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}
+            aria-label="Felsorolás"
+            disabled={!editor || disabled}
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant={isActive("orderedList") ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+            aria-label="Számozás"
+            disabled={!editor || disabled}
+          >
+            <ListOrdered className="h-4 w-4" />
+          </Button>
+          {[1, 2, 3, 4].map((level) => (
+            <Button
+              key={level}
+              type="button"
+              variant={isActive("heading", { level }) ? "secondary" : "outline"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => editor?.chain().focus().toggleHeading({ level }).run()}
+              aria-label={`Címsor ${level}`}
+              disabled={!editor || disabled}
+            >
+              {level === 1 && <Heading1 className="h-4 w-4" />}
+              {level === 2 && <Heading2 className="h-4 w-4" />}
+              {level === 3 && <Heading3 className="h-4 w-4" />}
+              {level === 4 && <Heading4 className="h-4 w-4" />}
+            </Button>
+          ))}
+          <Button
+            type="button"
+            variant={isActive("codeBlock") ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
+            aria-label="Kódrészlet"
+            disabled={!editor || disabled}
+          >
+            <Code className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          "min-h-[260px] w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm",
+          disabled && "bg-muted/50 text-muted-foreground",
+          "prose prose-sm max-w-none"
+        )}
+        role="textbox"
+        tabIndex={disabled ? -1 : 0}
+        onClick={focusEditor}
+        onFocus={focusEditor}
+      >
+        <EditorContent editor={editor} />
+      </div>
+      {!value?.trim() && placeholder ? <p className="text-xs text-muted-foreground">{placeholder}</p> : null}
+    </div>
+  );
+}
+
 export default function AdminNewsNewArticle() {
   const { isLoading, session } = useAdminAuthGuard();
   const location = useLocation();
@@ -121,7 +303,7 @@ export default function AdminNewsNewArticle() {
   const [importCategoryId, setImportCategoryId] = useState<string>("");
   const [importError, setImportError] = useState<string | null>(null);
   const [importSaving, setImportSaving] = useState(false);
-  const [showImporter, setShowImporter] = useState(true);
+  const [showImporter, setShowImporter] = useState(false);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [newCategoryHu, setNewCategoryHu] = useState("");
@@ -130,6 +312,24 @@ export default function AdminNewsNewArticle() {
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const applySetting = (settings: SettingsStore) => {
+      setShowImporter(Boolean(settings.general.news_importer_enabled?.value ?? true));
+    };
+
+    applySetting(getSettings());
+
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsStore>).detail;
+      if (detail) {
+        applySetting(detail);
+      }
+    };
+
+    window.addEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+    return () => window.removeEventListener("mik-settings-updated", handleSettingsUpdate as EventListener);
+  }, []);
 
   const slugifyText = (value: string) =>
     value
@@ -191,68 +391,6 @@ export default function AdminNewsNewArticle() {
     }
 
     return "";
-  };
-
-  const convertHtmlToMarkdown = (html: string) => {
-    if (typeof window === "undefined" || !html.trim()) {
-      return { markdown: html.trim(), text: html.trim() };
-    }
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
-
-    const walk = (node: Node): string => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        return (node.textContent || "").replace(/\s+/g, " ");
-      }
-
-      if (node.nodeType !== Node.ELEMENT_NODE) return "";
-
-      const element = node as HTMLElement;
-      const children = Array.from(element.childNodes)
-        .map((child) => walk(child))
-        .filter(Boolean);
-      const content = children.join("");
-
-      switch (element.tagName.toLowerCase()) {
-        case "br":
-          return "\n";
-        case "p":
-          return `${content}\n\n`;
-        case "strong":
-        case "b":
-          return `**${content}**`;
-        case "em":
-        case "i":
-          return `*${content}*`;
-        case "ul":
-          return `${Array.from(element.children)
-            .map((child) => `- ${walk(child)}`)
-            .join("\n")}\n\n`;
-        case "ol":
-          return `${Array.from(element.children)
-            .map((child, index) => `${index + 1}. ${walk(child)}`)
-            .join("\n")}\n\n`;
-        case "li":
-          return `${content}\n`;
-        case "a": {
-          const href = element.getAttribute("href") || "";
-          return href ? `[${content}](${href})` : content;
-        }
-        case "img": {
-          const src = element.getAttribute("src") || "";
-          const alt = element.getAttribute("alt") || content || "";
-          return src ? `![${alt}](${src})` : alt;
-        }
-        default:
-          return content;
-      }
-    };
-
-    const markdown = walk(doc.body).replace(/\n{3,}/g, "\n\n").trim();
-    const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
-
-    return { markdown, text };
   };
 
   const buildFileNameFromUrl = (url: string, fallback: string) => {
@@ -605,8 +743,12 @@ export default function AdminNewsNewArticle() {
           ...prev.translations,
           en: {
             ...prev.translations.en,
-            excerpt: result.excerpt ?? prev.translations.en.excerpt,
-            content: result.content ?? prev.translations.en.content,
+            ...(field === "excerpt"
+              ? { excerpt: result.excerpt ?? prev.translations.en.excerpt }
+              : {}),
+            ...(field === "content"
+              ? { content: result.content ?? prev.translations.en.content }
+              : {}),
           },
         },
       }));
@@ -1179,18 +1321,15 @@ export default function AdminNewsNewArticle() {
             </div>
           </div>
 
-          <Card className="p-4 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Haladó beállítások</h2>
-                <p className="text-sm text-muted-foreground">Kapcsold ki a Webflow importert, ha csak kézzel hozol létre hírt.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch checked={showImporter} onCheckedChange={setShowImporter} />
-                <span className="text-sm">Webflow import megjelenítése</span>
-              </div>
-            </div>
-          </Card>
+          {!showImporter ? (
+            <Alert>
+              <AlertTitle>CSV import kikapcsolva</AlertTitle>
+              <AlertDescription>
+                A Webflow CSV import szekció a Beállítások menüben kapcsolható be. Engedélyezd, ha új híreket szeretnél
+                fájlból betölteni.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           {showImporter && (
           <Card className="p-6 space-y-4">
@@ -1470,10 +1609,11 @@ export default function AdminNewsNewArticle() {
                               </Button>
                             )}
                           </div>
-                          <Textarea
+                          <NewsRichTextEditor
                             value={translation.content}
-                            onChange={(e) => handleTranslationChange(language, "content", e.target.value)}
-                            rows={10}
+                            onChange={(next) => handleTranslationChange(language, "content", next)}
+                            placeholder="Írd be a tartalmat"
+                            disabled={false}
                           />
                         </div>
                       </div>

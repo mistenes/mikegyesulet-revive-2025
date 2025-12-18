@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
-import { Mail, Phone, MapPin, Clock, Send } from "lucide-react";
+import { Mail, Phone, MapPin, Send } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { useSectionContent } from "@/hooks/useSectionContent";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -31,11 +31,6 @@ const contactSchema = z.object({
   name: z.string().trim().min(1, "A név megadása kötelező").max(100, "A név maximum 100 karakter lehet"),
   email: z.string().trim().email("Érvénytelen email cím").max(255, "Az email maximum 255 karakter lehet"),
   message: z.string().trim().min(1, "Az üzenet megadása kötelező").max(1000, "Az üzenet maximum 1000 karakter lehet"),
-  privacy: z.boolean().refine((val) => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
-});
-
-const newsletterSchema = z.object({
-  email: z.string().trim().email("Érvénytelen email cím").max(255),
   privacy: z.boolean().refine((val) => val === true, "Az adatkezelési tájékoztató elfogadása kötelező"),
 });
 
@@ -74,10 +69,6 @@ export const Contact = () => {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const [newsletterEmail, setNewsletterEmail] = useState("");
-  const [newsletterPrivacy, setNewsletterPrivacy] = useState(false);
-  const [newsletterErrors, setNewsletterErrors] = useState<Record<string, string>>({});
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -100,33 +91,6 @@ export const Contact = () => {
           }
         });
         setErrors(newErrors);
-      }
-    }
-  };
-
-  const handleNewsletterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    try {
-      newsletterSchema.parse({ email: newsletterEmail, privacy: newsletterPrivacy });
-      setNewsletterErrors({});
-
-      toast({
-        title: "Sikeres feliratkozás!",
-        description: "Köszönjük, hogy feliratkoztál hírlevelünkre.",
-      });
-
-      setNewsletterEmail("");
-      setNewsletterPrivacy(false);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: Record<string, string> = {};
-        error.errors.forEach((err) => {
-          if (err.path[0]) {
-            newErrors[err.path[0].toString()] = err.message;
-          }
-        });
-        setNewsletterErrors(newErrors);
       }
     }
   };
@@ -255,22 +219,14 @@ export const Contact = () => {
                   <Mail className="h-5 w-5" />
                   <div>
                     <p className="text-sm opacity-80">Email</p>
-                    <p className="font-semibold">info@mikegyesulet.hu</p>
+                    <p className="font-semibold">titkarsag@mikegyesulet.hu</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="h-5 w-5" />
                   <div>
                     <p className="text-sm opacity-80">Telefon</p>
-                    <p className="font-semibold">+36 30 123 4567</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Clock className="h-5 w-5" />
-                  <div>
-                    <p className="text-sm opacity-80">Nyitvatartás</p>
-                    <p className="font-semibold">Hétfő - Csütörtök: 9:00 - 17:00</p>
-                    <p className="font-semibold">Péntek: 9:00 - 14:00</p>
+                    <p className="font-semibold">+36 30 959 4595</p>
                   </div>
                 </div>
               </div>
@@ -308,43 +264,8 @@ export const Contact = () => {
                 ))}
               </div>
             </Card>
-
-            {/* Newsletter */}
-            <Card className="p-6 bg-card border-border shadow-sm">
-              <h3 className="text-xl font-bold mb-3" style={{ fontFamily: "'Sora', sans-serif" }}>
-                Hírlevél
-              </h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Iratkozz fel, hogy elsőként értesülj a friss hírekről, eseményekről.
-              </p>
-              <form onSubmit={handleNewsletterSubmit} className="space-y-3">
-                <Input
-                  type="email"
-                  placeholder="Email cím"
-                  value={newsletterEmail}
-                  onChange={(e) => setNewsletterEmail(e.target.value)}
-                  className={`bg-muted/30 border-border ${newsletterErrors.email ? "border-destructive" : ""}`}
-                />
-                {newsletterErrors.email && <p className="text-xs text-destructive">{newsletterErrors.email}</p>}
-
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id="newsletter-privacy"
-                    checked={newsletterPrivacy}
-                    onCheckedChange={(checked) => setNewsletterPrivacy(checked as boolean)}
-                  />
-                  <label htmlFor="newsletter-privacy" className="text-xs text-muted-foreground cursor-pointer">
-                    Elfogadom az Adatkezelési Tájékoztatót
-                  </label>
-                </div>
-                {newsletterErrors.privacy && <p className="text-xs text-destructive">{newsletterErrors.privacy}</p>}
-
-                <Button type="submit" className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
-                  Feliratkozás
-                </Button>
-              </form>
-            </Card>
           </div>
+
         </div>
       </div>
     </section>

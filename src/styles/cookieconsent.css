@@ -1,0 +1,71 @@
+:root {
+  --cc-font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cc-bg: hsl(var(--card));
+  --cc-text: hsl(var(--foreground));
+  --cc-text-secondary: hsl(var(--muted-foreground));
+  --cc-overlay-bg: hsla(220, 15%, 20%, 0.35);
+  --cc-border-radius: 16px;
+  --cc-modal-border-radius: 18px;
+  --cc-btn-border-radius: 9999px;
+  --cc-toggle-radius: 9999px;
+  --cc-link-color: hsl(var(--primary));
+  --cc-cookie-category-block-bg: hsl(var(--secondary));
+  --cc-cookie-category-block-border: hsl(var(--border));
+  --cc-cookie-category-block-hover-bg: hsl(var(--secondary));
+  --cc-btn-primary-bg: hsl(var(--primary));
+  --cc-btn-primary-color: hsl(var(--primary-foreground));
+  --cc-btn-primary-hover-bg: hsl(var(--primary-glow));
+  --cc-btn-primary-border: transparent;
+  --cc-btn-primary-hover-border: transparent;
+  --cc-btn-secondary-bg: hsl(var(--secondary));
+  --cc-btn-secondary-color: hsl(var(--foreground));
+  --cc-btn-secondary-hover-bg: hsl(var(--muted));
+  --cc-btn-secondary-border: hsl(var(--border));
+  --cc-btn-secondary-hover-border: hsl(var(--border));
+  --cc-toggle-bg-off: hsl(var(--muted));
+  --cc-toggle-bg-on: hsl(var(--primary));
+  --cc-toggle-knob-bg: hsl(var(--primary-foreground));
+  --cc-toggle-knob-icon-color: hsl(var(--primary));
+  --cc-btn-shadow: var(--shadow-sm);
+  --cc-modal-margin: 1rem;
+  --cc-z-index: 2147483000;
+}
+
+#cc-main {
+  box-shadow: var(--shadow-md);
+}
+
+#cc-main .cm__title,
+#cc-main .pm__title {
+  font-weight: 700;
+}
+
+#cc-main .cm__body,
+#cc-main .pm__body {
+  color: var(--cc-text-secondary);
+}
+
+#cc-main .cm__btn,
+#cc-main .pm__btn {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+#cc-main .pm__section {
+  border-color: hsl(var(--border));
+}
+
+#cc-main .pm__section-title {
+  font-weight: 600;
+}
+
+#cc-main .cm__desc {
+  line-height: 1.6;
+}
+
+.cc--bar #cc-main {
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: var(--cc-modal-border-radius);
+}

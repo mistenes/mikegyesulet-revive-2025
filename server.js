@@ -7,7 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
 import speakeasy from 'speakeasy';
-import SibApiV3Sdk from 'sib-api-v3-sdk';
+import { BetaAnalyticsDataClient } from '@google-analytics/data';
+import { defaultDocuments as defaultDocumentSeed } from './server-default-documents.js';
 
 const { Pool } = pkg;
 
@@ -30,11 +31,13 @@ const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY || '';
 const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || '';
 const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT || '';
 const IMAGEKIT_GALLERY_FOLDER = process.env.IMAGEKIT_GALLERY_FOLDER || '';
+const BUNNY_CDN_HOSTNAME = process.env.VITE_BUNNY_CDN_HOSTNAME || process.env.BUNNY_CDN_HOSTNAME || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || process.env.ADMIN_EMAIL || '';
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'MIK Admin';
-const INVITE_BASE_URL = FRONTEND_ORIGIN || RENDER_EXTERNAL_URL || LOCAL_DEV_ORIGIN;
+const INVITE_BASE_URL =
+  process.env.INVITE_BASE_URL || FRONTEND_ORIGIN || 'https://mikegyesulet.hu' || RENDER_EXTERNAL_URL || LOCAL_DEV_ORIGIN;
 const HASH_ITERATIONS = 310000;
 const PAGE_SIZE_DEFAULT = 9;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -44,16 +47,14 @@ const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
 const PASSWORD_HISTORY_LIMIT = 5;
 const PASSWORD_MIN_LENGTH = 12;
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PASSWORD_RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
 const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
 const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
-
-const brevoClient = BREVO_API_KEY ? new SibApiV3Sdk.TransactionalEmailsApi() : null;
-
-if (BREVO_API_KEY) {
-  const defaultClient = SibApiV3Sdk.ApiClient.instance;
-  defaultClient.authentications['api-key'].apiKey = BREVO_API_KEY;
-}
+const GA_MEASUREMENT_ID = process.env.VITE_GA_MEASUREMENT_ID || process.env.GA_MEASUREMENT_ID || '';
+const GA_PROPERTY_ID = process.env.GA4_PROPERTY_ID || process.env.GA_PROPERTY_ID || '';
+const GA_CLIENT_EMAIL = process.env.GA4_CLIENT_EMAIL || process.env.GA_CLIENT_EMAIL || '';
+const GA_PRIVATE_KEY = (process.env.GA4_PRIVATE_KEY || process.env.GA_PRIVATE_KEY || '').replace(/\\n/g, '\n');
 
 const defaultPageContent = {
   hero_content: {
@@ -151,6 +152,24 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const analyticsClient =
+  GA_PROPERTY_ID && GA_CLIENT_EMAIL && GA_PRIVATE_KEY
+    ? new BetaAnalyticsDataClient({
+        credentials: {
+          client_email: GA_CLIENT_EMAIL,
+          private_key: GA_PRIVATE_KEY,
+        },
+      })
+    : null;
+
+const analyticsDefaults = {
+  pastHour: 0,
+  past24Hours: 0,
+  thisWeek: 0,
+  thisMonth: 0,
+  thisYear: 0,
+};
+
 const app = express();
 
 const allowedOrigins = [FRONTEND_ORIGIN, RENDER_EXTERNAL_URL, LOCAL_DEV_ORIGIN].filter(Boolean);
@@ -162,6 +181,56 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
+
+const analyticsProperty = GA_PROPERTY_ID ? `properties/${GA_PROPERTY_ID}` : '';
+
+async function getRealtimeActiveUsersSum() {
+  if (!analyticsClient || !analyticsProperty) return analyticsDefaults.pastHour;
+
+  const [response] = await analyticsClient.runRealtimeReport({
+    property: analyticsProperty,
+    metrics: [{ name: 'activeUsers' }],
+    dimensions: [{ name: 'minute' }],
+    limit: 60,
+  });
+
+  return (response.rows || []).reduce((total, row) => total + Number(row.metricValues?.[0]?.value || 0), 0);
+}
+
+async function getRangeActiveUsers(startDate, endDate) {
+  if (!analyticsClient || !analyticsProperty) return 0;
+
+  const [response] = await analyticsClient.runReport({
+    property: analyticsProperty,
+    dateRanges: [{ startDate, endDate }],
+    metrics: [{ name: 'activeUsers' }],
+  });
+
+  return Number(response.rows?.[0]?.metricValues?.[0]?.value || 0);
+}
+
+async function fetchVisitorCounts() {
+  if (!analyticsClient || !analyticsProperty) {
+    return { ...analyticsDefaults, configured: false };
+  }
+
+  const [pastHour, past24Hours, thisWeek, thisMonth, thisYear] = await Promise.all([
+    getRealtimeActiveUsersSum(),
+    getRangeActiveUsers('1daysAgo', 'today'),
+    getRangeActiveUsers('7daysAgo', 'today'),
+    getRangeActiveUsers('30daysAgo', 'today'),
+    getRangeActiveUsers('365daysAgo', 'today'),
+  ]);
+
+  return {
+    pastHour,
+    past24Hours,
+    thisWeek,
+    thisMonth,
+    thisYear,
+    configured: true,
+  };
+}
 
 const loginRateLimitBuckets = new Map();
 
@@ -363,25 +432,116 @@ function buildInviteLink(token) {
   return `${baseUrl}/admin/accept-invite?token=${encodeURIComponent(token)}`;
 }
 
+function buildPasswordResetLink(token) {
+  const baseUrl = INVITE_BASE_URL.replace(/\/$/, '');
+  return `${baseUrl}/admin/reset-password?token=${encodeURIComponent(token)}`;
+}
+
 async function sendInviteEmail(email, inviteLink) {
-  if (!brevoClient || !BREVO_FROM_EMAIL) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
     throw new Error('Brevo nincs konfigurálva a meghívók küldéséhez');
   }
 
-  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-  sendSmtpEmail.sender = { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME };
-  sendSmtpEmail.to = [{ email }];
-  sendSmtpEmail.subject = 'Admin felhasználói meghívó';
-  sendSmtpEmail.htmlContent = `
+  const payload = {
+    sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+    to: [{ email }],
+    subject: 'Admin felhasználói meghívó',
+    htmlContent: `
     <p>Üdvözlünk! Meghívtak, hogy szerkeszd a MIK admin felületét.</p>
     <p>Kattints az alábbi gombra, hogy beállítsd a jelszavad és a kétlépcsős azonosítást:</p>
     <p><a href="${inviteLink}" style="display:inline-block;padding:12px 18px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px">Meghívó elfogadása</a></p>
     <p>Ha a gomb nem működik, másold be ezt a linket a böngészőbe:</p>
     <p>${inviteLink}</p>
     <p>A meghívó 7 napig érvényes.</p>
-  `;
+  `,
+  };
 
-  await brevoClient.sendTransacEmail(sendSmtpEmail);
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Brevo invite send failed (${response.status}): ${body || response.statusText}`);
+  }
+}
+
+async function sendPasswordResetEmail(email, resetLink) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a jelszó-emlékeztetőhöz');
+  }
+
+  const payload = {
+    sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+    to: [{ email }],
+    subject: 'Admin jelszó visszaállítása',
+    htmlContent: `
+    <p>Jelszó-visszaállítási kérés érkezett a fiókodra.</p>
+    <p>Kattints az alábbi gombra, hogy új jelszót állíts be:</p>
+    <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px">Jelszó visszaállítása</a></p>
+    <p>Ha a gomb nem működik, másold be ezt a linket a böngészőbe:</p>
+    <p>${resetLink}</p>
+    <p>A link 24 óráig érvényes.</p>
+  `,
+  };
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Brevo reset send failed (${response.status}): ${body || response.statusText}`);
+  }
+}
+
+async function sendBugReportEmail({ reporterEmail, title, description, stepsToReproduce, expectedResult, actualResult, severity }) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    throw new Error('Brevo nincs konfigurálva a hibajelentéshez');
+  }
+
+  const payload = {
+    sender: { email: BREVO_FROM_EMAIL, name: BREVO_FROM_NAME || undefined },
+    to: [{ email: 'mistenes@me.com' }],
+    subject: 'URGENT - bug report',
+    htmlContent: `
+      <p>Új hibajelentés érkezett az admin felületről.</p>
+      <p><strong>Küldő:</strong> ${reporterEmail || 'Ismeretlen'}</p>
+      <p><strong>Cím:</strong> ${title || 'Nincs megadva'}</p>
+      <p><strong>Súlyosság:</strong> ${severity || 'Nem jelölve'}</p>
+      <p><strong>Leírás:</strong><br/>${description || 'Nincs leírás'}</p>
+      <p><strong>Lépések a reprodukáláshoz:</strong><br/>${stepsToReproduce || 'Nincs megadva'}</p>
+      <p><strong>Várt eredmény:</strong><br/>${expectedResult || 'Nincs megadva'}</p>
+      <p><strong>Kapott eredmény:</strong><br/>${actualResult || 'Nincs megadva'}</p>
+    `,
+  };
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Brevo bug report send failed (${response.status}): ${body || response.statusText}`);
+  }
 }
 
 async function ensureAdminUser() {
@@ -630,14 +790,16 @@ async function ensureProjectsTables() {
       'SELECT id, translations, slug_hu, slug_en, language_availability FROM projects',
     );
 
-    const usedHu = new Set(existingProjects.rows.map((row) => row.slug_hu).filter(Boolean));
-    const usedEn = new Set(existingProjects.rows.map((row) => row.slug_en).filter(Boolean));
+    const usedHu = new Set();
+    const usedEn = new Set();
+
+    const collapseRepeatedOneSuffix = (slug = '') => slug.replace(/(?:-1)(?:-1)+$/g, '-1');
 
     for (const row of existingProjects.rows) {
       const translations = row.translations || { hu: {}, en: {} };
       const normalizedTranslations = normalizeProjectTranslations(translations);
-      let slugHu = row.slug_hu || slugifyText(normalizedTranslations.hu?.title || '');
-      let slugEn = row.slug_en || slugifyText(normalizedTranslations.en?.title || '');
+      let slugHu = collapseRepeatedOneSuffix(row.slug_hu || slugifyText(normalizedTranslations.hu?.title || ''));
+      let slugEn = collapseRepeatedOneSuffix(row.slug_en || slugifyText(normalizedTranslations.en?.title || ''));
 
       if (!slugHu) {
         slugHu = slugifyText(`projekt-${row.id}`);
@@ -751,6 +913,44 @@ async function ensurePageContentTable() {
   }
 }
 
+async function ensureDocumentsTables() {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        title_en TEXT NOT NULL,
+        location TEXT,
+        event_date TEXT DEFAULT '',
+        url TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query('CREATE INDEX IF NOT EXISTS documents_category_idx ON documents(category);');
+    await client.query('CREATE INDEX IF NOT EXISTS documents_date_idx ON documents(event_date);');
+
+    const count = await client.query('SELECT COUNT(*)::int AS count FROM documents');
+    if ((count.rows[0]?.count || 0) === 0) {
+      for (const doc of defaultDocumentSeed) {
+        await client.query(
+          `INSERT INTO documents (title, title_en, location, event_date, url, category)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [doc.title, doc.titleEn || doc.title, doc.location || null, doc.date || '', doc.url, doc.category],
+        );
+      }
+    }
+  } finally {
+    client.release();
+  }
+}
+
 function mapNewsRow(row) {
   const categoryTranslations = {
     hu: row.category_name_hu || row.category || '',
@@ -786,6 +986,149 @@ function mapNewsCategory(row) {
     },
     createdAt: row.created_at ? row.created_at.toISOString() : '',
   };
+}
+
+function mapDocumentRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    titleEn: row.title_en || row.title,
+    location: row.location || undefined,
+    date: row.event_date || '',
+    url: row.url,
+    category: row.category || 'other',
+  };
+}
+
+const DOCUMENT_CATEGORIES = new Set(['statute', 'founding', 'closing-statement', 'other']);
+
+function normalizeDocumentPayload(payload = {}) {
+  const title = (payload.title || '').toString().trim();
+  const titleEn = (payload.titleEn || title).toString().trim() || title;
+  const location = (payload.location || '').toString().trim();
+  const date = (payload.date || '').toString().trim();
+  const url = (payload.url || '').toString().trim();
+  const category = (payload.category || '').toString().trim();
+
+  if (!title) {
+    const error = new Error('A cím megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!url) {
+    const error = new Error('A dokumentum elérhetősége kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!DOCUMENT_CATEGORIES.has(category)) {
+    const error = new Error('Érvénytelen kategória');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    title,
+    titleEn,
+    location: location || null,
+    date,
+    url,
+    category,
+  };
+}
+
+function normalizeDocumentImportPayload(payload = {}) {
+  const base = normalizeDocumentPayload({ ...payload, url: payload.sourceUrl || payload.url || '' });
+  const targetPath = (payload.targetPath || '').toString().trim().replace(/^\/+/, '').replace(/\/+$/, '');
+
+  if (!targetPath) {
+    const error = new Error('A célútvonal megadása kötelező');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    ...base,
+    sourceUrl: (payload.sourceUrl || '').toString().trim(),
+    targetPath,
+  };
+}
+
+function extractStoragePath(url = '') {
+  const raw = (url || '').toString().trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    return parsed.pathname.replace(/^\/+/, '');
+  } catch (error) {
+    // If it's not a valid URL, try to strip a potential host manually
+  }
+
+  return raw.replace(/^https?:\/\/[^/]+\//i, '').replace(/^\/+/, '');
+}
+
+function buildUniqueTargetPath(targetPath = '', usedPaths = new Set()) {
+  const cleaned = targetPath.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!cleaned) return '';
+
+  if (!usedPaths.has(cleaned)) {
+    usedPaths.add(cleaned);
+    return cleaned;
+  }
+
+  const lastSlash = cleaned.lastIndexOf('/');
+  const directory = lastSlash >= 0 ? cleaned.slice(0, lastSlash + 1) : '';
+  const fileName = lastSlash >= 0 ? cleaned.slice(lastSlash + 1) : cleaned;
+  const dotIndex = fileName.lastIndexOf('.');
+  const baseName = dotIndex >= 0 ? fileName.slice(0, dotIndex) : fileName;
+  const extension = dotIndex >= 0 ? fileName.slice(dotIndex) : '';
+
+  let counter = 2;
+  let candidate = cleaned;
+
+  while (usedPaths.has(candidate)) {
+    candidate = `${directory}${baseName}-${counter}${extension}`;
+    counter += 1;
+  }
+
+  usedPaths.add(candidate);
+  return candidate;
+}
+
+async function uploadDocumentFromSource(sourceUrl, targetPath) {
+  if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_KEY) {
+    const error = new Error('A Bunny storage nincs konfigurálva.');
+    error.status = 503;
+    throw error;
+  }
+
+  const downloadResponse = await fetch(sourceUrl);
+  if (!downloadResponse.ok) {
+    const error = new Error('Nem sikerült letölteni a forrásdokumentumot.');
+    error.status = 400;
+    throw error;
+  }
+
+  const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+  const uploadUrl = buildBunnyUrl(targetPath);
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      AccessKey: BUNNY_STORAGE_KEY,
+      'content-type': downloadResponse.headers.get('content-type') || 'application/octet-stream',
+    },
+    body: buffer,
+  });
+
+  if (!uploadResponse.ok) {
+    const error = new Error('Nem sikerült feltölteni a dokumentumot a tárhelyre.');
+    error.status = 502;
+    throw error;
+  }
+
+  return buildBunnyCdnUrl(targetPath) || sourceUrl;
 }
 
 async function resolveNewsCategory(client, payload) {
@@ -1407,6 +1750,50 @@ app.post('/api/auth/complete-invite', async (req, res) => {
   }
 });
 
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body || {};
+
+  if (!token || !password) {
+    return res.status(400).json({ message: 'Hiányzó token vagy jelszó' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const resetToken = await consumeUserToken(client, token, 'reset');
+    if (!resetToken) {
+      return res.status(400).json({ message: 'A jelszó-visszaállító link lejárt vagy már felhasználták' });
+    }
+
+    const issues = validatePasswordComplexity(password, resetToken.email);
+    if (issues.length) {
+      return res.status(400).json({ message: issues[0] });
+    }
+
+    const reused = await isPasswordReused(client, resetToken.email, password);
+    if (reused) {
+      return res.status(400).json({ message: 'Ne használj korábbi jelszót' });
+    }
+
+    const passwordHash = createPasswordHash(password);
+    await recordPasswordHistory(client, resetToken.email, passwordHash);
+    await revokeSessionsForEmail(client, resetToken.email);
+
+    await client.query(
+      `UPDATE admin_users
+       SET password_hash = $1, must_reset_password = FALSE, last_password_change = NOW()
+       WHERE email = $2`,
+      [passwordHash, resetToken.email],
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Complete reset error', error);
+    return res.status(500).json({ message: 'Nem sikerült visszaállítani a jelszót' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/admin/security/mfa', authenticateRequest, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -1582,13 +1969,22 @@ app.post('/api/admin/security/password', authenticateRequest, async (req, res) =
 app.get('/api/admin/users', authenticateRequest, async (_req, res) => {
   const client = await pool.connect();
   try {
-    const result = await client.query(
+    const usersPromise = client.query(
       `SELECT email, created_at, last_login_at, mfa_enabled, must_reset_password, is_active
        FROM admin_users
        ORDER BY created_at DESC`,
     );
 
-    return res.status(200).json({ users: result.rows });
+    const invitesPromise = client.query(
+      `SELECT email, expires_at, created_at
+       FROM admin_user_tokens
+       WHERE type = 'invite' AND used = FALSE AND expires_at > NOW()
+       ORDER BY created_at DESC`,
+    );
+
+    const [users, invites] = await Promise.all([usersPromise, invitesPromise]);
+
+    return res.status(200).json({ users: users.rows, invites: invites.rows });
   } catch (error) {
     console.error('List users error', error);
     return res.status(500).json({ message: 'Nem sikerült lekérni a felhasználókat' });
@@ -1605,7 +2001,7 @@ app.post('/api/admin/users/invite', authenticateRequest, async (req, res) => {
     return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
   }
 
-  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL || !brevoClient) {
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
     return res.status(500).json({ message: 'A meghívók küldéséhez konfiguráld a Brevo API kulcsot' });
   }
 
@@ -1633,6 +2029,153 @@ app.post('/api/admin/users/invite', authenticateRequest, async (req, res) => {
     return res.status(500).json({ message: 'Nem sikerült elküldeni a meghívót' });
   } finally {
     client.release();
+  }
+});
+
+app.delete('/api/admin/users/invite', authenticateRequest, async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "DELETE FROM admin_user_tokens WHERE email = $1 AND type = 'invite' AND used = FALSE RETURNING id",
+      [normalizedEmail],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Nincs aktív meghívó ehhez az e-mail címhez' });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Delete invite error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a meghívót' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/admin/users/:email', authenticateRequest, async (req, res) => {
+  const normalizedEmail = (req.params.email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  if (normalizedEmail === req.user.email) {
+    return res.status(400).json({ message: 'Nem törölheted a saját fiókodat' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const deleted = await client.query('DELETE FROM admin_users WHERE email = $1 RETURNING email', [normalizedEmail]);
+
+    if (!deleted.rowCount) {
+      return res.status(404).json({ message: 'A felhasználó nem található' });
+    }
+
+    await client.query('DELETE FROM admin_user_tokens WHERE email = $1', [normalizedEmail]);
+    await client.query('DELETE FROM admin_mfa_enrollments WHERE email = $1', [normalizedEmail]);
+    await client.query('DELETE FROM admin_password_history WHERE email = $1', [normalizedEmail]);
+    await revokeSessionsForEmail(client, normalizedEmail);
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Delete user error', error);
+    return res.status(500).json({ message: 'Nem sikerült törölni a felhasználót' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/users/reset-password', authenticateRequest, async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ message: 'Érvényes e-mail cím szükséges' });
+  }
+
+  if (!BREVO_API_KEY || !BREVO_FROM_EMAIL) {
+    return res.status(500).json({ message: 'A jelszó-visszaállításhoz konfiguráld a Brevo API kulcsot' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const existing = await client.query('SELECT email FROM admin_users WHERE email = $1 LIMIT 1', [normalizedEmail]);
+    if (!existing.rowCount) {
+      return res.status(404).json({ message: 'Nincs ilyen felhasználó' });
+    }
+
+    const { token, expiresAt } = await createUserToken(client, normalizedEmail, 'reset', PASSWORD_RESET_TOKEN_TTL_MS);
+    await client.query('UPDATE admin_users SET must_reset_password = TRUE WHERE email = $1', [normalizedEmail]);
+    await revokeSessionsForEmail(client, normalizedEmail);
+
+    const resetLink = buildPasswordResetLink(token);
+    await sendPasswordResetEmail(normalizedEmail, resetLink);
+
+    return res.status(200).json({ resetExpiresAt: expiresAt.toISOString(), link: resetLink });
+  } catch (error) {
+    console.error('Reset password request error', error);
+    return res.status(500).json({ message: 'Nem sikerült elküldeni a jelszó visszaállító e-mailt' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/bugreports', authenticateRequest, async (req, res) => {
+  const { title, description, stepsToReproduce, expectedResult, actualResult, severity } = req.body || {};
+
+  if (!description || !title) {
+    return res.status(400).json({ message: 'A cím és a leírás megadása kötelező' });
+  }
+
+  try {
+    await sendBugReportEmail({
+      reporterEmail: req.user.email,
+      title: title.trim(),
+      description: description.trim(),
+      stepsToReproduce: stepsToReproduce?.trim(),
+      expectedResult: expectedResult?.trim(),
+      actualResult: actualResult?.trim(),
+      severity: severity?.trim(),
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Bug report send error', error);
+    const message =
+      error instanceof Error && error.message.includes('Brevo')
+        ? 'Hiba a Brevo e-mail küldése közben'
+        : 'Nem sikerült elküldeni a hibajelentést';
+    return res.status(500).json({ message });
+  }
+});
+
+app.get('/api/admin/analytics/visitors', authenticateRequest, async (_req, res) => {
+  if (!analyticsClient || !analyticsProperty) {
+    return res.status(503).json({
+      ...analyticsDefaults,
+      configured: false,
+      message: 'A Google Analytics nincs beállítva',
+    });
+  }
+
+  try {
+    const data = await fetchVisitorCounts();
+    return res.json(data);
+  } catch (error) {
+    console.error('Analytics fetch error', error);
+    return res.status(500).json({
+      ...analyticsDefaults,
+      configured: true,
+      message: 'Nem sikerült lekérni az analitika adatokat',
+    });
   }
 });
 
@@ -1974,6 +2517,19 @@ app.get('/api/page-content/public', async (_req, res) => {
   }
 });
 
+app.get('/api/documents', async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM documents ORDER BY event_date DESC NULLS LAST, created_at DESC');
+    return res.status(200).json({ documents: result.rows.map(mapDocumentRow) });
+  } catch (error) {
+    console.error('Fetch documents error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a dokumentumokat.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/page-content', authenticateRequest, async (_req, res) => {
   const client = await pool.connect();
   try {
@@ -1982,6 +2538,123 @@ app.get('/api/page-content', authenticateRequest, async (_req, res) => {
   } catch (error) {
     console.error('Admin page content error', error);
     return res.status(500).json({ message: 'Nem sikerült betölteni az oldal tartalmait' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/documents', authenticateRequest, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM documents ORDER BY event_date DESC NULLS LAST, created_at DESC');
+    return res.status(200).json({ documents: result.rows.map(mapDocumentRow) });
+  } catch (error) {
+    console.error('Admin fetch documents error', error);
+    return res.status(500).json({ message: 'Nem sikerült lekérni a dokumentumokat.' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/admin/documents/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const documentId = req.params.id;
+
+  try {
+    const payload = normalizeDocumentPayload(req.body);
+
+    const existing = await client.query('SELECT id FROM documents WHERE id = $1 LIMIT 1', [documentId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A dokumentum nem található.' });
+    }
+
+    const result = await client.query(
+      `UPDATE documents
+       SET title = $1,
+           title_en = $2,
+           location = $3,
+           event_date = $4,
+           url = $5,
+           category = $6,
+           updated_at = NOW()
+       WHERE id = $7
+       RETURNING *`,
+      [payload.title, payload.titleEn, payload.location, payload.date, payload.url, payload.category, documentId],
+    );
+
+    return res.status(200).json({ documents: [mapDocumentRow(result.rows[0])] });
+  } catch (error) {
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült frissíteni a dokumentumot.';
+    console.error('Update document error', error);
+    return res.status(status).json({ message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/documents', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const payload = normalizeDocumentPayload(req.body);
+
+    const result = await client.query(
+      `INSERT INTO documents (title, title_en, location, event_date, url, category)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [payload.title, payload.titleEn, payload.location, payload.date, payload.url, payload.category],
+    );
+
+    return res.status(201).json({ documents: [mapDocumentRow(result.rows[0])] });
+  } catch (error) {
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült létrehozni a dokumentumot.';
+    console.error('Create document error', error);
+    return res.status(status).json({ message });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/admin/documents/:id', authenticateRequest, async (req, res) => {
+  const client = await pool.connect();
+  const documentId = req.params.id;
+
+  try {
+    const existing = await client.query('SELECT url FROM documents WHERE id = $1 LIMIT 1', [documentId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ message: 'A dokumentum nem található.' });
+    }
+
+    await client.query('DELETE FROM documents WHERE id = $1', [documentId]);
+
+    const storedUrl = existing.rows[0].url || '';
+    const cdnHost = (BUNNY_CDN_HOSTNAME || '').replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+
+    if (storedUrl && cdnHost && storedUrl.includes(cdnHost) && BUNNY_STORAGE_KEY) {
+      try {
+        const parsed = new URL(storedUrl);
+        const storagePath = decodeURIComponent(parsed.pathname || '').replace(/^\/+/, '');
+        if (storagePath) {
+          await fetch(buildBunnyUrl(storagePath), {
+            method: 'DELETE',
+            headers: {
+              AccessKey: BUNNY_STORAGE_KEY,
+            },
+          });
+        }
+      } catch (cleanupError) {
+        console.error('Optional Bunny cleanup failed', cleanupError);
+      }
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete document error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült törölni a dokumentumot.';
+    return res.status(status).json({ message });
   } finally {
     client.release();
   }
@@ -2011,6 +2684,65 @@ app.put('/api/page-content/:sectionKey', authenticateRequest, async (req, res) =
   } catch (error) {
     console.error('Save page content error', error);
     return res.status(500).json({ message: 'Nem sikerült menteni a tartalmat' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/documents/import', authenticateRequest, async (req, res) => {
+  const closingStatements = Array.isArray(req.body?.closingStatements) ? req.body.closingStatements : [];
+  const otherDocuments = Array.isArray(req.body?.documents) ? req.body.documents : [];
+  const combinedPayload = [...closingStatements, ...otherDocuments];
+
+  let normalizedDocuments = [];
+  try {
+    normalizedDocuments = combinedPayload.map(normalizeDocumentImportPayload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Érvénytelen import adatok';
+    return res.status(error.status || 400).json({ message });
+  }
+
+  if (!normalizedDocuments.length) {
+    return res.status(400).json({ message: 'Nincs importálható dokumentum' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existingTargetPaths = new Set();
+
+    const existingDocuments = await client.query('SELECT url FROM documents');
+    existingDocuments.rows.forEach((row) => {
+      const storagePath = extractStoragePath(row.url);
+      if (storagePath) {
+        existingTargetPaths.add(storagePath);
+      }
+    });
+
+    for (const doc of normalizedDocuments) {
+      const uniqueTargetPath = buildUniqueTargetPath(doc.targetPath, existingTargetPaths);
+      const uploadedUrl = await uploadDocumentFromSource(doc.sourceUrl, uniqueTargetPath);
+      const normalized = normalizeDocumentPayload({ ...doc, url: uploadedUrl });
+
+      const result = await client.query(
+        `INSERT INTO documents (title, title_en, location, event_date, url, category, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         RETURNING *`,
+        [normalized.title, normalized.titleEn, normalized.location, normalized.date, normalized.url, normalized.category],
+      );
+    }
+
+    await client.query('COMMIT');
+    const allDocuments = await client.query(
+      'SELECT * FROM documents ORDER BY event_date DESC NULLS LAST, created_at DESC',
+    );
+    return res.status(200).json({ documents: allDocuments.rows.map(mapDocumentRow) });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Import documents error', error);
+    const status = error.status || 500;
+    const message = error.message || 'Nem sikerült importálni a dokumentumokat.';
+    return res.status(status).json({ message });
   } finally {
     client.release();
   }
@@ -2383,11 +3115,12 @@ async function translateNewsToEnglish({ excerptHu, contentHu }) {
       messages: [
         {
           role: 'system',
-          content: 'You translate Hungarian news copy into concise, natural English and return only a JSON object.',
+          content:
+            'You translate Hungarian news copy into natural English without shortening or summarizing any text and return only a JSON object.',
         },
         {
           role: 'user',
-          content: `${parts.join('\n')}\nReturn JSON with keys "excerpt" and "content" using English values. Use empty strings for missing inputs.`,
+          content: `${parts.join('\n')}\nReturn JSON with keys "excerpt" and "content" using English values. Preserve the full meaning and length; use empty strings for missing inputs.`,
         },
       ],
     }),
@@ -3235,6 +3968,14 @@ function buildBunnyUrl(pathname = '/', { directory = false } = {}) {
   return `${base}${encodedPath ? `/${encodedPath}` : ''}${suffix}`;
 }
 
+function buildBunnyCdnUrl(pathname = '/') {
+  if (!BUNNY_CDN_HOSTNAME) return '';
+
+  const cleanedHost = BUNNY_CDN_HOSTNAME.replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+  const encodedPath = encodeBunnyPath(pathname);
+  return encodedPath ? `https://${cleanedHost}/${encodedPath}` : `https://${cleanedHost}`;
+}
+
 const bunnyStorageRouter = express.Router();
 
 bunnyStorageRouter.use(express.raw({ type: '*/*', limit: '200mb' }));
@@ -3356,6 +4097,7 @@ Promise.all([
   ensureProjectsTables(),
   ensureGalleryTables(),
   ensurePageContentTable(),
+  ensureDocumentsTables(),
 ])
   .then(() => {
     app.listen(PORT, () => {

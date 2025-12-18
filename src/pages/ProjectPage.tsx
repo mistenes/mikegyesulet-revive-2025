@@ -43,7 +43,7 @@ const ProjectPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="pt-28 pb-20">
+      <main className="pt-32 pb-20">
         <div className="container mx-auto px-4 max-w-5xl">
           <div className="mb-8 flex items-center gap-3">
             <Button asChild variant="ghost" size="sm" className="gap-2">
@@ -84,7 +84,7 @@ const ProjectPage = () => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Card className="p-4 flex items-center gap-3">
                     <MapPin className="h-5 w-5 text-primary" />
                     <div>
@@ -97,23 +97,6 @@ const ProjectPage = () => {
                     <div>
                       <p className="text-sm text-muted-foreground">Időszak</p>
                       <p className="font-semibold">{project.dateRange || "-"}</p>
-                    </div>
-                  </Card>
-                  <Card className="p-4 flex items-center gap-3">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
-                      {project.languageAvailability === "both"
-                        ? "HU/EN"
-                        : project.languageAvailability.toUpperCase()}
-                    </span>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Elérhető nyelv</p>
-                      <p className="font-semibold">
-                        {project.languageAvailability === "both"
-                          ? "Magyar és angol"
-                          : project.languageAvailability === "hu"
-                          ? "Csak magyar"
-                          : "Csak angol"}
-                      </p>
                     </div>
                   </Card>
                 </div>

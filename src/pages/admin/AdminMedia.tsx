@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
   createImageKitFolder,
@@ -311,8 +310,11 @@ export default function AdminMedia() {
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <ScrollArea className="max-h-[70vh] rounded-md border">
-            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div
+            className="relative max-h-[70vh] rounded-md border overflow-auto touch-pan-x touch-pan-y"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
+            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 min-w-[320px] sm:min-w-0">
               {loading ? (
                 <div className="col-span-full flex justify-center py-10 text-muted-foreground">
                   Betöltés...
@@ -326,7 +328,7 @@ export default function AdminMedia() {
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </Card>
       </div>
 
