@@ -69,8 +69,7 @@ export const RegionsSection = () => {
       event.stopPropagation();
     }
   };
-
-  if (regionsSection?.isVisible === false && !adminPreview) return null;
+  const isHidden = regionsSection?.isVisible === false && !adminPreview;
 
   const scrollingImages = useMemo(() => {
     const customImages = (content?.scrollImages as ScrollImage[] | undefined)
@@ -86,6 +85,8 @@ export const RegionsSection = () => {
 
     return defaultScrollImages;
   }, [content?.scrollImages]);
+
+  if (isHidden) return null;
 
   return (
     <section ref={sectionRef} className="py-24 bg-background relative overflow-hidden">

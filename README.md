@@ -55,6 +55,11 @@ Create a `.env` file based on `.env.example`.
 | `FRONTEND_ORIGIN` | Allowed CORS origin for cookies (e.g., `http://localhost:5173`; optional on Render because `RENDER_EXTERNAL_URL` is used automatically) |
 | `MAPBOX_TOKEN` | Server-side token exposed to the frontend via `/api/public/mapbox-token` for the regions map |
 | `VITE_MAPBOX_TOKEN` | Optional direct token for local dev; overrides the API lookup when set |
+| `VITE_GA_MEASUREMENT_ID` | GA4 Measurement ID (e.g., `G-XXXX1234`) injected into the frontend bundle |
+| `GA4_PROPERTY_ID` | Numeric GA4 property ID (e.g., `123456789`) used by the admin dashboard visitor stats |
+| `GA4_CLIENT_EMAIL` | Service account client e-mail for the GA4 Data API |
+| `GA4_PRIVATE_KEY` | Service account private key for the GA4 Data API (use literal `\n` sequences for newlines) |
+| `GA4_PRIVATE_KEY_BASE64` | Base64-encoded variant of the GA4 private key (handy for Render secrets) |
 | `IMAGEKIT_PUBLIC_KEY` | Public key used by the gallery ImageKit uploads |
 | `IMAGEKIT_PRIVATE_KEY` | Private key used to sign ImageKit upload requests |
 | `IMAGEKIT_URL_ENDPOINT` | Base URL endpoint for hosted ImageKit images |
@@ -63,6 +68,8 @@ Create a `.env` file based on `.env.example`.
 | `LOCAL_DEV_ORIGIN` | Override the allowed local origin for cookies; defaults to `http://localhost:5173` |
 
 For `IMAGEKIT_GALLERY_FOLDER`, use a subfolder path (for example `hyca/gallery`) to keep gallery images organized under your ImageKit account. ImageKit will create the folder automatically on first upload if it does not already exist.
+
+On Render, set the GA4 credentials (`GA4_PROPERTY_ID`, `GA4_CLIENT_EMAIL`, and either `GA4_PRIVATE_KEY` with `\n` escapes or `GA4_PRIVATE_KEY_BASE64`) in the service environment variables so the admin dashboard can query visitor stats. The frontend gtag integration reads `VITE_GA_MEASUREMENT_ID` at build time.
 
 ### Admin access
 

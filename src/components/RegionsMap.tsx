@@ -114,14 +114,14 @@ export const RegionsMap = () => {
     return localized || fallback || {};
   }, [language, mapSection]);
 
+  const isHidden = mapSection?.isVisible === false && !adminPreview;
+
   const handleMapTextClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
     if (notifyAdminFocus("map_section", fieldKey)) {
       event.preventDefault();
       event.stopPropagation();
     }
   };
-
-  if (mapSection?.isVisible === false && !adminPreview) return null;
 
   const initializeMap = useCallback((token?: string) => {
     const tokenToUse = token || mapboxToken;
@@ -330,8 +330,6 @@ export const RegionsMap = () => {
     loadToken();
   }, [initializeMap]);
 
-
-
   useEffect(() => {
     return () => {
       map.current?.remove();
@@ -351,6 +349,8 @@ export const RegionsMap = () => {
       window.removeEventListener("resize", handleResize);
     };
   }, [isMapInitialized]);
+
+  if (isHidden) return null;
 
   return (
     <section

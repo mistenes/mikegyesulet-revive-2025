@@ -251,6 +251,7 @@ const sectionDefinitions: Record<
 };
 
 type SectionKey = string;
+type SectionVisibility = { isVisible?: boolean };
 
 type FieldTarget = {
   sectionKey: SectionKey;
@@ -997,7 +998,7 @@ export default function AdminPages() {
   const renderSectionEditor = (sectionKey: SectionKey, options?: { wrapInCard?: boolean; isActive?: boolean }) => {
     const { wrapInCard = true, isActive = false } = options || {};
     const section = ensureSection(sectionKey);
-    const content = section[activeLanguage] || {};
+    const content = (section[activeLanguage] || {}) as SectionContent & SectionVisibility;
     const isSaving = savingSection === sectionKey;
     const definition = sectionDefinitions[sectionKey];
     const fields = definition?.fields || Object.keys(content).map((key) => ({ key, label: key, type: typeof content[key] === "string" ? "text" : "json" }));
@@ -1055,11 +1056,11 @@ export default function AdminPages() {
           </div>
           <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-full border border-border/50">
             <Switch
-              checked={(content as any).isVisible !== false}
+              checked={content.isVisible !== false}
               onCheckedChange={(checked) => handleVisibilityToggle(sectionKey, checked)}
             />
             <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {(content as any).isVisible !== false ? "Látható" : "Rejtett"}
+              {content.isVisible !== false ? "Látható" : "Rejtett"}
             </span>
           </div>
         </div>
@@ -1085,6 +1086,8 @@ export default function AdminPages() {
           {sectionGroups[selectedPage].map((section, index) => {
             const isActive = selectedField?.sectionKey === section.key;
             const firstField = sectionDefinitions[section.key]?.fields?.[0]?.key;
+            const pageSection = pageContent[section.key] as (SectionContent & SectionVisibility) | undefined;
+            const isSectionVisible = pageSection?.isVisible !== false;
 
             return (
               <button
@@ -1107,7 +1110,7 @@ export default function AdminPages() {
                 <div className="flex items-center gap-2">
                   <div onClick={(e) => e.stopPropagation()}>
                     <Switch
-                      checked={(pageContent[section.key] as any)?.isVisible !== false}
+                      checked={isSectionVisible}
                       onCheckedChange={(checked) => handleVisibilityToggle(section.key, checked)}
                       className="scale-75"
                     />

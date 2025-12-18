@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -139,15 +140,7 @@ export default function AdminNewsletter() {
 
 
 
-    useEffect(() => {
-        if (session) {
-            loadSubscribers();
-            loadDraft(); // Still load DB draft initially as fallback
-            loadDesigns();
-        }
-    }, [session]);
-
-    const loadDesigns = async () => {
+    const loadDesigns = useCallback(async () => {
         setLoadingDesigns(true);
         try {
             const list = await listDesignsFromBunny();
@@ -158,7 +151,7 @@ export default function AdminNewsletter() {
         } finally {
             setLoadingDesigns(false);
         }
-    };
+    }, []);
 
     // Manual creation handler removed
 
@@ -203,7 +196,7 @@ export default function AdminNewsletter() {
         }
     };
 
-    const loadDraft = async () => {
+    const loadDraft = useCallback(async () => {
         try {
             const draft = await getDraft();
             if (draft) {
@@ -219,9 +212,9 @@ export default function AdminNewsletter() {
         } catch (e) {
             console.error("Failed to load draft", e);
         }
-    };
+    }, [editor]);
 
-    const loadSubscribers = async () => {
+    const loadSubscribers = useCallback(async () => {
         setLoading(true);
         try {
             const items = await getSubscribers();
@@ -232,7 +225,15 @@ export default function AdminNewsletter() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        if (session) {
+            loadSubscribers();
+            loadDraft(); // Still load DB draft initially as fallback
+            loadDesigns();
+        }
+    }, [loadDesigns, loadDraft, loadSubscribers, session]);
 
     const handleSend = (isTest: boolean) => {
         const targetEmail = isTest ? (testEmail || session?.email) : undefined;
@@ -259,9 +260,10 @@ export default function AdminNewsletter() {
                         toast.success(`Hírlevél elküldve! Kiküldve: ${result.stats?.sent || 0}, Hiba: ${result.stats?.failed || 0}`);
                     }
                 })
-                .catch((e: any) => {
-                    console.error(e);
-                    toast.error(e.message || "Hiba a küldés során");
+                .catch((error: unknown) => {
+                    console.error(error);
+                    const message = error instanceof Error ? error.message : "Hiba a küldés során";
+                    toast.error(message);
                 })
                 .finally(() => {
                     setSending(false);
@@ -275,7 +277,13 @@ export default function AdminNewsletter() {
         }
     };
 
-    const ToolbarButton = ({ onClick, isActive, children }: any) => (
+    type ToolbarButtonProps = {
+        onClick: () => void;
+        isActive?: boolean;
+        children: ReactNode;
+    };
+
+    const ToolbarButton = ({ onClick, isActive, children }: ToolbarButtonProps) => (
         <Button
             variant={isActive ? "secondary" : "ghost"}
             size="sm"

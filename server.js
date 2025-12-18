@@ -51,10 +51,42 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
 const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
 const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
+function decodeGaPrivateKey(value) {
+  if (!value) return '';
+
+  const trimmed = value.trim();
+  const candidates = [trimmed];
+
+  if (!trimmed.includes('BEGIN PRIVATE KEY')) {
+    try {
+      const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+      if (decoded.includes('BEGIN PRIVATE KEY')) {
+        candidates.unshift(decoded.trim());
+      }
+    } catch (error) {
+      console.warn('Failed to base64 decode GA private key, continuing with raw value', error);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const normalized = candidate.replace(/\\n/g, '\n');
+    if (normalized.includes('BEGIN PRIVATE KEY')) {
+      return normalized;
+    }
+  }
+
+  return candidates[0].replace(/\\n/g, '\n');
+}
+
 const GA_MEASUREMENT_ID = process.env.VITE_GA_MEASUREMENT_ID || process.env.GA_MEASUREMENT_ID || '';
 const GA_PROPERTY_ID = process.env.GA4_PROPERTY_ID || process.env.GA_PROPERTY_ID || '';
 const GA_CLIENT_EMAIL = process.env.GA4_CLIENT_EMAIL || process.env.GA_CLIENT_EMAIL || '';
-const GA_PRIVATE_KEY = (process.env.GA4_PRIVATE_KEY || process.env.GA_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+const GA_PRIVATE_KEY = decodeGaPrivateKey(
+  process.env.GA4_PRIVATE_KEY ||
+  process.env.GA_PRIVATE_KEY ||
+  process.env.GA4_PRIVATE_KEY_BASE64 ||
+  process.env.GA_PRIVATE_KEY_BASE64,
+);
 
 const defaultPageContent = {
   hero_content: {
@@ -152,8 +184,10 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const analyticsPropertyIdValid = GA_PROPERTY_ID && !GA_PROPERTY_ID.startsWith('G-');
+
 const analyticsClient =
-  GA_PROPERTY_ID && GA_CLIENT_EMAIL && GA_PRIVATE_KEY
+  analyticsPropertyIdValid && GA_CLIENT_EMAIL && GA_PRIVATE_KEY
     ? new BetaAnalyticsDataClient({
       credentials: {
         client_email: GA_CLIENT_EMAIL,
@@ -182,7 +216,27 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-const analyticsProperty = GA_PROPERTY_ID ? `properties/${GA_PROPERTY_ID}` : '';
+const analyticsProperty = analyticsPropertyIdValid ? `properties/${GA_PROPERTY_ID}` : '';
+
+function getAnalyticsConfigStatus() {
+  const missingEnv = [];
+
+  if (!GA_PROPERTY_ID) missingEnv.push('GA4_PROPERTY_ID');
+  if (!GA_CLIENT_EMAIL) missingEnv.push('GA4_CLIENT_EMAIL');
+  if (!GA_PRIVATE_KEY) missingEnv.push('GA4_PRIVATE_KEY (vagy GA4_PRIVATE_KEY_BASE64)');
+
+  const propertyLooksLikeMeasurementId = GA_PROPERTY_ID?.startsWith('G-');
+
+  let message = '';
+
+  if (missingEnv.length) {
+    message = `A Google Analytics nincs beállítva. Állítsd be a következő környezeti változókat a Renderen: ${missingEnv.join(', ')}.`;
+  } else if (propertyLooksLikeMeasurementId) {
+    message = 'A GA4 property ID nem lehet a G- kezdetű Measurement ID. Add meg a numerikus GA4 property azonosítót (pl. 123456789).';
+  }
+
+  return { missingEnv, propertyLooksLikeMeasurementId, message };
+}
 
 async function getRealtimeActiveUsersSum() {
   if (!analyticsClient || !analyticsProperty) return analyticsDefaults.pastHour;
@@ -211,7 +265,12 @@ async function getRangeActiveUsers(startDate, endDate) {
 
 async function fetchVisitorCounts() {
   if (!analyticsClient || !analyticsProperty) {
-    return { ...analyticsDefaults, configured: false };
+    const { message } = getAnalyticsConfigStatus();
+    return {
+      ...analyticsDefaults,
+      configured: false,
+      message: message || 'A Google Analytics nincs beállítva',
+    };
   }
 
   const [pastHour, past24Hours, thisWeek, thisMonth, thisYear] = await Promise.all([
@@ -2478,10 +2537,11 @@ app.post('/api/admin/bugreports', authenticateRequest, async (req, res) => {
 
 app.get('/api/admin/analytics/visitors', authenticateRequest, async (_req, res) => {
   if (!analyticsClient || !analyticsProperty) {
+    const { message } = getAnalyticsConfigStatus();
     return res.status(503).json({
       ...analyticsDefaults,
       configured: false,
-      message: 'A Google Analytics nincs beállítva',
+      message: message || 'A Google Analytics nincs beállítva',
     });
   }
 

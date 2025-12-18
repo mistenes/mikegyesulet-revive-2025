@@ -54,6 +54,8 @@ services:
         value: ""
       - key: GA4_PRIVATE_KEY
         value: ""
+      - key: GA4_PRIVATE_KEY_BASE64
+        value: ""
     autoDeploy: true
 
 databases:
