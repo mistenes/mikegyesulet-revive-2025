@@ -5,13 +5,39 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FileText, Download, Search, Calendar, MapPin } from "lucide-react";
-import { documentsData } from "@/data/documents";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { fetchDocuments } from "@/services/documentsService";
+import { type Document } from "@/types/documents";
 
 export default function Dokumentumok() {
   const { language, t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchDocuments()
+      .then((docs) => {
+        if (isMounted) {
+          setDocuments(docs);
+        }
+      })
+      .catch(() => {
+        // Keep empty on error to avoid showing outdated hardcoded files
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const categories = [
     { id: "all", label: language === 'hu' ? "Összes" : "All" },
@@ -22,19 +48,19 @@ export default function Dokumentumok() {
   ];
 
   const charterDocs = useMemo(() => {
-    return documentsData
+    return documents
       .filter(doc => doc.category === "statute")
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, []);
+  }, [documents]);
 
   const foundingDocs = useMemo(() => {
-    return documentsData
+    return documents
       .filter(doc => doc.category === "founding")
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, []);
+  }, [documents]);
 
   const filteredDocuments = useMemo(() => {
-    return documentsData
+    return documents
       .filter(doc => {
         // Exclude charter and founding from main grid
         if (doc.category === "statute" || doc.category === "founding" || doc.category === "other") {
@@ -55,13 +81,13 @@ export default function Dokumentumok() {
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [searchQuery, selectedCategory, language]);
+  }, [documents, searchQuery, selectedCategory, language]);
 
   const otherDocs = useMemo(() => {
-    return documentsData
+    return documents
       .filter(doc => doc.category === "other")
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, []);
+  }, [documents]);
 
   const displayedCount = useMemo(() => {
     if (selectedCategory === "other") {
@@ -76,7 +102,15 @@ export default function Dokumentumok() {
   }, [filteredDocuments.length, otherDocs.length, selectedCategory]);
 
   const formatDate = (dateStr: string) => {
+    if (!dateStr) {
+      return language === 'hu' ? 'Dátum nélkül' : 'No date';
+    }
+
     const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) {
+      return dateStr;
+    }
+
     if (language === 'hu') {
       return date.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long', day: 'numeric' });
     }
@@ -140,7 +174,11 @@ export default function Dokumentumok() {
           </div>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            {displayedCount} {language === 'hu' ? 'dokumentum található' : 'documents found'}
+            {isLoading
+              ? language === 'hu'
+                ? 'Betöltés...'
+                : 'Loading documents...'
+              : `${displayedCount} ${language === 'hu' ? 'dokumentum található' : 'documents found'}`}
           </div>
         </div>
       </section>
@@ -284,7 +322,7 @@ export default function Dokumentumok() {
 
       {(selectedCategory === "all" || selectedCategory === "other") && otherDocs.length > 0 && (
         <section className="py-12 px-4">
-          <div className="container mx-auto max-w-4xl">
+          <div className="container mx-auto max-w-6xl">
             <Card className="border-border/50 shadow-lg">
               <CardContent className="p-8 space-y-6">
                 <div>
@@ -301,7 +339,7 @@ export default function Dokumentumok() {
                   </p>
                 </div>
 
-                <div className="grid gap-4 pt-4">
+                <div className="grid gap-6 pt-4 md:grid-cols-2 lg:grid-cols-3">
                   {otherDocs.map((doc, index) => (
                     <Card
                       key={index}

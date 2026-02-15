@@ -17,7 +17,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const handleLogout = () => {
     logout();
     toast.success("Kijelentkezve");
-    navigate("/admin");
+    navigate("/");
   };
 
   return (
