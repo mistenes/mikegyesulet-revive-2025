@@ -1,6 +1,6 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1205,16 +1205,23 @@ export default function AdminPages() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
-            <FileText className="h-6 w-6 text-primary" />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
+              <FileText className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
+                Oldal Tartalmak
+              </h1>
+              <p className="text-muted-foreground">Válaszd ki a publikus oldalt, nézd meg ki és mikor módosította, majd szerkeszd tartalmát élő előnézet mellett.</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Oldal Tartalmak
-            </h1>
-            <p className="text-muted-foreground">Válaszd ki a publikus oldalt, nézd meg ki és mikor módosította, majd szerkeszd tartalmát élő előnézet mellett.</p>
-          </div>
+          <Button asChild variant="secondary" className="gap-2">
+            <Link to="/admin/map-editor">
+              <Layout className="h-4 w-4" /> Térkép külön szerkesztő
+            </Link>
+          </Button>
         </div>
 
         <div className="flex items-center gap-3">

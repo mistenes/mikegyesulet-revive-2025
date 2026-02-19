@@ -30,6 +30,7 @@ import AdminBugReport from "./pages/admin/AdminBugReport";
 import AdminFooterContent from "./pages/admin/AdminFooterContent";
 import AdminNewsletter from "./pages/admin/AdminNewsletter";
 import AdminTeam from "./pages/admin/AdminTeam";
+import AdminMapEditor from "./pages/admin/AdminMapEditor";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -257,6 +258,7 @@ const App = () => {
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/pages" element={<AdminPages />} />
               <Route path="/admin/pages/:pageSlug" element={<AdminPages />} />
+              <Route path="/admin/map-editor" element={<AdminMapEditor />} />
               <Route path="/admin/regions" element={<AdminRegions />} />
               <Route path="/admin/news/new-article" element={<AdminNewsNewArticle />} />
               <Route path="/admin/news" element={<AdminNews />} />

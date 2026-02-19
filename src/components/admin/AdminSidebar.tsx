@@ -37,6 +37,11 @@ const menuItems = [
     title: "Oldal tartalmak",
     url: "/admin/pages",
     icon: FileEdit,
+  },
+  {
+    title: "Térkép szerkesztő",
+    url: "/admin/map-editor",
+    icon: MapPin,
     dividerAfter: true,
   },
   {
