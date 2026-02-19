@@ -189,6 +189,13 @@ const sectionDefinitions: Record<
     fields: [
       { key: "title", label: "Cím" },
       { key: "description", label: "Leírás", type: "textarea" },
+      {
+        key: "points",
+        label: "Térképpontok",
+        type: "json",
+        description:
+          "JSON tömb: [{ name, members, color, description, coordinates: [lng, lat] }]. Minden pontot itt tudsz szerkeszteni.",
+      },
     ],
   },
   regions_intro: {
