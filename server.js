@@ -269,8 +269,8 @@ async function getSiteSettings() {
     const row = result.rows[0];
     return {
       siteFavicon: (row.site_favicon || '').toString().trim(),
-      siteSearchTitle: (row.site_search_title || defaultSiteSettings.siteSearchTitle).toString().trim(),
-      siteSearchDescription: (row.site_search_description || defaultSiteSettings.siteSearchDescription).toString().trim(),
+      siteSearchTitle: (row.site_search_title || '').toString().trim(),
+      siteSearchDescription: (row.site_search_description || '').toString().trim(),
     };
   } catch (error) {
     console.error('Get site settings error', error);
@@ -311,13 +311,13 @@ async function renderIndexHtmlWithSeo() {
     getSiteSettings(),
   ]);
 
-  const title = sanitizeSeoText(siteSettings.siteSearchTitle, DEFAULT_SITE_TITLE);
-  const description = sanitizeSeoText(siteSettings.siteSearchDescription, DEFAULT_SITE_DESCRIPTION);
+  const title = sanitizeSeoText(siteSettings.siteSearchTitle, '');
+  const description = sanitizeSeoText(siteSettings.siteSearchDescription, '');
   const favicon = sanitizeSeoText(siteSettings.siteFavicon, '');
 
   const escapedTitle = escapeHtml(title);
   const escapedDescription = escapeHtml(description);
-  const escapedFavicon = escapeHtml(favicon || '/favicon.ico');
+  const escapedFavicon = escapeHtml(favicon);
 
   let html = htmlTemplate.replace(/<title>[^<]*<\/title>/, `<title>${escapedTitle}</title>`);
 
@@ -347,9 +347,8 @@ async function renderIndexHtmlWithSeo() {
     `<meta name="twitter:description" content="${escapedDescription}" />`,
   );
 
-  if (/<link rel="icon"[^>]*>/.test(html)) {
-    html = html.replace(/<link rel="icon"[^>]*>/, `<link rel="icon" type="image/png" href="${escapedFavicon}" />`);
-  } else {
+  html = html.replace(/\s*<link rel="icon"[^>]*>\n?/g, "\n");
+  if (escapedFavicon) {
     html = html.replace('</head>', `    <link rel="icon" type="image/png" href="${escapedFavicon}" />
   </head>`);
   }
@@ -4670,8 +4669,8 @@ app.get('/api/public/site-settings', async (_req, res) => {
 
 app.post('/api/admin/site-settings', authenticateRequest, async (req, res) => {
   const siteFavicon = sanitizeSeoText(req.body?.siteFavicon, '');
-  const siteSearchTitle = sanitizeSeoText(req.body?.siteSearchTitle, DEFAULT_SITE_TITLE);
-  const siteSearchDescription = sanitizeSeoText(req.body?.siteSearchDescription, DEFAULT_SITE_DESCRIPTION);
+  const siteSearchTitle = sanitizeSeoText(req.body?.siteSearchTitle, '');
+  const siteSearchDescription = sanitizeSeoText(req.body?.siteSearchDescription, '');
 
   if (siteSearchTitle.length > 120) {
     return res.status(400).json({ message: 'A Google találati cím legfeljebb 120 karakter lehet.' });
