@@ -4,6 +4,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 export type SiteSettingsPayload = {
   siteFavicon: string;
+  siteSearchTitle: string;
   siteSearchDescription: string;
 };
 

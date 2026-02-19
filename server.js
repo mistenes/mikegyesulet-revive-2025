@@ -16,6 +16,7 @@ const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DIST_PATH = path.join(__dirname, 'dist');
+const DEFAULT_SITE_TITLE = 'MIK - Magyar Ifjúsági Konferencia';
 const DEFAULT_SITE_DESCRIPTION =
   'A magyar ifjúság egyeztetőfóruma, amely hatékonyan képviseli a Kárpát-medence és a világ magyar ifjúságát.';
 
@@ -95,6 +96,7 @@ const { key: GA_PRIVATE_KEY, valid: GA_PRIVATE_KEY_VALID } = decodeGaPrivateKey(
 
 const defaultSiteSettings = {
   siteFavicon: '',
+  siteSearchTitle: DEFAULT_SITE_TITLE,
   siteSearchDescription: DEFAULT_SITE_DESCRIPTION,
 };
 
@@ -257,7 +259,7 @@ async function getSiteSettings() {
   const client = await pool.connect();
   try {
     const result = await client.query(
-      'SELECT site_favicon, site_search_description FROM site_settings WHERE id = 1 LIMIT 1',
+      'SELECT site_favicon, site_search_title, site_search_description FROM site_settings WHERE id = 1 LIMIT 1',
     );
 
     if (!result.rows.length) {
@@ -267,6 +269,7 @@ async function getSiteSettings() {
     const row = result.rows[0];
     return {
       siteFavicon: (row.site_favicon || '').toString().trim(),
+      siteSearchTitle: (row.site_search_title || defaultSiteSettings.siteSearchTitle).toString().trim(),
       siteSearchDescription: (row.site_search_description || defaultSiteSettings.siteSearchDescription).toString().trim(),
     };
   } catch (error) {
@@ -299,14 +302,18 @@ async function renderIndexHtmlWithSeo() {
     getSiteSettings(),
   ]);
 
+  const title = sanitizeSeoText(siteSettings.siteSearchTitle, DEFAULT_SITE_TITLE);
   const description = sanitizeSeoText(siteSettings.siteSearchDescription, DEFAULT_SITE_DESCRIPTION);
   const favicon = sanitizeSeoText(siteSettings.siteFavicon, '');
 
+  const escapedTitle = escapeHtml(title);
   const escapedDescription = escapeHtml(description);
   const escapedFavicon = escapeHtml(favicon || '/favicon.ico');
 
   return htmlTemplate
+    .replace(/<title>[^<]*<\/title>/, `<title>${escapedTitle}</title>`)
     .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${escapedDescription}" />`)
+    .replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${escapedTitle}" />`)
     .replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${escapedDescription}" />`)
     .replace(/<link rel="icon"[^>]*>/, `<link rel="icon" type="image/png" href="${escapedFavicon}" />`);
 }
@@ -899,17 +906,20 @@ async function ensureSiteSettingsTable() {
       CREATE TABLE IF NOT EXISTS site_settings(
       id SMALLINT PRIMARY KEY DEFAULT 1,
       site_favicon TEXT,
+      site_search_title TEXT,
       site_search_description TEXT,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT site_settings_singleton CHECK (id = 1)
     );
     `);
 
+    await client.query('ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_search_title TEXT');
+
     await client.query(
-      `INSERT INTO site_settings(id, site_favicon, site_search_description)
-       VALUES (1, $1, $2)
+      `INSERT INTO site_settings(id, site_favicon, site_search_title, site_search_description)
+       VALUES (1, $1, $2, $3)
        ON CONFLICT (id) DO NOTHING`,
-      [defaultSiteSettings.siteFavicon, defaultSiteSettings.siteSearchDescription],
+      [defaultSiteSettings.siteFavicon, defaultSiteSettings.siteSearchTitle, defaultSiteSettings.siteSearchDescription],
     );
   } finally {
     client.release();
@@ -4621,7 +4631,12 @@ app.get('/api/public/site-settings', async (_req, res) => {
 
 app.post('/api/admin/site-settings', authenticateRequest, async (req, res) => {
   const siteFavicon = sanitizeSeoText(req.body?.siteFavicon, '');
+  const siteSearchTitle = sanitizeSeoText(req.body?.siteSearchTitle, DEFAULT_SITE_TITLE);
   const siteSearchDescription = sanitizeSeoText(req.body?.siteSearchDescription, DEFAULT_SITE_DESCRIPTION);
+
+  if (siteSearchTitle.length > 120) {
+    return res.status(400).json({ message: 'A Google találati cím legfeljebb 120 karakter lehet.' });
+  }
 
   if (siteSearchDescription.length > 320) {
     return res.status(400).json({ message: 'A Google keresési leírás legfeljebb 320 karakter lehet.' });
@@ -4632,13 +4647,14 @@ app.post('/api/admin/site-settings', authenticateRequest, async (req, res) => {
     await client.query(
       `UPDATE site_settings
          SET site_favicon = $1,
-             site_search_description = $2,
+             site_search_title = $2,
+             site_search_description = $3,
              updated_at = NOW()
        WHERE id = 1`,
-      [siteFavicon, siteSearchDescription],
+      [siteFavicon, siteSearchTitle, siteSearchDescription],
     );
 
-    return res.status(200).json({ siteFavicon, siteSearchDescription });
+    return res.status(200).json({ siteFavicon, siteSearchTitle, siteSearchDescription });
   } catch (error) {
     console.error('Save site settings error', error);
     return res.status(500).json({ message: 'Nem sikerült menteni a webhely beállításait' });

@@ -40,6 +40,7 @@ export default function AdminSettings() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [securitySaving, setSecuritySaving] = useState(false);
+  const [siteSearchTitle, setSiteSearchTitle] = useState("");
   const [siteSearchDescription, setSiteSearchDescription] = useState("");
 
   useEffect(() => {
@@ -52,13 +53,18 @@ export default function AdminSettings() {
     const fallbackDescription = typeof initial.site_name === "string" && initial.site_name.trim()
       ? `${initial.site_name} – hivatalos weboldal`
       : "Magyar Ifjúsági Konferencia – hivatalos weboldal";
+    const fallbackTitle = typeof initial.site_name === "string" && initial.site_name.trim()
+      ? initial.site_name
+      : "MIK - Magyar Ifjúsági Konferencia";
 
     fetchPublicSiteSettings()
       .then((siteSettings) => {
         setFormData((prev) => ({ ...prev, site_favicon: siteSettings.siteFavicon || prev.site_favicon || "" }));
+        setSiteSearchTitle(siteSettings.siteSearchTitle || fallbackTitle);
         setSiteSearchDescription(siteSettings.siteSearchDescription || fallbackDescription);
       })
       .catch(() => {
+        setSiteSearchTitle(fallbackTitle);
         setSiteSearchDescription(fallbackDescription);
       })
       .finally(() => {
@@ -112,6 +118,7 @@ export default function AdminSettings() {
 
       await saveSiteSettings({
         siteFavicon: String(formData.site_favicon || "").trim(),
+        siteSearchTitle: siteSearchTitle.trim(),
         siteSearchDescription: siteSearchDescription.trim(),
       });
 
@@ -440,6 +447,18 @@ export default function AdminSettings() {
                     className="hidden"
                     onChange={(event) => handleImageSelect("site_favicon", event.target.files)}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Google találati cím</Label>
+                  <Input
+                    value={siteSearchTitle}
+                    onChange={(event) => setSiteSearchTitle(event.target.value)}
+                    placeholder="Pl. MIK - Magyar Ifjúsági Konferencia"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ez jelenhet meg a böngészőfül címeként és a Google találati címeként.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
