@@ -296,6 +296,15 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function upsertHeadTag(html, pattern, replacement) {
+  if (pattern.test(html)) {
+    return html.replace(pattern, replacement);
+  }
+
+  return html.replace('</head>', `    ${replacement}
+  </head>`);
+}
+
 async function renderIndexHtmlWithSeo() {
   const [htmlTemplate, siteSettings] = await Promise.all([
     fs.readFile(path.join(DIST_PATH, 'index.html'), 'utf8'),
@@ -310,12 +319,42 @@ async function renderIndexHtmlWithSeo() {
   const escapedDescription = escapeHtml(description);
   const escapedFavicon = escapeHtml(favicon || '/favicon.ico');
 
-  return htmlTemplate
-    .replace(/<title>[^<]*<\/title>/, `<title>${escapedTitle}</title>`)
-    .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${escapedDescription}" />`)
-    .replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${escapedTitle}" />`)
-    .replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${escapedDescription}" />`)
-    .replace(/<link rel="icon"[^>]*>/, `<link rel="icon" type="image/png" href="${escapedFavicon}" />`);
+  let html = htmlTemplate.replace(/<title>[^<]*<\/title>/, `<title>${escapedTitle}</title>`);
+
+  html = upsertHeadTag(
+    html,
+    /<meta name="description" content="[^"]*"\s*\/>/,
+    `<meta name="description" content="${escapedDescription}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta property="og:title" content="[^"]*"\s*\/>/,
+    `<meta property="og:title" content="${escapedTitle}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta property="og:description" content="[^"]*"\s*\/>/,
+    `<meta property="og:description" content="${escapedDescription}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta name="twitter:title" content="[^"]*"\s*\/>/,
+    `<meta name="twitter:title" content="${escapedTitle}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta name="twitter:description" content="[^"]*"\s*\/>/,
+    `<meta name="twitter:description" content="${escapedDescription}" />`,
+  );
+
+  if (/<link rel="icon"[^>]*>/.test(html)) {
+    html = html.replace(/<link rel="icon"[^>]*>/, `<link rel="icon" type="image/png" href="${escapedFavicon}" />`);
+  } else {
+    html = html.replace('</head>', `    <link rel="icon" type="image/png" href="${escapedFavicon}" />
+  </head>`);
+  }
+
+  return html;
 }
 
 async function getRealtimeActiveUsersSum() {
