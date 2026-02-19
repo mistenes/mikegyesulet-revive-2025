@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Settings, Save, Loader2, ShieldCheck, KeyRound, Image as ImageIcon, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getSettings, updateSetting } from "@/services/settingsService";
+import { fetchPublicSiteSettings, saveSiteSettings } from "@/services/siteSettingsService";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import {
   getSecurityStatus,
@@ -39,6 +40,7 @@ export default function AdminSettings() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [securitySaving, setSecuritySaving] = useState(false);
+  const [siteSearchDescription, setSiteSearchDescription] = useState("");
 
   useEffect(() => {
     const settings = getSettings();
@@ -46,8 +48,24 @@ export default function AdminSettings() {
     Object.entries(settings.general).forEach(([key, setting]) => {
       initial[key] = setting.value;
     });
+
+    const fallbackDescription = typeof initial.site_name === "string" && initial.site_name.trim()
+      ? `${initial.site_name} – hivatalos weboldal`
+      : "Magyar Ifjúsági Konferencia – hivatalos weboldal";
+
+    fetchPublicSiteSettings()
+      .then((siteSettings) => {
+        setFormData((prev) => ({ ...prev, site_favicon: siteSettings.siteFavicon || prev.site_favicon || "" }));
+        setSiteSearchDescription(siteSettings.siteSearchDescription || fallbackDescription);
+      })
+      .catch(() => {
+        setSiteSearchDescription(fallbackDescription);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+
     setFormData(initial);
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -91,10 +109,16 @@ export default function AdminSettings() {
       Object.entries(formData).forEach(([key, value]) => {
         updateSetting("general", key, value);
       });
+
+      await saveSiteSettings({
+        siteFavicon: String(formData.site_favicon || "").trim(),
+        siteSearchDescription: siteSearchDescription.trim(),
+      });
+
       toast.success("Beállítások elmentve!");
     } catch (error) {
       console.error(error);
-      toast.error("Hiba a mentés során");
+      toast.error((error as Error)?.message || "Hiba a mentés során");
     } finally {
       setSaving(false);
     }
@@ -416,6 +440,19 @@ export default function AdminSettings() {
                     className="hidden"
                     onChange={(event) => handleImageSelect("site_favicon", event.target.files)}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Google keresési leírás</Label>
+                  <Textarea
+                    value={siteSearchDescription}
+                    onChange={(event) => setSiteSearchDescription(event.target.value)}
+                    rows={4}
+                    placeholder="Ez a szöveg jelenhet meg a Google találatokban a webhely címe alatt."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ez a meta leírás a nyitóoldalnál jelenik meg a keresőkben. Ajánlott hossz: 140-160 karakter.
+                  </p>
                 </div>
               </div>
             </div>

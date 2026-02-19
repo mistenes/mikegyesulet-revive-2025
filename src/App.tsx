@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import * as CookieConsent from "vanilla-cookieconsent";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { getSettings } from "@/services/settingsService";
+import { fetchPublicSiteSettings } from "@/services/siteSettingsService";
 import { getLocalizedPath } from "@/lib/localePaths";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -67,6 +68,14 @@ const App = () => {
 
     const settings = getSettings();
     applyFavicon(settings.general.site_favicon?.value as string | undefined);
+
+    fetchPublicSiteSettings()
+      .then((siteSettings) => {
+        applyFavicon(siteSettings.siteFavicon || undefined);
+      })
+      .catch((error) => {
+        console.error("Failed to load public site settings", error);
+      });
 
     const handleSettingsUpdate = (event: Event) => {
       const detail = (event as CustomEvent<ReturnType<typeof getSettings>>).detail;

@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
 import speakeasy from 'speakeasy';
@@ -15,6 +16,8 @@ const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DIST_PATH = path.join(__dirname, 'dist');
+const DEFAULT_SITE_DESCRIPTION =
+  'A magyar ifjúság egyeztetőfóruma, amely hatékonyan képviseli a Kárpát-medence és a világ magyar ifjúságát.';
 
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me';
@@ -89,6 +92,11 @@ const { key: GA_PRIVATE_KEY, valid: GA_PRIVATE_KEY_VALID } = decodeGaPrivateKey(
   process.env.GA4_PRIVATE_KEY_BASE64 ||
   process.env.GA_PRIVATE_KEY_BASE64,
 );
+
+const defaultSiteSettings = {
+  siteFavicon: '',
+  siteSearchDescription: DEFAULT_SITE_DESCRIPTION,
+};
 
 const defaultPageContent = {
   hero_content: {
@@ -242,6 +250,65 @@ function getAnalyticsConfigStatus() {
   }
 
   return { missingEnv, propertyLooksLikeMeasurementId, message, invalidPrivateKey: !GA_PRIVATE_KEY_VALID, hints };
+}
+
+
+async function getSiteSettings() {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      'SELECT site_favicon, site_search_description FROM site_settings WHERE id = 1 LIMIT 1',
+    );
+
+    if (!result.rows.length) {
+      return { ...defaultSiteSettings };
+    }
+
+    const row = result.rows[0];
+    return {
+      siteFavicon: (row.site_favicon || '').toString().trim(),
+      siteSearchDescription: (row.site_search_description || defaultSiteSettings.siteSearchDescription).toString().trim(),
+    };
+  } catch (error) {
+    console.error('Get site settings error', error);
+    return { ...defaultSiteSettings };
+  } finally {
+    client.release();
+  }
+}
+
+function sanitizeSeoText(value, fallback = '') {
+  return (value || fallback || '')
+    .toString()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function renderIndexHtmlWithSeo() {
+  const [htmlTemplate, siteSettings] = await Promise.all([
+    fs.readFile(path.join(DIST_PATH, 'index.html'), 'utf8'),
+    getSiteSettings(),
+  ]);
+
+  const description = sanitizeSeoText(siteSettings.siteSearchDescription, DEFAULT_SITE_DESCRIPTION);
+  const favicon = sanitizeSeoText(siteSettings.siteFavicon, '');
+
+  const escapedDescription = escapeHtml(description);
+  const escapedFavicon = escapeHtml(favicon || '/favicon.ico');
+
+  return htmlTemplate
+    .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${escapedDescription}" />`)
+    .replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${escapedDescription}" />`)
+    .replace(/<link rel="icon"[^>]*>/, `<link rel="icon" type="image/png" href="${escapedFavicon}" />`);
 }
 
 async function getRealtimeActiveUsersSum() {
@@ -820,6 +887,30 @@ async function ensureLoginAttemptTable() {
       PRIMARY KEY(email, ip)
     );
     `);
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureSiteSettingsTable() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS site_settings(
+      id SMALLINT PRIMARY KEY DEFAULT 1,
+      site_favicon TEXT,
+      site_search_description TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT site_settings_singleton CHECK (id = 1)
+    );
+    `);
+
+    await client.query(
+      `INSERT INTO site_settings(id, site_favicon, site_search_description)
+       VALUES (1, $1, $2)
+       ON CONFLICT (id) DO NOTHING`,
+      [defaultSiteSettings.siteFavicon, defaultSiteSettings.siteSearchDescription],
+    );
   } finally {
     client.release();
   }
@@ -4523,6 +4614,39 @@ app.delete('/api/news/:id', authenticateRequest, async (req, res) => {
   }
 });
 
+app.get('/api/public/site-settings', async (_req, res) => {
+  const settings = await getSiteSettings();
+  return res.status(200).json(settings);
+});
+
+app.post('/api/admin/site-settings', authenticateRequest, async (req, res) => {
+  const siteFavicon = sanitizeSeoText(req.body?.siteFavicon, '');
+  const siteSearchDescription = sanitizeSeoText(req.body?.siteSearchDescription, DEFAULT_SITE_DESCRIPTION);
+
+  if (siteSearchDescription.length > 320) {
+    return res.status(400).json({ message: 'A Google keresési leírás legfeljebb 320 karakter lehet.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE site_settings
+         SET site_favicon = $1,
+             site_search_description = $2,
+             updated_at = NOW()
+       WHERE id = 1`,
+      [siteFavicon, siteSearchDescription],
+    );
+
+    return res.status(200).json({ siteFavicon, siteSearchDescription });
+  } catch (error) {
+    console.error('Save site settings error', error);
+    return res.status(500).json({ message: 'Nem sikerült menteni a webhely beállításait' });
+  } finally {
+    client.release();
+  }
+});
+
 app.use(express.static(DIST_PATH));
 
 app.post('/api/newsletter/subscribe', async (req, res) => {
@@ -4714,12 +4838,31 @@ app.post('/api/admin/team-members/reorder', authenticateRequest, async (req, res
   }
 });
 
-app.get('*', (req, res) => {
+app.get('/favicon.ico', async (_req, res, next) => {
+  try {
+    const settings = await getSiteSettings();
+    if (settings.siteFavicon) {
+      return res.redirect(settings.siteFavicon);
+    }
+  } catch (error) {
+    console.error('Favicon settings fetch error', error);
+  }
+
+  return next();
+});
+
+app.get('*', async (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ message: 'Nem található erőforrás' });
   }
 
-  return res.sendFile(path.join(DIST_PATH, 'index.html'));
+  try {
+    const html = await renderIndexHtmlWithSeo();
+    return res.status(200).set('Content-Type', 'text/html').send(html);
+  } catch (error) {
+    console.error('Render index html error', error);
+    return res.sendFile(path.join(DIST_PATH, 'index.html'));
+  }
 });
 
 Promise.all([
@@ -4734,6 +4877,7 @@ Promise.all([
   ensureDocumentsTables(),
   ensureNewsletterTables(),
   ensureTeamMembersTable(),
+  ensureSiteSettingsTable(),
 ])
   .then(() => {
     app.listen(PORT, () => {
