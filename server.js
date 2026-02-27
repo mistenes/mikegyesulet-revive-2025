@@ -4701,6 +4701,19 @@ app.post('/api/admin/site-settings', authenticateRequest, async (req, res) => {
   }
 });
 
+app.get('/favicon.ico', async (_req, res) => {
+  try {
+    const settings = await getSiteSettings();
+    if (settings.siteFavicon) {
+      return res.redirect(settings.siteFavicon);
+    }
+  } catch (error) {
+    console.error('Favicon settings fetch error', error);
+  }
+
+  return res.status(204).send();
+});
+
 app.use(express.static(DIST_PATH));
 
 app.post('/api/newsletter/subscribe', async (req, res) => {
@@ -4890,19 +4903,6 @@ app.post('/api/admin/team-members/reorder', authenticateRequest, async (req, res
   } finally {
     client.release();
   }
-});
-
-app.get('/favicon.ico', async (_req, res, next) => {
-  try {
-    const settings = await getSiteSettings();
-    if (settings.siteFavicon) {
-      return res.redirect(settings.siteFavicon);
-    }
-  } catch (error) {
-    console.error('Favicon settings fetch error', error);
-  }
-
-  return next();
 });
 
 app.get('*', async (req, res) => {
