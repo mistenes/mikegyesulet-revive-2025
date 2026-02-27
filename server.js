@@ -259,7 +259,7 @@ async function getSiteSettings() {
   const client = await pool.connect();
   try {
     const result = await client.query(
-      'SELECT site_favicon, site_search_title, site_search_description FROM site_settings WHERE id = 1 LIMIT 1',
+      'SELECT site_favicon, site_search_title, site_search_description, updated_at FROM site_settings WHERE id = 1 LIMIT 1',
     );
 
     if (!result.rows.length) {
@@ -271,6 +271,7 @@ async function getSiteSettings() {
       siteFavicon: (row.site_favicon || '').toString().trim(),
       siteSearchTitle: (row.site_search_title || '').toString().trim(),
       siteSearchDescription: (row.site_search_description || '').toString().trim(),
+      updatedAt: row.updated_at || null,
     };
   } catch (error) {
     console.error('Get site settings error', error);
@@ -317,7 +318,7 @@ async function renderIndexHtmlWithSeo() {
 
   const escapedTitle = escapeHtml(title);
   const escapedDescription = escapeHtml(description);
-  const escapedFavicon = escapeHtml(favicon);
+  const faviconVersion = siteSettings.updatedAt ? new Date(siteSettings.updatedAt).getTime() : Date.now();
 
   let html = htmlTemplate.replace(/<title>[^<]*<\/title>/, `<title>${escapedTitle}</title>`);
 
@@ -347,9 +348,11 @@ async function renderIndexHtmlWithSeo() {
     `<meta name="twitter:description" content="${escapedDescription}" />`,
   );
 
-  html = html.replace(/\s*<link rel="icon"[^>]*>\n?/g, "\n");
-  if (escapedFavicon) {
-    html = html.replace('</head>', `    <link rel="icon" type="image/png" href="${escapedFavicon}" />
+  html = html.replace(/\s*<link rel="(?:shortcut\s+)?icon"[^>]*>\n?/gi, "\n");
+  html = html.replace(/\s*<link rel="apple-touch-icon"[^>]*>\n?/gi, "\n");
+  if (favicon) {
+    html = html.replace('</head>', `    <link rel="icon" href="/favicon.ico?v=${faviconVersion}" />
+    <link rel="shortcut icon" href="/favicon.ico?v=${faviconVersion}" />
   </head>`);
   }
 
@@ -4704,8 +4707,20 @@ app.post('/api/admin/site-settings', authenticateRequest, async (req, res) => {
 app.get('/favicon.ico', async (_req, res) => {
   try {
     const settings = await getSiteSettings();
-    if (settings.siteFavicon) {
-      return res.redirect(settings.siteFavicon);
+    const favicon = settings.siteFavicon;
+
+    res.set('Cache-Control', 'no-store, max-age=0, must-revalidate');
+
+    if (favicon) {
+      const dataUrlMatch = favicon.match(/^data:(image\/[^;]+);base64,(.+)$/i);
+      if (dataUrlMatch) {
+        const [, contentType, payload] = dataUrlMatch;
+        const iconBuffer = Buffer.from(payload, 'base64');
+        res.type(contentType || 'image/x-icon');
+        return res.status(200).send(iconBuffer);
+      }
+
+      return res.redirect(302, favicon);
     }
   } catch (error) {
     console.error('Favicon settings fetch error', error);
