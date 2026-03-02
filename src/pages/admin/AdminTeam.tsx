@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,336 +7,477 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, GripVertical, Pencil, Trash, Save, X, Image as ImageIcon } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Loader2, Plus, GripVertical, Pencil, Trash, Save, X, Image as ImageIcon, Crop } from "lucide-react";
 import { toast } from "sonner";
 import {
-    getTeamMembers,
-    createTeamMember,
-    updateTeamMember,
-    deleteTeamMember,
-    reorderTeamMembers,
-    type TeamMember,
-    type TeamMemberInput
+  getTeamMembers,
+  createTeamMember,
+  updateTeamMember,
+  deleteTeamMember,
+  reorderTeamMembers,
+  type TeamMember,
+  type TeamMemberInput,
 } from "@/services/teamService";
 import { uploadToImageKit } from "@/services/imageKitService";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const SECTIONS = {
-    leadership: "Elnökség",
-    standing_committee: "Állandó Bizottság",
-    supervisory_board: "Felügyelőbizottság",
-    hyca: "HYCA",
-    hyca_supervisory_board: "HYCA Felügyelő Bizottság",
-    operational_team: "Operatív Csapat",
+  leadership: "Elnökség",
+  standing_committee: "Állandó Bizottság",
+  supervisory_board: "Felügyelőbizottság",
+  hyca: "HYCA",
+  hyca_supervisory_board: "HYCA Felügyelő Bizottság",
+  operational_team: "Operatív Csapat",
 };
 
 type SectionKey = keyof typeof SECTIONS;
 
 const emptyMember: TeamMemberInput = {
-    name: "",
-    position: "",
-    email: "",
-    section: "leadership",
-    image_url: "",
+  name: "",
+  position: "",
+  email: "",
+  section: "leadership",
+  image_url: "",
 };
 
+const CROPPER_FRAME_SIZE = 240;
+
+async function createCroppedSquareImage(sourceDataUrl: string, zoom: number, offsetX: number, offsetY: number): Promise<File> {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Nem sikerült beolvasni a képet"));
+    img.src = sourceDataUrl;
+  });
+
+  const cropArea = Math.min(image.width, image.height) / zoom;
+  const maxX = Math.max(0, image.width - cropArea);
+  const maxY = Math.max(0, image.height - cropArea);
+  const clampedX = Math.min(Math.max(offsetX, 0), maxX);
+  const clampedY = Math.min(Math.max(offsetY, 0), maxY);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 600;
+  canvas.height = 600;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("A képszerkesztéshez szükséges canvas nem érhető el");
+  }
+
+  context.drawImage(image, clampedX, clampedY, cropArea, cropArea, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (!result) {
+        reject(new Error("Nem sikerült elkészíteni a kivágott képet"));
+        return;
+      }
+      resolve(result);
+    }, "image/jpeg", 0.92);
+  });
+
+  return new File([blob], `team-member-${Date.now()}.jpg`, { type: "image/jpeg" });
+}
+
 export default function AdminTeam() {
-    const { session } = useAdminAuthGuard();
-    const [members, setMembers] = useState<TeamMember[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<SectionKey>("leadership");
-    const [draggingId, setDraggingId] = useState<string | null>(null);
+  const { session } = useAdminAuthGuard();
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<SectionKey>("leadership");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
-    // Modal State
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
-    const [formData, setFormData] = useState<TeamMemberInput>(emptyMember);
-    const [saving, setSaving] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [formData, setFormData] = useState<TeamMemberInput>(emptyMember);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-    useEffect(() => {
-        if (session) {
-            loadMembers();
-        }
-    }, [session]);
+  const [isCropDialogOpen, setIsCropDialogOpen] = useState(false);
+  const [rawImageDataUrl, setRawImageDataUrl] = useState("");
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropOffsetX, setCropOffsetX] = useState(0);
+  const [cropOffsetY, setCropOffsetY] = useState(0);
+  const [imageNaturalSize, setImageNaturalSize] = useState({ width: 1, height: 1 });
 
-    const loadMembers = async () => {
-        setLoading(true);
-        try {
-            const data = await getTeamMembers();
-            setMembers(data);
-        } catch (e) {
-            toast.error("Nem sikerült betölteni a tagokat");
-        } finally {
-            setLoading(false);
-        }
-    };
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleOpenCreate = () => {
-        setEditingMember(null);
-        setFormData({ ...emptyMember, section: activeTab });
-        setIsModalOpen(true);
-    };
+  useEffect(() => {
+    if (session) {
+      loadMembers();
+    }
+  }, [session]);
 
-    const handleOpenEdit = (member: TeamMember) => {
-        setEditingMember(member);
-        setFormData({
-            name: member.name,
-            position: member.position,
-            email: member.email,
-            section: member.section,
-            image_url: member.image_url,
-            sort_order: member.sort_order
-        });
-        setIsModalOpen(true);
-    };
+  const loadMembers = async () => {
+    setLoading(true);
+    try {
+      setMembers(await getTeamMembers());
+    } catch {
+      toast.error("Nem sikerült betölteni a tagokat");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const handleSave = async () => {
-        if (!formData.name.trim()) {
-            toast.error("A név megadása kötelező");
-            return;
-        }
+  const handleOpenCreate = () => {
+    setEditingMember(null);
+    setFormData({ ...emptyMember, section: activeTab });
+    setIsModalOpen(true);
+  };
 
-        setSaving(true);
-        try {
-            if (editingMember) {
-                const updated = await updateTeamMember(editingMember.id, formData);
-                setMembers(members.map(m => m.id === updated.id ? updated : m));
-                toast.success("Tag frissítve");
-            } else {
-                // Calculate next sort order for this section
-                const sectionMembers = members.filter(m => m.section === formData.section);
-                const maxOrder = sectionMembers.length > 0 ? Math.max(...sectionMembers.map(m => m.sort_order)) : 0;
+  const handleOpenEdit = (member: TeamMember) => {
+    setEditingMember(member);
+    setFormData({
+      name: member.name,
+      position: member.position,
+      email: member.email,
+      section: member.section,
+      image_url: member.image_url,
+      sort_order: member.sort_order,
+    });
+    setIsModalOpen(true);
+  };
 
-                const created = await createTeamMember({ ...formData, sort_order: maxOrder + 1 });
-                setMembers([...members, created]);
-                toast.success("Tag létrehozva");
-            }
-            setIsModalOpen(false);
-        } catch (e) {
-            toast.error("Mentés sikertelen");
-        } finally {
-            setSaving(false);
-        }
-    };
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      toast.error("A név megadása kötelező");
+      return;
+    }
 
-    const handleDelete = async (id: string) => {
-        if (!confirm("Biztosan törölni szeretnéd ezt a tagot?")) return;
-        try {
-            await deleteTeamMember(id);
-            setMembers(members.filter(m => m.id !== id));
-            toast.success("Törölve");
-        } catch (e) {
-            toast.error("Törlés sikertelen");
-        }
-    };
+    setSaving(true);
+    try {
+      if (editingMember) {
+        const updated = await updateTeamMember(editingMember.id, formData);
+        setMembers((prev) => prev.map((member) => (member.id === updated.id ? updated : member)));
+        toast.success("Tag frissítve");
+      } else {
+        const sectionMembers = members.filter((member) => member.section === formData.section);
+        const maxOrder = sectionMembers.length ? Math.max(...sectionMembers.map((member) => member.sort_order)) : 0;
+        const created = await createTeamMember({ ...formData, sort_order: maxOrder + 1 });
+        setMembers((prev) => [...prev, created]);
+        toast.success("Tag létrehozva");
+      }
+      setIsModalOpen(false);
+    } catch {
+      toast.error("Mentés sikertelen");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    const handleImageUpload = async (file?: File) => {
-        if (!file) return;
-        setUploading(true);
-        try {
-            const url = await uploadToImageKit(file);
-            setFormData(prev => ({ ...prev, image_url: url }));
-            toast.success("Kép feltöltve");
-        } catch (e) {
-            console.error(e);
-            toast.error("Képfeltöltés sikertelen");
-        } finally {
-            setUploading(false);
-        }
-    };
+  const handleDelete = async (id: string) => {
+    if (!confirm("Biztosan törölni szeretnéd ezt a tagot?")) return;
 
-    // Drag and Drop Logic
-    const handleDragStart = (id: string) => setDraggingId(id);
+    try {
+      await deleteTeamMember(id);
+      setMembers((prev) => prev.filter((member) => member.id !== id));
+      toast.success("Törölve");
+    } catch {
+      toast.error("Törlés sikertelen");
+    }
+  };
 
-    const handleDragOver = (event: DragEvent<HTMLDivElement>, targetId: string) => {
-        event.preventDefault();
-        if (!draggingId || draggingId === targetId) return;
+  const resetCropState = () => {
+    setRawImageDataUrl("");
+    setCropZoom(1);
+    setCropOffsetX(0);
+    setCropOffsetY(0);
+    setImageNaturalSize({ width: 1, height: 1 });
+  };
 
-        // Only allow sorting within same section
-        const draggedMember = members.find(m => m.id === draggingId);
-        const targetMember = members.find(m => m.id === targetId);
+  const handleImageSelected = async (file?: File) => {
+    if (!file) return;
 
-        if (!draggedMember || !targetMember || draggedMember.section !== targetMember.section) return;
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Nem sikerült beolvasni a fájlt"));
+      reader.readAsDataURL(file);
+    }).catch(() => "");
 
-        // Local reorder for visual feedback
-        const sectionMembers = members.filter(m => m.section === activeTab).sort((a, b) => a.sort_order - b.sort_order);
-        const currentIndex = sectionMembers.findIndex(m => m.id === draggingId);
-        const targetIndex = sectionMembers.findIndex(m => m.id === targetId);
+    if (!dataUrl) {
+      toast.error("Nem sikerült betölteni a kiválasztott képet");
+      return;
+    }
 
-        if (currentIndex === -1 || targetIndex === -1) return;
+    setRawImageDataUrl(dataUrl);
+    setIsCropDialogOpen(true);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
-        const newOrder = [...sectionMembers];
-        const [moved] = newOrder.splice(currentIndex, 1);
-        newOrder.splice(targetIndex, 0, moved);
+  const handleCropAndUpload = async () => {
+    if (!rawImageDataUrl) return;
 
-        // Initial update of sort_order property
-        const reorderedSection = newOrder.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
+    setUploading(true);
+    try {
+      const croppedFile = await createCroppedSquareImage(rawImageDataUrl, cropZoom, cropOffsetX, cropOffsetY);
+      const uploaded = await uploadToImageKit(croppedFile);
+      setFormData((prev) => ({ ...prev, image_url: uploaded.url }));
+      setIsCropDialogOpen(false);
+      resetCropState();
+      toast.success("Profilkép feltöltve és kivágva");
+    } catch (error) {
+      console.error(error);
+      toast.error("Képfeltöltés vagy vágás sikertelen");
+    } finally {
+      setUploading(false);
+    }
+  };
 
-        // Merge back into main list
-        const otherMembers = members.filter(m => m.section !== activeTab);
-        setMembers([...otherMembers, ...reorderedSection]);
-    };
+  const handleDragStart = (id: string) => setDraggingId(id);
 
-    const handleDrop = async () => {
-        if (!draggingId) return;
-        setDraggingId(null);
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, targetId: string) => {
+    event.preventDefault();
+    if (!draggingId || draggingId === targetId) return;
 
-        // Persist to backend
-        const sectionMembers = members.filter(m => m.section === activeTab).sort((a, b) => a.sort_order - b.sort_order);
-        try {
-            await reorderTeamMembers(sectionMembers.map(m => ({ id: m.id, sort_order: m.sort_order })));
-            toast.success("Sorrend mentve");
-        } catch (e) {
-            toast.error("Nem sikerült menteni a sorrendet");
-            loadMembers(); // Revert on error
-        }
-    };
+    const draggedMember = members.find((member) => member.id === draggingId);
+    const targetMember = members.find((member) => member.id === targetId);
 
-    const filteredMembers = members
-        .filter(m => m.section === activeTab)
-        .sort((a, b) => a.sort_order - b.sort_order);
+    if (!draggedMember || !targetMember || draggedMember.section !== targetMember.section) return;
 
-    return (
-        <AdminLayout>
-            <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                    <h1 className="text-3xl font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>
-                        Csapat kezelése
-                    </h1>
-                    <Button onClick={handleOpenCreate}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Új tag hozzáadása
-                    </Button>
-                </div>
+    const sectionMembers = members.filter((member) => member.section === activeTab).sort((a, b) => a.sort_order - b.sort_order);
+    const currentIndex = sectionMembers.findIndex((member) => member.id === draggingId);
+    const targetIndex = sectionMembers.findIndex((member) => member.id === targetId);
+    if (currentIndex === -1 || targetIndex === -1) return;
 
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SectionKey)}>
-                    <TabsList className="flex flex-wrap h-auto gap-2 bg-transparent justify-start p-0">
-                        {Object.entries(SECTIONS).map(([key, label]) => (
-                            <TabsTrigger
-                                key={key}
-                                value={key}
-                                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground border bg-card"
-                            >
-                                {label}
-                            </TabsTrigger>
-                        ))}
-                    </TabsList>
+    const reordered = [...sectionMembers];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
 
-                    <TabsContent value={activeTab} className="mt-6">
-                        <Card className="p-6">
-                            {loading ? (
-                                <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>
+    const withOrder = reordered.map((member, index) => ({ ...member, sort_order: index + 1 }));
+    setMembers((prev) => prev.map((member) => withOrder.find((candidate) => candidate.id === member.id) || member));
+  };
+
+  const handleDragEnd = async () => {
+    if (!draggingId) return;
+    setDraggingId(null);
+
+    const sectionMembers = members.filter((member) => member.section === activeTab).sort((a, b) => a.sort_order - b.sort_order);
+
+    try {
+      await reorderTeamMembers(activeTab, sectionMembers.map((member) => member.id));
+    } catch {
+      toast.error("Sorrend mentése sikertelen");
+      loadMembers();
+    }
+  };
+
+  const activeMembers = useMemo(
+    () => members.filter((member) => member.section === activeTab).sort((a, b) => a.sort_order - b.sort_order),
+    [members, activeTab],
+  );
+
+  if (!session) return null;
+
+  const cropAreaSize = Math.min(imageNaturalSize.width, imageNaturalSize.height) / cropZoom;
+  const maxOffsetX = Math.max(0, imageNaturalSize.width - cropAreaSize);
+  const maxOffsetY = Math.max(0, imageNaturalSize.height - cropAreaSize);
+
+  return (
+    <AdminLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Csapat kezelése</h1>
+          <Button onClick={handleOpenCreate} className="gap-2">
+            <Plus className="h-4 w-4" /> Új tag
+          </Button>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as SectionKey)}>
+          <TabsList className="flex flex-wrap h-auto">
+            {(Object.keys(SECTIONS) as SectionKey[]).map((key) => (
+              <TabsTrigger key={key} value={key}>
+                {SECTIONS[key]}
+                <Badge variant="secondary" className="ml-2">
+                  {members.filter((member) => member.section === key).length}
+                </Badge>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {(Object.keys(SECTIONS) as SectionKey[]).map((sectionKey) => (
+            <TabsContent key={sectionKey} value={sectionKey}>
+              <Card className="p-4 md:p-6">
+                {loading ? (
+                  <div className="flex justify-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activeMembers.length === 0 ? (
+                      <div className="text-center text-muted-foreground py-8">Nincs tag ebben a szekcióban.</div>
+                    ) : (
+                      activeMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          draggable
+                          onDragStart={() => handleDragStart(member.id)}
+                          onDragOver={(event) => handleDragOver(event, member.id)}
+                          onDragEnd={handleDragEnd}
+                          className="flex items-center gap-3 p-3 border rounded-lg bg-card hover:bg-muted/40 transition-colors"
+                        >
+                          <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+
+                          <div className="h-12 w-12 rounded-full overflow-hidden bg-muted flex-shrink-0 border">
+                            {member.image_url ? (
+                              <img src={member.image_url} alt={member.name} className="h-full w-full object-cover" />
                             ) : (
-                                <div className="space-y-2">
-                                    {filteredMembers.length === 0 ? (
-                                        <div className="text-center py-8 text-muted-foreground">Nincs még tag ebben a szekcióban.</div>
-                                    ) : (
-                                        filteredMembers.map(member => (
-                                            <div
-                                                key={member.id}
-                                                className={`flex items-center gap-4 p-3 border rounded-lg bg-card hover:shadow-sm transition-all ${draggingId === member.id ? 'opacity-50' : ''}`}
-                                                draggable
-                                                onDragStart={() => handleDragStart(member.id)}
-                                                onDragOver={(e) => handleDragOver(e, member.id)}
-                                                onDrop={handleDrop}
-                                            >
-                                                <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
-
-                                                <div className="h-12 w-12 rounded-full overflow-hidden bg-muted flex-shrink-0 border">
-                                                    {member.image_url ? (
-                                                        <img src={member.image_url} alt={member.name} className="h-full w-full object-cover" />
-                                                    ) : (
-                                                        <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground font-bold">
-                                                            {member.name.charAt(0)}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="flex-1">
-                                                    <h4 className="font-semibold">{member.name}</h4>
-                                                    <div className="text-sm text-muted-foreground flex gap-3">
-                                                        <span>{member.position}</span>
-                                                        {member.email && <span>• {member.email}</span>}
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex gap-2">
-                                                    <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(member)}>
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDelete(member.id)}>
-                                                        <Trash className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                              <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground font-bold">
+                                {member.name.charAt(0)}
+                              </div>
                             )}
-                        </Card>
-                    </TabsContent>
-                </Tabs>
+                          </div>
 
-                <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>{editingMember ? "Tag szerkesztése" : "Új tag hozzáadása"}</DialogTitle>
-                            <DialogDescription>
-                                {SECTIONS[activeTab]} szekcióba
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="space-y-4 py-4">
-                            <div className="flex justify-center">
-                                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                                    <div className="h-24 w-24 rounded-full overflow-hidden bg-muted border-2 border-dashed border-muted-foreground/50 flex items-center justify-center">
-                                        {formData.image_url ? (
-                                            <img src={formData.image_url} alt="Preview" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <ImageIcon className="h-8 w-8 text-muted-foreground" />
-                                        )}
-                                    </div>
-                                    <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {uploading ? <Loader2 className="animate-spin text-white" /> : <Pencil className="text-white" />}
-                                    </div>
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        className="hidden"
-                                        accept="image/*"
-                                        onChange={(e) => handleImageUpload(e.target.files?.[0])}
-                                    />
-                                </div>
+                          <div className="flex-1">
+                            <h4 className="font-semibold">{member.name}</h4>
+                            <div className="text-sm text-muted-foreground flex gap-3">
+                              <span>{member.position}</span>
+                              {member.email && <span>• {member.email}</span>}
                             </div>
+                          </div>
 
-                            <div className="space-y-2">
-                                <Label>Név</Label>
-                                <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Pozíció</Label>
-                                <Input value={formData.position} onChange={e => setFormData({ ...formData, position: e.target.value })} />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Email</Label>
-                                <Input value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
-                            </div>
-                        </div>
-
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsModalOpen(false)}>Mégse</Button>
-                            <Button onClick={handleSave} disabled={saving || uploading}>
-                                {saving ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                                Mentés
+                          <div className="flex gap-2">
+                            <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(member)}>
+                              <Pencil className="h-4 w-4" />
                             </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDelete(member.id)}>
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </Card>
+            </TabsContent>
+          ))}
+        </Tabs>
+
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingMember ? "Tag szerkesztése" : "Új tag hozzáadása"}</DialogTitle>
+              <DialogDescription>{SECTIONS[activeTab]} szekcióba</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="flex justify-center">
+                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                  <div className="h-24 w-24 rounded-full overflow-hidden bg-muted border-2 border-dashed border-muted-foreground/50 flex items-center justify-center">
+                    {formData.image_url ? <img src={formData.image_url} alt="Preview" className="h-full w-full object-cover" /> : <ImageIcon className="h-8 w-8 text-muted-foreground" />}
+                  </div>
+                  <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    {uploading ? <Loader2 className="animate-spin text-white" /> : <Pencil className="text-white" />}
+                  </div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(event) => handleImageSelected(event.target.files?.[0])}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-center text-muted-foreground">Kép kiválasztása után nagyítás + körkivágás előnézet jelenik meg.</p>
+
+              <div className="space-y-2">
+                <Label>Név</Label>
+                <Input value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pozíció</Label>
+                <Input value={formData.position} onChange={(event) => setFormData({ ...formData, position: event.target.value })} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} />
+              </div>
             </div>
-        </AdminLayout>
-    );
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+                Mégse
+              </Button>
+              <Button onClick={handleSave} disabled={saving || uploading}>
+                {saving ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                Mentés
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={isCropDialogOpen}
+          onOpenChange={(open) => {
+            setIsCropDialogOpen(open);
+            if (!open) resetCropState();
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Crop className="h-5 w-5" /> Kép kivágása
+              </DialogTitle>
+              <DialogDescription>Állítsd be a kivágást, így látod pontosan mi jelenik meg a tag profilképén.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="mx-auto relative rounded-full overflow-hidden border" style={{ width: CROPPER_FRAME_SIZE, height: CROPPER_FRAME_SIZE }}>
+                {rawImageDataUrl && (
+                  <img
+                    src={rawImageDataUrl}
+                    alt="Crop source"
+                    onLoad={(event) => {
+                      const img = event.currentTarget;
+                      setImageNaturalSize({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+                    }}
+                    style={{
+                      width: `${((imageNaturalSize.width / cropAreaSize) * CROPPER_FRAME_SIZE).toFixed(2)}px`,
+                      height: `${((imageNaturalSize.height / cropAreaSize) * CROPPER_FRAME_SIZE).toFixed(2)}px`,
+                      transform: `translate(${-((cropOffsetX / cropAreaSize) * CROPPER_FRAME_SIZE).toFixed(2)}px, ${-((cropOffsetY / cropAreaSize) * CROPPER_FRAME_SIZE).toFixed(2)}px)`,
+                      transformOrigin: "top left",
+                      maxWidth: "none",
+                      userSelect: "none",
+                      pointerEvents: "none",
+                    }}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Nagyítás ({cropZoom.toFixed(2)}x)</Label>
+                <Slider value={[cropZoom]} min={1} max={3} step={0.01} onValueChange={(value) => setCropZoom(value[0] ?? 1)} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Vízszintes pozíció</Label>
+                <Slider value={[cropOffsetX]} min={0} max={maxOffsetX || 0} step={1} onValueChange={(value) => setCropOffsetX(value[0] ?? 0)} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Függőleges pozíció</Label>
+                <Slider value={[cropOffsetY]} min={0} max={maxOffsetY || 0} step={1} onValueChange={(value) => setCropOffsetY(value[0] ?? 0)} />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCropDialogOpen(false)} disabled={uploading}>
+                <X className="h-4 w-4 mr-2" /> Mégse
+              </Button>
+              <Button onClick={handleCropAndUpload} disabled={uploading}>
+                {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                Kivágás és feltöltés
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </AdminLayout>
+  );
 }
