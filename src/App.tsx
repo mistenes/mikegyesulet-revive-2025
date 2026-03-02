@@ -11,6 +11,9 @@ import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
 import AdminApiSettings from "./pages/admin/AdminApiSettings";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminSeoMetaTags from "./pages/admin/AdminSeoMetaTags";
+import AdminSeoRobots from "./pages/admin/AdminSeoRobots";
+import AdminSeoSitemap from "./pages/admin/AdminSeoSitemap";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -42,6 +45,9 @@ const App = () => (
             <Route path="/admin/news" element={<AdminNews />} />
             <Route path="/admin/api-settings" element={<AdminApiSettings />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
+            <Route path="/admin/seo/meta-tags" element={<AdminSeoMetaTags />} />
+            <Route path="/admin/seo/robots" element={<AdminSeoRobots />} />
+            <Route path="/admin/seo/sitemap" element={<AdminSeoSitemap />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
