@@ -16,6 +16,7 @@ import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
 import AdminNewsNewArticle from "./pages/admin/AdminNewsNewArticle";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminSeoTools from "./pages/admin/AdminSeoTools";
 import AdminProjects from "./pages/admin/AdminProjects";
 import AdminGallery from "./pages/admin/AdminGallery";
 import AdminMedia from "./pages/admin/AdminMedia";
@@ -275,6 +276,7 @@ const App = () => {
               <Route path="/admin/accept-invite" element={<AcceptInvite />} />
               <Route path="/admin/reset-password" element={<AdminResetPassword />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin/seo-tools" element={<AdminSeoTools />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

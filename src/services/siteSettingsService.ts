@@ -6,6 +6,7 @@ export type SiteSettingsPayload = {
   siteFavicon: string;
   siteSearchTitle: string;
   siteSearchDescription: string;
+  siteSearchLogo: string;
 };
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -33,4 +34,8 @@ export async function saveSiteSettings(payload: SiteSettingsPayload): Promise<Si
   });
 
   return handleResponse<SiteSettingsPayload>(response);
+}
+
+export function getSitemapUrl(): string {
+  return `${API_BASE}/sitemap.xml`;
 }

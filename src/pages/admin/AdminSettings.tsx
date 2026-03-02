@@ -59,7 +59,11 @@ export default function AdminSettings() {
 
     fetchPublicSiteSettings()
       .then((siteSettings) => {
-        setFormData((prev) => ({ ...prev, site_favicon: siteSettings.siteFavicon || prev.site_favicon || "" }));
+        setFormData((prev) => ({
+          ...prev,
+          site_favicon: siteSettings.siteFavicon || prev.site_favicon || "",
+          site_logo: siteSettings.siteSearchLogo || prev.site_logo || "",
+        }));
         setSiteSearchTitle(siteSettings.siteSearchTitle || fallbackTitle);
         setSiteSearchDescription(siteSettings.siteSearchDescription || fallbackDescription);
       })
@@ -120,6 +124,7 @@ export default function AdminSettings() {
         siteFavicon: String(formData.site_favicon || "").trim(),
         siteSearchTitle: siteSearchTitle.trim(),
         siteSearchDescription: siteSearchDescription.trim(),
+        siteSearchLogo: String(formData.site_logo || "").trim(),
       });
 
       toast.success("Beállítások elmentve!");

@@ -30,6 +30,7 @@ import {
   Trash2,
   Upload,
   UserCircle,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getAllSections, saveSection } from "@/services/pageContentService";
@@ -1217,11 +1218,18 @@ export default function AdminPages() {
               <p className="text-muted-foreground">Válaszd ki a publikus oldalt, nézd meg ki és mikor módosította, majd szerkeszd tartalmát élő előnézet mellett.</p>
             </div>
           </div>
-          <Button asChild variant="secondary" className="gap-2">
-            <Link to="/admin/map-editor">
-              <Layout className="h-4 w-4" /> Térkép külön szerkesztő
-            </Link>
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            <Button asChild variant="secondary" className="gap-2">
+              <Link to="/admin/map-editor">
+                <Layout className="h-4 w-4" /> Térkép külön szerkesztő
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <Link to="/admin/seo-tools">
+                <Globe className="h-4 w-4" /> SEO eszközök
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
