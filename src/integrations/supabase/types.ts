@@ -83,6 +83,81 @@ export type Database = {
         }
         Relationships: []
       }
+      seo_meta_tags: {
+        Row: {
+          canonical_url: string | null
+          created_at: string
+          id: string
+          meta_description: string | null
+          meta_keywords: string | null
+          meta_title: string | null
+          no_follow: boolean | null
+          no_index: boolean | null
+          og_description: string | null
+          og_image: string | null
+          og_title: string | null
+          og_type: string | null
+          page_name: string
+          page_path: string
+          structured_data: Json | null
+          updated_at: string
+        }
+        Insert: {
+          canonical_url?: string | null
+          created_at?: string
+          id?: string
+          meta_description?: string | null
+          meta_keywords?: string | null
+          meta_title?: string | null
+          no_follow?: boolean | null
+          no_index?: boolean | null
+          og_description?: string | null
+          og_image?: string | null
+          og_title?: string | null
+          og_type?: string | null
+          page_name: string
+          page_path: string
+          structured_data?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          canonical_url?: string | null
+          created_at?: string
+          id?: string
+          meta_description?: string | null
+          meta_keywords?: string | null
+          meta_title?: string | null
+          no_follow?: boolean | null
+          no_index?: boolean | null
+          og_description?: string | null
+          og_image?: string | null
+          og_title?: string | null
+          og_type?: string | null
+          page_name?: string
+          page_path?: string
+          structured_data?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      seo_robots_settings: {
+        Row: {
+          id: string
+          robots_content: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          robots_content?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          robots_content?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       site_settings: {
         Row: {
           created_at: string | null
