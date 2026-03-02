@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Tags, Save, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Tags, Save, Loader2, ChevronDown, ChevronUp, Globe, Image as ImageIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -31,10 +31,44 @@ export default function AdminSeoMetaTags() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [expandedPage, setExpandedPage] = useState<string | null>(null);
+  const [faviconUrl, setFaviconUrl] = useState("");
+  const [ogDefaultImage, setOgDefaultImage] = useState("");
+  const [savingGlobal, setSavingGlobal] = useState(false);
 
   useEffect(() => {
     fetchPages();
+    fetchGlobalSeoSettings();
   }, []);
+
+  const fetchGlobalSeoSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("*")
+        .in("setting_key", ["site_favicon", "site_og_default_image"]);
+      if (error) throw error;
+      data?.forEach((s) => {
+        if (s.setting_key === "site_favicon") setFaviconUrl(s.setting_value || "");
+        if (s.setting_key === "site_og_default_image") setOgDefaultImage(s.setting_value || "");
+      });
+    } catch (error) {
+      console.error("Error fetching global SEO settings:", error);
+    }
+  };
+
+  const handleSaveGlobal = async () => {
+    setSavingGlobal(true);
+    try {
+      await supabase.from("site_settings").update({ setting_value: faviconUrl }).eq("setting_key", "site_favicon");
+      await supabase.from("site_settings").update({ setting_value: ogDefaultImage }).eq("setting_key", "site_og_default_image");
+      toast.success("Globális SEO beállítások mentve!");
+    } catch (error) {
+      console.error("Error saving global SEO:", error);
+      toast.error("Hiba a mentés során");
+    } finally {
+      setSavingGlobal(false);
+    }
+  };
 
   const fetchPages = async () => {
     try {
@@ -112,6 +146,58 @@ export default function AdminSeoMetaTags() {
             </p>
           </div>
         </div>
+
+        {/* Global SEO: Favicon & Default OG Image */}
+        <Card className="p-6 bg-gradient-to-br from-background to-muted/20">
+          <div className="flex items-center gap-2 mb-4">
+            <Globe className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Globális SEO beállítások</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Favicon (böngésző ikon / keresőmotorok ikonja)</Label>
+              <Input
+                value={faviconUrl}
+                onChange={(e) => setFaviconUrl(e.target.value)}
+                placeholder="https://example.com/favicon.png"
+              />
+              {faviconUrl && (
+                <div className="flex items-center gap-2 mt-1">
+                  <img src={faviconUrl} alt="Favicon előnézet" className="h-8 w-8 object-contain rounded border bg-white p-0.5" />
+                  <span className="text-xs text-muted-foreground">Előnézet</span>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Az ikon, amit a böngészők és keresőmotorok használnak. Ajánlott méret: 32x32 vagy 64x64 px, PNG/ICO formátum.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Alapértelmezett OG kép (megosztási kép)</Label>
+              <Input
+                value={ogDefaultImage}
+                onChange={(e) => setOgDefaultImage(e.target.value)}
+                placeholder="https://example.com/og-image.jpg"
+              />
+              {ogDefaultImage && (
+                <img src={ogDefaultImage} alt="OG előnézet" className="h-20 w-auto object-cover rounded border mt-1" />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Az alapértelmezett kép közösségi megosztáshoz (1200x630 px ajánlott).
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={handleSaveGlobal}
+            disabled={savingGlobal}
+            className="mt-4 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
+          >
+            {savingGlobal ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Mentés...</>
+            ) : (
+              <><Save className="h-4 w-4" /> Globális beállítások mentése</>
+            )}
+          </Button>
+        </Card>
 
         <div className="space-y-4">
           {pages.map((page) => {
