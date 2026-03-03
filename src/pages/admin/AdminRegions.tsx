@@ -1157,7 +1157,7 @@ export default function AdminRegions() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => openBrowser({ type: "region" }, REGIONS_FOLDER)}
+                        onClick={() => openBrowser({ type: "region" }, REGION_COVER_FOLDER)}
                       >
                         <ImageIcon className="h-4 w-4 mr-2" /> Választás
                       </Button>
@@ -1287,7 +1287,7 @@ export default function AdminRegions() {
                               variant="outline"
                               size="sm"
                               type="button"
-                              onClick={() => openBrowser({ type: "organization", index }, `${REGIONS_FOLDER}/logos`)}
+                              onClick={() => openBrowser({ type: "organization", index }, ORG_LOGO_FOLDER)}
                             >
                               <ImageIcon className="h-4 w-4 mr-1" /> Választás
                             </Button>
