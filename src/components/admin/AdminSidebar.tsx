@@ -25,6 +25,7 @@ import {
   Bug,
   Mail,
   Users,
+  Globe,
 } from "lucide-react";
 
 const menuItems = [
@@ -37,6 +38,11 @@ const menuItems = [
     title: "Oldal tartalmak",
     url: "/admin/pages",
     icon: FileEdit,
+  },
+  {
+    title: "Térkép szerkesztő",
+    url: "/admin/map-editor",
+    icon: MapPin,
     dividerAfter: true,
   },
   {
@@ -100,6 +106,11 @@ const menuItems = [
     title: "Lábléc",
     url: "/admin/footer-content",
     icon: ScrollText,
+  },
+  {
+    title: "SEO eszközök",
+    url: "/admin/seo-tools",
+    icon: Globe,
   },
   {
     title: "Beállítások",

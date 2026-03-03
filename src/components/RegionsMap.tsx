@@ -9,7 +9,7 @@ import { useSectionContent } from "@/hooks/useSectionContent";
 import { defaultPageContent } from "@/data/defaultPageContent";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 
-interface Region {
+interface MapPoint {
   name: string;
   coordinates: [number, number];
   description: string;
@@ -17,78 +17,42 @@ interface Region {
   members: string;
 }
 
-const regions: Region[] = [
-  {
-    name: "Magyarország",
-    coordinates: [19.0402, 47.4979], // Budapest
-    description: "Magyarország, ahol központi koordinációt végzünk az ifjúsági szervezetek számára.",
-    color: "#FF6B35",
-    members: "Magyar ifjúsági szervezetek",
-  },
-  {
-    name: "Erdély",
-    coordinates: [23.6236, 46.7712], // Székelyföld
-    description: "Erdély, a Kárpát-medence szívében, gazdag magyar kulturális örökséggel.",
-    color: "#F7931E",
-    members: "Romániai Magyar Ifjúsági Szervezetek Szövetsége (RAMISZ)",
-  },
-  {
-    name: "Felvidék",
-    coordinates: [19.1500, 48.1486], // Pozsony környéke
-    description: "A Felvidék történelmi emlékei és élő magyar közösségei.",
-    color: "#FFC857",
-    members: "Ifjú Szívek Szlovákiai Magyar Ifjúsági Kerekasztal",
-  },
-  {
-    name: "Kárpátalja",
-    coordinates: [22.7200, 48.4500], // Ungvár környéke
-    description: "Kárpátalja, ahol a Kárpátok lábánál élő magyarság őrzi identitását.",
-    color: "#8B5CF6",
-    members: "Kárpátaljai Magyar Ifjúsági Szervezetek Fóruma (KMIF)",
-  },
-  {
-    name: "Vajdaság",
-    coordinates: [19.8335, 45.2671], // Újvidék
-    description: "Vajdaság sokszínű kulturális életben a magyarság aktív közösséget alkot.",
-    color: "#E63946",
-    members: "Vajdasági Ifjúsági Fórum (VIF)",
-  },
-  {
-    name: "Horvátország",
-    coordinates: [18.5500, 45.9500], // Baranya környéke
-    description: "Horvátországi magyarság megőrzi nyelvét és kultúráját a Dráva mentén.",
-    color: "#06B6D4",
-    members: "Horvátországi Magyarok Ifjúsági Szervezeteinek Fóruma (HMIF)",
-  },
-  {
-    name: "Muravidék",
-    coordinates: [16.3500, 46.6600], // Lendva
-    description: "Szlovéniai magyar közösség aktívan részt vesz a régió kulturális életében.",
-    color: "#10B981",
-    members: "Lendvai Magyar Ifjúsági Egyesület (LMIE)",
-  },
-  {
-    name: "Burgenland",
-    coordinates: [16.5400, 47.8500], // Felsőőr környéke
-    description: "Burgenlandi magyarok őrzik hagyományaikat Ausztriában.",
-    color: "#EC4899",
-    members: "Burgenlandi Magyarok Népfőiskolája",
-  },
-  {
-    name: "Bánság és Regát",
-    coordinates: [21.2300, 45.7500], // Temesvár
-    description: "A Bánság és a Regát magyarságának kulturális központja.",
-    color: "#A855F7",
-    members: "Országos Magyar Diákszövetség (OMDSZ)",
-  },
-  {
-    name: "Nyugati Diaszpóra",
-    coordinates: [13.4050, 52.5200], // Berlin (reprezentatív)
-    description: "Nyugat-európai magyar közösségek összefogása.",
-    color: "#F59E0B",
-    members: "Nyugat-európai Magyar Szervezetek",
-  },
-];
+type MapSectionContent = {
+  title?: string;
+  description?: string;
+  points?: Array<{
+    name?: string;
+    coordinates?: unknown;
+    description?: string;
+    color?: string;
+    members?: string;
+  }>;
+};
+
+function normalizeMapPoints(points: MapSectionContent["points"]): MapPoint[] {
+  if (!Array.isArray(points)) return [];
+
+  return points
+    .map((point) => {
+      const coords = Array.isArray(point.coordinates) ? point.coordinates : [];
+      const longitude = Number(coords[0]);
+      const latitude = Number(coords[1]);
+
+      if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+
+      const name = (point.name || "").trim();
+      if (!name) return null;
+
+      return {
+        name,
+        coordinates: [longitude, latitude] as [number, number],
+        description: (point.description || "").trim(),
+        color: (point.color || "#FF6B35").trim() || "#FF6B35",
+        members: (point.members || "").trim(),
+      };
+    })
+    .filter((point): point is MapPoint => Boolean(point));
+}
 
 export const RegionsMap = () => {
   const sectionRef = useRef<HTMLElement>(null);
@@ -103,16 +67,20 @@ export const RegionsMap = () => {
   const adminPreview = isAdminPreview();
   const { content: mapSection, isLoading: mapContentLoading } = useSectionContent("map_section");
 
-  const mapContent = useMemo(() => {
+  const mapContent = useMemo<MapSectionContent>(() => {
     const localized = (mapSection?.[language] || mapSection?.hu) as
-      | { title?: string; description?: string }
+      | MapSectionContent
       | undefined;
     const fallback = (defaultPageContent.map_section?.[language] || defaultPageContent.map_section?.hu) as
-      | { title?: string; description?: string }
+      | MapSectionContent
       | undefined;
 
     return localized || fallback || {};
   }, [language, mapSection]);
+
+  const mapPoints = useMemo(() => normalizeMapPoints(mapContent.points), [mapContent.points]);
+
+  const isHidden = mapSection?.isVisible === false && !adminPreview;
 
   const handleMapTextClick = (event: React.MouseEvent<HTMLElement>, fieldKey: string) => {
     if (notifyAdminFocus("map_section", fieldKey)) {
@@ -120,8 +88,6 @@ export const RegionsMap = () => {
       event.stopPropagation();
     }
   };
-
-  if (mapSection?.isVisible === false && !adminPreview) return null;
 
   const initializeMap = useCallback((token?: string) => {
     const tokenToUse = token || mapboxToken;
@@ -177,7 +143,7 @@ export const RegionsMap = () => {
         let currentPopup: mapboxgl.Popup | null = null;
 
         // Add simple markers for each region
-        regions.forEach((region) => {
+        mapPoints.forEach((region) => {
           if (!map.current) return;
 
           // Create simple marker element
@@ -290,7 +256,7 @@ export const RegionsMap = () => {
       toast.error("Hiba a térkép betöltésekor. Ellenőrizd a token-t!");
       console.error(error);
     }
-  }, [mapboxToken]);
+  }, [mapPoints, mapboxToken]);
 
   useEffect(() => {
     const loadToken = async () => {
@@ -330,8 +296,6 @@ export const RegionsMap = () => {
     loadToken();
   }, [initializeMap]);
 
-
-
   useEffect(() => {
     return () => {
       map.current?.remove();
@@ -351,6 +315,8 @@ export const RegionsMap = () => {
       window.removeEventListener("resize", handleResize);
     };
   }, [isMapInitialized]);
+
+  if (isHidden) return null;
 
   return (
     <section
@@ -448,6 +414,12 @@ export const RegionsMap = () => {
               </div>
             )}
 
+            {isMapInitialized && mapPoints.length === 0 && (
+              <div className="absolute top-6 left-6 z-20 rounded-lg bg-background/90 px-4 py-2 text-sm text-muted-foreground border border-border/50">
+                Még nincs megjeleníthető pont. Szerkeszd a "Térképpontok" mezőt az adminban.
+              </div>
+            )}
+
             {/* Integrated Legend Overlay */}
             {isMapInitialized && (
               <div className="absolute bottom-6 left-6 right-6 z-20 pointer-events-none">
@@ -457,7 +429,7 @@ export const RegionsMap = () => {
                     Régiók színkódja
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {regions.map((region) => (
+                    {mapPoints.map((region) => (
                       <div
                         key={region.name}
                         className="flex items-center gap-2 group cursor-pointer hover:scale-105 transition-transform"

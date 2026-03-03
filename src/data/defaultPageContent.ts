@@ -157,11 +157,29 @@ export const defaultPageContent: PageContentStore = {
       title: "Kárpát-medencei jelenlétünk",
       description:
         "Fedezd fel térképünkön, hogy mely régiókban képviseljük a magyar ifjúság érdekeit. Kattints a jelölőkre a részletes információkért!",
+      points: [
+        {
+          name: "Magyarország",
+          coordinates: [19.0402, 47.4979],
+          description: "Magyarország, ahol központi koordinációt végzünk az ifjúsági szervezetek számára.",
+          color: "#FF6B35",
+          members: "Magyar ifjúsági szervezetek",
+        },
+      ],
     },
     en: {
       title: "Our presence across the Carpathian Basin",
       description:
         "Explore the map to see where we represent Hungarian youth. Click the markers for more information about each region!",
+      points: [
+        {
+          name: "Hungary",
+          coordinates: [19.0402, 47.4979],
+          description: "Hungary, where we coordinate youth organisations at national level.",
+          color: "#FF6B35",
+          members: "Hungarian youth organisations",
+        },
+      ],
     },
   },
   testimonials_section: {

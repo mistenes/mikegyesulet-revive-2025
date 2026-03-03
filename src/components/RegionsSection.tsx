@@ -1,5 +1,5 @@
 import type React from "react";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, MapPin } from "lucide-react";
@@ -9,6 +9,8 @@ import { useSectionContent } from "@/hooks/useSectionContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isAdminPreview, notifyAdminFocus } from "@/lib/adminPreview";
 import { getLocalizedPath } from "@/lib/localePaths";
+import { getPublicRegions, REGIONS_EVENT } from "@/services/regionsService";
+import type { Region } from "@/types/region";
 
 // Import region images
 import erdelyImg from "@/assets/region-erdely.jpg";
@@ -42,21 +44,39 @@ type ScrollImage = {
   alt?: string;
 };
 
-const regionAnchors: Record<string, string> = {
-  "Erdély": "erdely",
-  "Felvidék": "felvidek",
-  "Kárpátalja": "karpatalja",
-  "Vajdaság": "vajdasag",
-  "Horvátország": "horvatorszag",
-  "Szlovénia": "szlovenia",
-};
-
 export const RegionsSection = () => {
   const sectionRef = useRef<HTMLElement>(null);
   const isVisible = useScrollAnimation(sectionRef);
   const { language } = useLanguage();
   const { content: regionsSection, isLoading } = useSectionContent("regions_section");
   const adminPreview = isAdminPreview();
+  const [regions, setRegions] = useState<Region[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadRegions = async () => {
+      try {
+        const items = await getPublicRegions();
+        if (!active) return;
+        setRegions([...items].sort((a, b) => a.nameHu.localeCompare(b.nameHu, "hu", { sensitivity: "base" })));
+      } catch (error) {
+        console.error("Failed to load regions for homepage chips", error);
+      }
+    };
+
+    loadRegions();
+
+    const onRegionsUpdated = () => {
+      void loadRegions();
+    };
+
+    window.addEventListener(REGIONS_EVENT, onRegionsUpdated as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener(REGIONS_EVENT, onRegionsUpdated as EventListener);
+    };
+  }, []);
 
   const content = useMemo<RegionsContent | null>(() => {
     if (!regionsSection) return null;
@@ -69,8 +89,18 @@ export const RegionsSection = () => {
       event.stopPropagation();
     }
   };
+  const isHidden = regionsSection?.isVisible === false && !adminPreview;
 
-  if (regionsSection?.isVisible === false && !adminPreview) return null;
+  const quickLinks = useMemo(() => {
+    if (regions.length > 0) {
+      return regions.map((region) => ({
+        id: region.id,
+        label: language === "hu" ? region.nameHu : region.nameEn || region.nameHu,
+      }));
+    }
+
+    return (content?.chips || []).map((chip) => ({ id: chip, label: chip }));
+  }, [content?.chips, language, regions]);
 
   const scrollingImages = useMemo(() => {
     const customImages = (content?.scrollImages as ScrollImage[] | undefined)
@@ -86,6 +116,8 @@ export const RegionsSection = () => {
 
     return defaultScrollImages;
   }, [content?.scrollImages]);
+
+  if (isHidden) return null;
 
   return (
     <section ref={sectionRef} className="py-24 bg-background relative overflow-hidden">
@@ -178,18 +210,18 @@ export const RegionsSection = () => {
                 </p>
 
                 <div className="flex flex-wrap gap-3 pt-4">
-                  {(content?.chips || []).map((region, i) => (
+                  {quickLinks.map((region, i) => (
                     <Button
-                      key={i}
-                      asChild={Boolean(regionAnchors[region])}
+                      key={region.id + i}
+                      asChild={!adminPreview}
                       variant="outline"
                       className="rounded-full border-border bg-muted/50 hover:border-primary hover:bg-primary/5 text-sm font-medium text-foreground px-4 py-2 h-auto"
                       onClick={(event) => handleAdminFocus(event, "chips")}
                     >
-                      {regionAnchors[region] ? (
-                        <Link to={`/regiok#${regionAnchors[region]}`}>{region}</Link>
+                      {adminPreview ? (
+                        <span>{region.label}</span>
                       ) : (
-                        <span>{region}</span>
+                        <Link to={getLocalizedPath(`/regiok#${encodeURIComponent(region.id)}`, language)}>{region.label}</Link>
                       )}
                     </Button>
                   ))}

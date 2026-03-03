@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import pkg from 'pg';
 import speakeasy from 'speakeasy';
@@ -15,6 +16,9 @@ const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DIST_PATH = path.join(__dirname, 'dist');
+const DEFAULT_SITE_TITLE = 'MIK - Magyar Ifjúsági Konferencia';
+const DEFAULT_SITE_DESCRIPTION =
+  'A magyar ifjúság egyeztetőfóruma, amely hatékonyan képviseli a Kárpát-medence és a világ magyar ifjúságát.';
 
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me';
@@ -51,10 +55,51 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const BUNNY_STORAGE_ZONE = process.env.VITE_BUNNY_STORAGE_ZONE || process.env.BUNNY_STORAGE_ZONE || '';
 const BUNNY_STORAGE_KEY = process.env.VITE_BUNNY_STORAGE_KEY || process.env.BUNNY_STORAGE_KEY || '';
 const BUNNY_STORAGE_HOST = process.env.VITE_BUNNY_STORAGE_HOST || process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
+function decodeGaPrivateKey(value) {
+  if (!value) {
+    return { key: '', valid: false };
+  }
+
+  const trimmed = value.trim();
+  const candidates = [trimmed];
+
+  if (!trimmed.includes('BEGIN PRIVATE KEY')) {
+    try {
+      const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+      if (decoded.includes('BEGIN PRIVATE KEY')) {
+        candidates.unshift(decoded.trim());
+      }
+    } catch (error) {
+      console.warn('Failed to base64 decode GA private key, continuing with raw value', error);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const normalized = candidate.replace(/\\n/g, '\n');
+    if (normalized.includes('BEGIN PRIVATE KEY')) {
+      return { key: normalized, valid: true };
+    }
+  }
+
+  return { key: candidates[0].replace(/\\n/g, '\n'), valid: false };
+}
+
 const GA_MEASUREMENT_ID = process.env.VITE_GA_MEASUREMENT_ID || process.env.GA_MEASUREMENT_ID || '';
 const GA_PROPERTY_ID = process.env.GA4_PROPERTY_ID || process.env.GA_PROPERTY_ID || '';
 const GA_CLIENT_EMAIL = process.env.GA4_CLIENT_EMAIL || process.env.GA_CLIENT_EMAIL || '';
-const GA_PRIVATE_KEY = (process.env.GA4_PRIVATE_KEY || process.env.GA_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+const { key: GA_PRIVATE_KEY, valid: GA_PRIVATE_KEY_VALID } = decodeGaPrivateKey(
+  process.env.GA4_PRIVATE_KEY ||
+  process.env.GA_PRIVATE_KEY ||
+  process.env.GA4_PRIVATE_KEY_BASE64 ||
+  process.env.GA_PRIVATE_KEY_BASE64,
+);
+
+const defaultSiteSettings = {
+  siteFavicon: '',
+  siteSearchTitle: DEFAULT_SITE_TITLE,
+  siteSearchDescription: DEFAULT_SITE_DESCRIPTION,
+  siteSearchLogo: '',
+};
 
 const defaultPageContent = {
   hero_content: {
@@ -152,8 +197,10 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const analyticsPropertyIdValid = GA_PROPERTY_ID && !GA_PROPERTY_ID.startsWith('G-');
+
 const analyticsClient =
-  GA_PROPERTY_ID && GA_CLIENT_EMAIL && GA_PRIVATE_KEY
+  analyticsPropertyIdValid && GA_CLIENT_EMAIL && GA_PRIVATE_KEY_VALID && GA_PRIVATE_KEY
     ? new BetaAnalyticsDataClient({
       credentials: {
         client_email: GA_CLIENT_EMAIL,
@@ -182,7 +229,233 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-const analyticsProperty = GA_PROPERTY_ID ? `properties/${GA_PROPERTY_ID}` : '';
+const analyticsProperty = analyticsPropertyIdValid ? `properties/${GA_PROPERTY_ID}` : '';
+
+function getAnalyticsConfigStatus() {
+  const missingEnv = [];
+
+  if (!GA_PROPERTY_ID) missingEnv.push('GA4_PROPERTY_ID');
+  if (!GA_CLIENT_EMAIL) missingEnv.push('GA4_CLIENT_EMAIL');
+  if (!GA_PRIVATE_KEY || !GA_PRIVATE_KEY_VALID) missingEnv.push('GA4_PRIVATE_KEY (vagy GA4_PRIVATE_KEY_BASE64)');
+
+  const propertyLooksLikeMeasurementId = GA_PROPERTY_ID?.startsWith('G-');
+
+  let message = '';
+  const hints = [];
+
+  if (missingEnv.length) {
+    message = `A Google Analytics nincs beállítva. Állítsd be a következő környezeti változókat a Renderen: ${missingEnv.join(', ')}.`;
+  } else if (propertyLooksLikeMeasurementId) {
+    message = 'A GA4 property ID nem lehet a G- kezdetű Measurement ID. Add meg a numerikus GA4 property azonosítót (pl. 123456789).';
+  } else if (!GA_PRIVATE_KEY_VALID) {
+    message = 'A GA4 privát kulcs formátuma érvénytelen. Használj PEM formátumot (-----BEGIN PRIVATE KEY-----) vagy base64-kódolt változatot.';
+    hints.push('Győződj meg róla, hogy a kulcs tartalmazza a BEGIN/END PRIVATE KEY blokkokat és a sorvégeket \\n helyett új sorokkal.');
+  }
+
+  return { missingEnv, propertyLooksLikeMeasurementId, message, invalidPrivateKey: !GA_PRIVATE_KEY_VALID, hints };
+}
+
+
+async function getSiteSettings() {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      'SELECT site_favicon, site_search_title, site_search_description, site_search_logo, updated_at FROM site_settings WHERE id = 1 LIMIT 1',
+    );
+
+    if (!result.rows.length) {
+      return { ...defaultSiteSettings };
+    }
+
+    const row = result.rows[0];
+    return {
+      siteFavicon: (row.site_favicon || '').toString().trim(),
+      siteSearchTitle: (row.site_search_title || '').toString().trim(),
+      siteSearchDescription: (row.site_search_description || '').toString().trim(),
+      siteSearchLogo: (row.site_search_logo || '').toString().trim(),
+      updatedAt: row.updated_at || null,
+    };
+  } catch (error) {
+    console.error('Get site settings error', error);
+    return { ...defaultSiteSettings };
+  } finally {
+    client.release();
+  }
+}
+
+function sanitizeSeoText(value, fallback = '') {
+  return (value || fallback || '')
+    .toString()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeXml(value) {
+  return (value || '')
+    .toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function normalizeBaseUrl(req) {
+  if (FRONTEND_ORIGIN) return FRONTEND_ORIGIN.replace(/\/$/, '');
+  if (RENDER_EXTERNAL_URL) return RENDER_EXTERNAL_URL.replace(/\/$/, '');
+  return `${req.protocol}://${req.get('host')}`.replace(/\/$/, '');
+}
+
+async function generateSitemapXml(baseUrl) {
+  const staticPaths = ['/', '/rolunk', '/regiok', '/galeria', '/projektek', '/news', '/dokumentumok'];
+  const urls = new Set(staticPaths.map((pathValue) => `${baseUrl}${pathValue}`));
+
+  const client = await pool.connect();
+  try {
+    const [newsResult, projectsResult, galleryResult] = await Promise.all([
+      client.query(
+        `SELECT slug_hu, slug_en, language_availability
+           FROM news_articles
+          WHERE published = TRUE`,
+      ),
+      client.query(
+        `SELECT slug_hu, slug_en, language_availability
+           FROM projects
+          WHERE published = TRUE`,
+      ),
+      client.query(
+        `SELECT slug
+           FROM gallery_albums
+          WHERE published = TRUE`,
+      ),
+    ]);
+
+    for (const row of newsResult.rows) {
+      if (row.slug_hu && row.language_availability !== 'en') urls.add(`${baseUrl}/news/${row.slug_hu}`);
+      if (row.slug_en && row.language_availability !== 'hu') urls.add(`${baseUrl}/en/news/${row.slug_en}`);
+    }
+
+    for (const row of projectsResult.rows) {
+      if (row.slug_hu && row.language_availability !== 'en') urls.add(`${baseUrl}/projektek/${row.slug_hu}`);
+      if (row.slug_en && row.language_availability !== 'hu') urls.add(`${baseUrl}/en/projektek/${row.slug_en}`);
+    }
+
+    for (const row of galleryResult.rows) {
+      if (row.slug) {
+        urls.add(`${baseUrl}/galeria/${row.slug}`);
+        urls.add(`${baseUrl}/en/galeria/${row.slug}`);
+      }
+    }
+  } finally {
+    client.release();
+  }
+
+  const now = new Date().toISOString();
+  const body = Array.from(urls)
+    .sort((left, right) => left.localeCompare(right))
+    .map((url) => `  <url><loc>${escapeXml(url)}</loc><lastmod>${now}</lastmod></url>`)
+    .join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>`;
+}
+
+
+function upsertHeadTag(html, pattern, replacement) {
+  if (pattern.test(html)) {
+    return html.replace(pattern, replacement);
+  }
+
+  return html.replace('</head>', `    ${replacement}
+  </head>`);
+}
+
+async function renderIndexHtmlWithSeo() {
+  const [htmlTemplate, siteSettings] = await Promise.all([
+    fs.readFile(path.join(DIST_PATH, 'index.html'), 'utf8'),
+    getSiteSettings(),
+  ]);
+
+  const title = sanitizeSeoText(siteSettings.siteSearchTitle, '');
+  const description = sanitizeSeoText(siteSettings.siteSearchDescription, '');
+  const favicon = sanitizeSeoText(siteSettings.siteFavicon, '');
+  const searchLogo = sanitizeSeoText(siteSettings.siteSearchLogo, '');
+
+  const escapedTitle = escapeHtml(title);
+  const escapedDescription = escapeHtml(description);
+  const escapedSearchLogo = escapeHtml(searchLogo);
+  const faviconVersion = siteSettings.updatedAt ? new Date(siteSettings.updatedAt).getTime() : Date.now();
+
+  let html = htmlTemplate.replace(/<title>[^<]*<\/title>/, `<title>${escapedTitle}</title>`);
+
+  html = upsertHeadTag(
+    html,
+    /<meta name="description" content="[^"]*"\s*\/>/,
+    `<meta name="description" content="${escapedDescription}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta property="og:title" content="[^"]*"\s*\/>/,
+    `<meta property="og:title" content="${escapedTitle}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta property="og:description" content="[^"]*"\s*\/>/,
+    `<meta property="og:description" content="${escapedDescription}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta name="twitter:title" content="[^"]*"\s*\/>/,
+    `<meta name="twitter:title" content="${escapedTitle}" />`,
+  );
+  html = upsertHeadTag(
+    html,
+    /<meta name="twitter:description" content="[^"]*"\s*\/>/,
+    `<meta name="twitter:description" content="${escapedDescription}" />`,
+  );
+
+  html = html.replace(/\s*<script type="application\/ld\+json" data-seo-org="true">[\s\S]*?<\/script>\n?/gi, "\n");
+  if (escapedSearchLogo) {
+    html = upsertHeadTag(
+      html,
+      /<meta property="og:image" content="[^"]*"\s*\/>/,
+      `<meta property="og:image" content="${escapedSearchLogo}" />`,
+    );
+    html = upsertHeadTag(
+      html,
+      /<meta name="twitter:image" content="[^"]*"\s*\/>/,
+      `<meta name="twitter:image" content="${escapedSearchLogo}" />`,
+    );
+
+    const organizationJsonLd = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: title || DEFAULT_SITE_TITLE,
+      url: FRONTEND_ORIGIN || RENDER_EXTERNAL_URL || undefined,
+      logo: searchLogo,
+    });
+
+    html = html.replace('</head>', `    <script type="application/ld+json" data-seo-org="true">${escapeHtml(organizationJsonLd)}</script>\n  </head>`);
+  }
+
+  html = html.replace(/\s*<link rel="(?:shortcut\s+)?icon"[^>]*>\n?/gi, "\n");
+  html = html.replace(/\s*<link rel="apple-touch-icon"[^>]*>\n?/gi, "\n");
+  if (favicon) {
+    html = html.replace('</head>', `    <link rel="icon" href="/favicon.ico?v=${faviconVersion}" />
+    <link rel="shortcut icon" href="/favicon.ico?v=${faviconVersion}" />
+  </head>`);
+  }
+
+  return html;
+}
 
 async function getRealtimeActiveUsersSum() {
   if (!analyticsClient || !analyticsProperty) return analyticsDefaults.pastHour;
@@ -211,7 +484,12 @@ async function getRangeActiveUsers(startDate, endDate) {
 
 async function fetchVisitorCounts() {
   if (!analyticsClient || !analyticsProperty) {
-    return { ...analyticsDefaults, configured: false };
+    const { message } = getAnalyticsConfigStatus();
+    return {
+      ...analyticsDefaults,
+      configured: false,
+      message: message || 'A Google Analytics nincs beállítva',
+    };
   }
 
   const [pastHour, past24Hours, thisWeek, thisMonth, thisYear] = await Promise.all([
@@ -755,6 +1033,40 @@ async function ensureLoginAttemptTable() {
       PRIMARY KEY(email, ip)
     );
     `);
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureSiteSettingsTable() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS site_settings(
+      id SMALLINT PRIMARY KEY DEFAULT 1,
+      site_favicon TEXT,
+      site_search_title TEXT,
+      site_search_description TEXT,
+      site_search_logo TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT site_settings_singleton CHECK (id = 1)
+    );
+    `);
+
+    await client.query('ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_search_title TEXT');
+    await client.query('ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_search_logo TEXT');
+
+    await client.query(
+      `INSERT INTO site_settings(id, site_favicon, site_search_title, site_search_description, site_search_logo)
+       VALUES (1, $1, $2, $3, $4)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        defaultSiteSettings.siteFavicon,
+        defaultSiteSettings.siteSearchTitle,
+        defaultSiteSettings.siteSearchDescription,
+        defaultSiteSettings.siteSearchLogo,
+      ],
+    );
   } finally {
     client.release();
   }
@@ -2478,10 +2790,11 @@ app.post('/api/admin/bugreports', authenticateRequest, async (req, res) => {
 
 app.get('/api/admin/analytics/visitors', authenticateRequest, async (_req, res) => {
   if (!analyticsClient || !analyticsProperty) {
+    const { message } = getAnalyticsConfigStatus();
     return res.status(503).json({
       ...analyticsDefaults,
       configured: false,
-      message: 'A Google Analytics nincs beállítva',
+      message: message || 'A Google Analytics nincs beállítva',
     });
   }
 
@@ -4457,6 +4770,89 @@ app.delete('/api/news/:id', authenticateRequest, async (req, res) => {
   }
 });
 
+app.get('/api/public/site-settings', async (_req, res) => {
+  const settings = await getSiteSettings();
+  return res.status(200).json(settings);
+});
+
+app.post('/api/admin/site-settings', authenticateRequest, async (req, res) => {
+  const siteFavicon = sanitizeSeoText(req.body?.siteFavicon, '');
+  const siteSearchTitle = sanitizeSeoText(req.body?.siteSearchTitle, '');
+  const siteSearchDescription = sanitizeSeoText(req.body?.siteSearchDescription, '');
+  const siteSearchLogo = sanitizeSeoText(req.body?.siteSearchLogo, '');
+
+  if (siteSearchTitle.length > 120) {
+    return res.status(400).json({ message: 'A Google találati cím legfeljebb 120 karakter lehet.' });
+  }
+
+  if (siteSearchDescription.length > 320) {
+    return res.status(400).json({ message: 'A Google keresési leírás legfeljebb 320 karakter lehet.' });
+  }
+
+  if (siteSearchLogo && !/^https?:\/\//i.test(siteSearchLogo)) {
+    return res.status(400).json({ message: 'A keresőmotor logó URL-nek http:// vagy https:// címmel kell kezdődnie.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE site_settings
+         SET site_favicon = $1,
+             site_search_title = $2,
+             site_search_description = $3,
+             site_search_logo = $4,
+             updated_at = NOW()
+       WHERE id = 1`,
+      [siteFavicon, siteSearchTitle, siteSearchDescription, siteSearchLogo],
+    );
+
+    return res.status(200).json({ siteFavicon, siteSearchTitle, siteSearchDescription, siteSearchLogo });
+  } catch (error) {
+    console.error('Save site settings error', error);
+    return res.status(500).json({ message: 'Nem sikerült menteni a webhely beállításait' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/favicon.ico', async (_req, res) => {
+  try {
+    const settings = await getSiteSettings();
+    const favicon = settings.siteFavicon;
+
+    res.set('Cache-Control', 'no-store, max-age=0, must-revalidate');
+
+    if (favicon) {
+      const dataUrlMatch = favicon.match(/^data:(image\/[^;]+);base64,(.+)$/i);
+      if (dataUrlMatch) {
+        const [, contentType, payload] = dataUrlMatch;
+        const iconBuffer = Buffer.from(payload, 'base64');
+        res.type(contentType || 'image/x-icon');
+        return res.status(200).send(iconBuffer);
+      }
+
+      return res.redirect(302, favicon);
+    }
+  } catch (error) {
+    console.error('Favicon settings fetch error', error);
+  }
+
+  return res.status(204).send();
+});
+
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const baseUrl = normalizeBaseUrl(req);
+    const xml = await generateSitemapXml(baseUrl);
+    res.set('Content-Type', 'application/xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.status(200).send(xml);
+  } catch (error) {
+    console.error('Sitemap generation error', error);
+    return res.status(500).send('Failed to generate sitemap');
+  }
+});
+
 app.use(express.static(DIST_PATH));
 
 app.post('/api/newsletter/subscribe', async (req, res) => {
@@ -4648,12 +5044,18 @@ app.post('/api/admin/team-members/reorder', authenticateRequest, async (req, res
   }
 });
 
-app.get('*', (req, res) => {
+app.get('*', async (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ message: 'Nem található erőforrás' });
   }
 
-  return res.sendFile(path.join(DIST_PATH, 'index.html'));
+  try {
+    const html = await renderIndexHtmlWithSeo();
+    return res.status(200).set('Content-Type', 'text/html').send(html);
+  } catch (error) {
+    console.error('Render index html error', error);
+    return res.sendFile(path.join(DIST_PATH, 'index.html'));
+  }
 });
 
 Promise.all([
@@ -4668,6 +5070,7 @@ Promise.all([
   ensureDocumentsTables(),
   ensureNewsletterTables(),
   ensureTeamMembersTable(),
+  ensureSiteSettingsTable(),
 ])
   .then(() => {
     app.listen(PORT, () => {

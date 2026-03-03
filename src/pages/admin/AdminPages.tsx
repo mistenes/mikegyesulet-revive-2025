@@ -1,6 +1,6 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ import {
   Trash2,
   Upload,
   UserCircle,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getAllSections, saveSection } from "@/services/pageContentService";
@@ -189,6 +190,13 @@ const sectionDefinitions: Record<
     fields: [
       { key: "title", label: "Cím" },
       { key: "description", label: "Leírás", type: "textarea" },
+      {
+        key: "points",
+        label: "Térképpontok",
+        type: "json",
+        description:
+          "JSON tömb: [{ name, members, color, description, coordinates: [lng, lat] }]. Minden pontot itt tudsz szerkeszteni.",
+      },
     ],
   },
   regions_intro: {
@@ -251,6 +259,7 @@ const sectionDefinitions: Record<
 };
 
 type SectionKey = string;
+type SectionVisibility = { isVisible?: boolean };
 
 type FieldTarget = {
   sectionKey: SectionKey;
@@ -997,7 +1006,7 @@ export default function AdminPages() {
   const renderSectionEditor = (sectionKey: SectionKey, options?: { wrapInCard?: boolean; isActive?: boolean }) => {
     const { wrapInCard = true, isActive = false } = options || {};
     const section = ensureSection(sectionKey);
-    const content = section[activeLanguage] || {};
+    const content = (section[activeLanguage] || {}) as SectionContent & SectionVisibility;
     const isSaving = savingSection === sectionKey;
     const definition = sectionDefinitions[sectionKey];
     const fields = definition?.fields || Object.keys(content).map((key) => ({ key, label: key, type: typeof content[key] === "string" ? "text" : "json" }));
@@ -1055,11 +1064,11 @@ export default function AdminPages() {
           </div>
           <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-full border border-border/50">
             <Switch
-              checked={(content as any).isVisible !== false}
+              checked={content.isVisible !== false}
               onCheckedChange={(checked) => handleVisibilityToggle(sectionKey, checked)}
             />
             <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {(content as any).isVisible !== false ? "Látható" : "Rejtett"}
+              {content.isVisible !== false ? "Látható" : "Rejtett"}
             </span>
           </div>
         </div>
@@ -1085,6 +1094,8 @@ export default function AdminPages() {
           {sectionGroups[selectedPage].map((section, index) => {
             const isActive = selectedField?.sectionKey === section.key;
             const firstField = sectionDefinitions[section.key]?.fields?.[0]?.key;
+            const pageSection = pageContent[section.key] as (SectionContent & SectionVisibility) | undefined;
+            const isSectionVisible = pageSection?.isVisible !== false;
 
             return (
               <button
@@ -1107,7 +1118,7 @@ export default function AdminPages() {
                 <div className="flex items-center gap-2">
                   <div onClick={(e) => e.stopPropagation()}>
                     <Switch
-                      checked={(pageContent[section.key] as any)?.isVisible !== false}
+                      checked={isSectionVisible}
                       onCheckedChange={(checked) => handleVisibilityToggle(section.key, checked)}
                       className="scale-75"
                     />
@@ -1195,15 +1206,29 @@ export default function AdminPages() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
-            <FileText className="h-6 w-6 text-primary" />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-primary/20 to-accent/20 p-3 rounded-xl">
+              <FileText className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
+                Oldal Tartalmak
+              </h1>
+              <p className="text-muted-foreground">Válaszd ki a publikus oldalt, nézd meg ki és mikor módosította, majd szerkeszd tartalmát élő előnézet mellett.</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Sora', sans-serif" }}>
-              Oldal Tartalmak
-            </h1>
-            <p className="text-muted-foreground">Válaszd ki a publikus oldalt, nézd meg ki és mikor módosította, majd szerkeszd tartalmát élő előnézet mellett.</p>
+          <div className="flex gap-2 flex-wrap">
+            <Button asChild variant="secondary" className="gap-2">
+              <Link to="/admin/map-editor">
+                <Layout className="h-4 w-4" /> Térkép külön szerkesztő
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <Link to="/admin/seo-tools">
+                <Globe className="h-4 w-4" /> SEO eszközök
+              </Link>
+            </Button>
           </div>
         </div>
 

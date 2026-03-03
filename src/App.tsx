@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import * as CookieConsent from "vanilla-cookieconsent";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { getSettings } from "@/services/settingsService";
+import { fetchPublicSiteSettings } from "@/services/siteSettingsService";
 import { getLocalizedPath } from "@/lib/localePaths";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -15,6 +16,7 @@ import AdminPages from "./pages/admin/AdminPages";
 import AdminNews from "./pages/admin/AdminNews";
 import AdminNewsNewArticle from "./pages/admin/AdminNewsNewArticle";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminSeoTools from "./pages/admin/AdminSeoTools";
 import AdminProjects from "./pages/admin/AdminProjects";
 import AdminGallery from "./pages/admin/AdminGallery";
 import AdminMedia from "./pages/admin/AdminMedia";
@@ -29,6 +31,7 @@ import AdminBugReport from "./pages/admin/AdminBugReport";
 import AdminFooterContent from "./pages/admin/AdminFooterContent";
 import AdminNewsletter from "./pages/admin/AdminNewsletter";
 import AdminTeam from "./pages/admin/AdminTeam";
+import AdminMapEditor from "./pages/admin/AdminMapEditor";
 import Rolunk from "./pages/Rolunk";
 import Regiok from "./pages/Regiok";
 import Kapcsolat from "./pages/Kapcsolat";
@@ -67,6 +70,14 @@ const App = () => {
 
     const settings = getSettings();
     applyFavicon(settings.general.site_favicon?.value as string | undefined);
+
+    fetchPublicSiteSettings()
+      .then((siteSettings) => {
+        applyFavicon(siteSettings.siteFavicon || undefined);
+      })
+      .catch((error) => {
+        console.error("Failed to load public site settings", error);
+      });
 
     const handleSettingsUpdate = (event: Event) => {
       const detail = (event as CustomEvent<ReturnType<typeof getSettings>>).detail;
@@ -248,6 +259,7 @@ const App = () => {
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/pages" element={<AdminPages />} />
               <Route path="/admin/pages/:pageSlug" element={<AdminPages />} />
+              <Route path="/admin/map-editor" element={<AdminMapEditor />} />
               <Route path="/admin/regions" element={<AdminRegions />} />
               <Route path="/admin/news/new-article" element={<AdminNewsNewArticle />} />
               <Route path="/admin/news" element={<AdminNews />} />
@@ -264,6 +276,7 @@ const App = () => {
               <Route path="/admin/accept-invite" element={<AcceptInvite />} />
               <Route path="/admin/reset-password" element={<AdminResetPassword />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin/seo-tools" element={<AdminSeoTools />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
