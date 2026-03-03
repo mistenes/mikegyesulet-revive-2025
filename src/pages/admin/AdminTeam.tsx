@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAdminAuthGuard } from "@/hooks/useAdminAuthGuard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -102,6 +102,8 @@ export default function AdminTeam() {
   const [imageNaturalSize, setImageNaturalSize] = useState({ width: 1, height: 1 });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDraggingCropRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
 
   useEffect(() => {
     if (session) {
@@ -225,6 +227,46 @@ export default function AdminTeam() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const clampCropOffsets = (nextX: number, nextY: number) => {
+    const cropArea = Math.min(imageNaturalSize.width, imageNaturalSize.height) / cropZoom;
+    const maxX = Math.max(0, imageNaturalSize.width - cropArea);
+    const maxY = Math.max(0, imageNaturalSize.height - cropArea);
+
+    setCropOffsetX(Math.min(Math.max(nextX, 0), maxX));
+    setCropOffsetY(Math.min(Math.max(nextY, 0), maxY));
+  };
+
+  const handleCropPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    isDraggingCropRef.current = true;
+    dragStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: cropOffsetX,
+      offsetY: cropOffsetY,
+    };
+  };
+
+  const handleCropPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingCropRef.current || !dragStartRef.current) return;
+
+    const cropArea = Math.min(imageNaturalSize.width, imageNaturalSize.height) / cropZoom;
+    const unitsPerPixel = cropArea / CROPPER_FRAME_SIZE;
+
+    const deltaX = (event.clientX - dragStartRef.current.x) * unitsPerPixel;
+    const deltaY = (event.clientY - dragStartRef.current.y) * unitsPerPixel;
+
+    const nextX = dragStartRef.current.offsetX - deltaX;
+    const nextY = dragStartRef.current.offsetY - deltaY;
+
+    clampCropOffsets(nextX, nextY);
+  };
+
+  const handleCropPointerUp = () => {
+    isDraggingCropRef.current = false;
+    dragStartRef.current = null;
   };
 
   const handleDragStart = (id: string) => setDraggingId(id);
@@ -382,7 +424,7 @@ export default function AdminTeam() {
                   />
                 </div>
               </div>
-              <p className="text-xs text-center text-muted-foreground">Kép kiválasztása után nagyítás + körkivágás előnézet jelenik meg.</p>
+              <p className="text-xs text-center text-muted-foreground">Kép kiválasztása után a kivágást húzással és nagyítással állíthatod.</p>
 
               <div className="space-y-2">
                 <Label>Név</Label>
@@ -424,11 +466,16 @@ export default function AdminTeam() {
               <DialogTitle className="flex items-center gap-2">
                 <Crop className="h-5 w-5" /> Kép kivágása
               </DialogTitle>
-              <DialogDescription>Állítsd be a kivágást, így látod pontosan mi jelenik meg a tag profilképén.</DialogDescription>
+              <DialogDescription>Húzd az egeret a képen a kereten belüli pozicionáláshoz, és állíts nagyítást. A nyilvános oldalon téglalap alakú kép jelenik meg.</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-2">
-              <div className="mx-auto relative rounded-full overflow-hidden border" style={{ width: CROPPER_FRAME_SIZE, height: CROPPER_FRAME_SIZE }}>
+              <div className="mx-auto relative rounded-lg overflow-hidden border cursor-grab active:cursor-grabbing touch-none" style={{ width: CROPPER_FRAME_SIZE, height: CROPPER_FRAME_SIZE }}
+                onPointerDown={handleCropPointerDown}
+                onPointerMove={handleCropPointerMove}
+                onPointerUp={handleCropPointerUp}
+                onPointerLeave={handleCropPointerUp}
+              >
                 {rawImageDataUrl && (
                   <img
                     src={rawImageDataUrl}
@@ -452,17 +499,20 @@ export default function AdminTeam() {
 
               <div className="space-y-2">
                 <Label>Nagyítás ({cropZoom.toFixed(2)}x)</Label>
-                <Slider value={[cropZoom]} min={1} max={3} step={0.01} onValueChange={(value) => setCropZoom(value[0] ?? 1)} />
+                <Slider value={[cropZoom]} min={1} max={3} step={0.01} onValueChange={(value) => {
+                  const nextZoom = value[0] ?? 1;
+                  setCropZoom(nextZoom);
+                }} />
               </div>
 
               <div className="space-y-2">
                 <Label>Vízszintes pozíció</Label>
-                <Slider value={[cropOffsetX]} min={0} max={maxOffsetX || 0} step={1} onValueChange={(value) => setCropOffsetX(value[0] ?? 0)} />
+                <Slider value={[cropOffsetX]} min={0} max={maxOffsetX || 0} step={1} onValueChange={(value) => clampCropOffsets(value[0] ?? 0, cropOffsetY)} />
               </div>
 
               <div className="space-y-2">
                 <Label>Függőleges pozíció</Label>
-                <Slider value={[cropOffsetY]} min={0} max={maxOffsetY || 0} step={1} onValueChange={(value) => setCropOffsetY(value[0] ?? 0)} />
+                <Slider value={[cropOffsetY]} min={0} max={maxOffsetY || 0} step={1} onValueChange={(value) => clampCropOffsets(cropOffsetX, value[0] ?? 0)} />
               </div>
             </div>
 
