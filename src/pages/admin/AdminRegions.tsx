@@ -234,7 +234,7 @@ export default function AdminRegions() {
     if (!browserBasePath && !path) return;
     try {
       setBrowserLoading(true);
-      const items = await listImageKitFiles(browserBasePath || path || "");
+      const { items } = await listImageKitFiles(undefined, browserBasePath || path || "");
       setBrowserItems(items);
     } catch (error) {
       console.error(error);
@@ -1356,7 +1356,7 @@ export default function AdminRegions() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pr-2">
                   {browserItems
-                    .filter((item) => item.name.toLowerCase().includes(browserSearch.toLowerCase()))
+                    .filter((item) => (item.name || "").toLowerCase().includes(browserSearch.toLowerCase()))
                     .map((item) => (
                       <button
                         key={item.fileId}
